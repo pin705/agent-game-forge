@@ -1038,28 +1038,6 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
 .agent-drag-icon { font-size: 36px; margin-bottom: 8px; }
 .agent-drag-card .muted { color: var(--ink-2); }
 
-/* Paperclip button in composer */
-.attach-btn {
-  background: transparent;
-  border: 0;
-  color: var(--ink-2);
-  font-size: 16px;
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border-radius: 6px;
-  cursor: pointer;
-  align-self: end;
-}
-.attach-btn:hover:not(:disabled) {
-  color: var(--accent);
-  background: var(--bg-3);
-}
-.attach-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
 
 /* composer */
 .composer {
@@ -1087,16 +1065,17 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
 .chip[data-active="true"] { border-color: var(--accent-line); background: var(--accent-soft); color: var(--ink-0); }
 .chip .caret { color: var(--ink-3); }
 
+/* OpenAI / Claude / Cursor style: textarea on top, action row below.
+   The whole box is the bordered surface; textarea + actions share padding. */
 .composer-box {
   background: var(--bg-2);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 8px 8px 8px 8px;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 6px;
-  align-items: end;
-  transition: border-color 120ms;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color 120ms, background 120ms;
 }
 .composer-box:focus-within { border-color: var(--accent-line); background: var(--bg-3); }
 .composer-box textarea {
@@ -1107,19 +1086,54 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   line-height: 1.5;
   color: var(--ink-0);
   width: 100%;
-  padding: 4px 0;
+  padding: 2px 0;
   overflow-y: auto;
+  background: transparent;
+  border: 0;
+  outline: none;
 }
 .composer-box textarea::placeholder { color: var(--ink-3); }
+
+.composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.icon-btn {
+  background: transparent;
+  border: 0;
+  color: var(--ink-2);
+  font-size: 16px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  cursor: pointer;
+  line-height: 1;
+}
+.icon-btn:hover:not(:disabled) {
+  color: var(--ink-0);
+  background: var(--bg-3);
+}
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .send-btn {
-  width: 32px; height: 32px;
-  border-radius: 6px;
+  width: 28px; height: 28px;
+  border-radius: 5px;
   background: var(--accent);
   color: var(--accent-ink);
   display: grid; place-items: center;
   flex-shrink: 0;
+  border: 0;
+  cursor: pointer;
 }
-.send-btn:hover { filter: brightness(1.05); }
+.send-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .send-btn[data-stop="true"] {
   background: var(--red);
   color: white;

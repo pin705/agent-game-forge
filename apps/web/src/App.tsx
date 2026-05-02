@@ -1310,14 +1310,6 @@ function AgentPane(props: {
           </span>
         </div>
         <div className="composer-box">
-          <button
-            className="attach-btn"
-            onClick={() => dropzoneRef.current?.openFilePicker()}
-            disabled={!props.project}
-            title="Attach files (drag-and-drop also works)"
-          >
-            📎
-          </button>
           <ComposerTextarea
             value={props.prompt}
             onChange={props.setPrompt}
@@ -1331,15 +1323,26 @@ function AgentPane(props: {
                 : 'Codex not detected'
             }
           />
-          <button
-            className="send-btn"
-            data-stop={props.running}
-            onClick={props.running ? props.onStop : props.onSend}
-            disabled={!props.running && (!props.agent?.available || !props.prompt.trim() || !props.project)}
-            title={props.running ? 'Stop' : 'Send'}
-          >
-            {props.running ? I.stop : I.send}
-          </button>
+          <div className="composer-actions">
+            <button
+              className="icon-btn"
+              onClick={() => dropzoneRef.current?.openFilePicker()}
+              disabled={!props.project}
+              title="Attach files (drag-and-drop also works)"
+            >
+              📎
+            </button>
+            <span style={{ flex: 1 }} />
+            <button
+              className="send-btn"
+              data-stop={props.running}
+              onClick={props.running ? props.onStop : props.onSend}
+              disabled={!props.running && (!props.agent?.available || !props.prompt.trim() || !props.project)}
+              title={props.running ? 'Stop' : 'Send'}
+            >
+              {props.running ? I.stop : I.send}
+            </button>
+          </div>
         </div>
         <div className="composer-foot">
           <span><span className="kbd">⏎</span> send</span>
