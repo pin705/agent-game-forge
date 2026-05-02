@@ -159,10 +159,12 @@ export function PlayPane(props: Props) {
     } else if (e.type === 'stderr') {
       ingestChunk('stderr', e.data.chunk);
     } else if (e.type === 'start') {
+      const d = e.data as { bin?: string; args?: string[]; mainScene?: string };
+      const argLine = (d.args ?? []).map((a) => (a.includes(' ') ? `"${a}"` : a)).join(' ');
       pushLine({
         channel: 'system',
         level: 'system',
-        text: `▶ Godot started · ${(e.data as { bin?: string }).bin ?? ''}`,
+        text: `▶ Godot started\n  bin: ${d.bin ?? ''}\n  args: ${argLine}\n  scene: ${d.mainScene ?? '(use main_scene from project.godot)'}`,
       });
     } else if (e.type === 'error') {
       pushLine({
