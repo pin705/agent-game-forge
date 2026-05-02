@@ -409,8 +409,18 @@ function PlayLine({
 
 function WebPlayPane({ projectPath }: { projectPath: string }) {
   const slug = useMemo(() => base64Url(projectPath), [projectPath]);
+  // Don't auto-run on mount — the iframe runs an animation loop / audio /
+  // network and would burn CPU even when the user has the Play tab in the
+  // background. User clicks ▶ play to start.
+  const [running, setRunning] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
   const src = `/api/web-play/${slug}/index.html?_=${reloadTick}`;
+
+  // If the project switches while running, stop — the slug just changed and
+  // the new project should start fresh.
+  useEffect(() => {
+    setRunning(false);
+  }, [projectPath]);
 
   return (
     <div className="inspector">
@@ -421,6 +431,7 @@ function WebPlayPane({ projectPath }: { projectPath: string }) {
           <button
             className="btn btn-sm btn-ghost"
             onClick={() => setReloadTick((n) => n + 1)}
+            disabled={!running}
             title="Reload iframe"
           >
             ↻ reload
@@ -432,16 +443,38 @@ function WebPlayPane({ projectPath }: { projectPath: string }) {
           >
             ↗ open in tab
           </button>
+          {running ? (
+            <button
+              className="btn btn-sm"
+              style={{ color: 'var(--red)' }}
+              onClick={() => setRunning(false)}
+              title="Stop the game (unmount iframe)"
+            >
+              {I.stop} stop
+            </button>
+          ) : (
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={() => setRunning(true)}
+              title="Run the project in an iframe"
+            >
+              {I.play} play
+            </button>
+          )}
         </span>
       </div>
       <div className="web-play-frame-wrap">
-        <iframe
-          key={reloadTick}
-          src={src}
-          className="web-play-frame"
-          title="Project preview"
-          sandbox="allow-scripts allow-same-origin allow-modals"
-        />
+        {running ? (
+          <iframe
+            key={reloadTick}
+            src={src}
+            className="web-play-frame"
+            title="Project preview"
+            sandbox="allow-scripts allow-same-origin allow-modals"
+          />
+        ) : (
+          <div className="play-empty muted">Press play to launch the web project.</div>
+        )}
       </div>
     </div>
   );
