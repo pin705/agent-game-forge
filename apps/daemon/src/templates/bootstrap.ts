@@ -132,38 +132,109 @@ canvas {
 }
 `;
 
-const WEB_GAME_JS = `// Auto-generated entry point. Replace with your game's logic.
-// Convention: keep gameplay data in data/*.json (see .ogf/conventions.md).
+const WEB_GAME_JS = `// Auto-generated entry point. The pipeline below is what makes the
+// OGF Scenes tab "live" — it reads the level JSON every load, so anything
+// you drag in OGF (or that Codex writes into data/*.json) shows up here
+// without touching this file.
+//
+// Replace the loop body with your gameplay; keep the data-loading pattern.
+// See .ogf/conventions.md for the full level schema.
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
 async function loadJSON(rel) {
   const r = await fetch(rel);
+  if (!r.ok) throw new Error(\`fetch \${rel}: \${r.status}\`);
   return await r.json();
 }
 
-async function loadImage(rel) {
+function loadImage(rel) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = reject;
+    img.onerror = () => reject(new Error(\`could not load \${rel}\`));
     img.src = rel;
   });
 }
 
-async function start() {
-  // const level = await loadJSON('data/level1.json');
-  // const bg = await loadImage(level.background);
-  // ctx.drawImage(bg, 0, 0, level.mapSize.width, level.mapSize.height);
-  ctx.fillStyle = '#1a1a1a';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#888';
-  ctx.font = '24px system-ui';
-  ctx.fillText('OGF web project — load a level from data/*.json', 40, 80);
+/** Resize canvas to match the level's map size (so OGF coords === pixel coords). */
+function fitCanvas(level) {
+  const m = level.mapSize ?? { width: 1280, height: 720 };
+  if (canvas.width !== m.width) canvas.width = m.width;
+  if (canvas.height !== m.height) canvas.height = m.height;
 }
 
-start();
+/** Pre-load every \`props[*].image\` path into a { path → HTMLImageElement } map. */
+async function loadPropImages(level) {
+  const images = {};
+  const srcs = new Set();
+  for (const p of level.props ?? []) if (p.image) srcs.add(p.image);
+  await Promise.all(
+    [...srcs].map(async (src) => {
+      try { images[src] = await loadImage(src); } catch (e) { console.warn(e); }
+    }),
+  );
+  return images;
+}
+
+async function start() {
+  // The list of levels is in data/levels.json — start with the first one.
+  // (When you add more levels, write a router / level-switcher here.)
+  const levels = await loadJSON('data/levels.json');
+  const first = levels.levels?.[0];
+  const level = await loadJSON(first?.file ?? 'data/level1.json');
+
+  fitCanvas(level);
+
+  let bg = null;
+  if (level.background) {
+    try { bg = await loadImage(level.background); } catch (e) { console.warn(e); }
+  }
+  const propImages = await loadPropImages(level);
+
+  function drawProp(p) {
+    // Convention: (p.x, p.y) is the BOTTOM-CENTER anchor — x is the center,
+    // y is the feet / ground line. Same convention OGF uses when dragging.
+    const img = propImages[p.image];
+    if (!img) return;
+    ctx.drawImage(img, p.x - p.w / 2, p.y - p.h, p.w, p.h);
+  }
+
+  function frame() {
+    if (bg) {
+      ctx.drawImage(bg, 0, 0, canvas.width, canvas.height);
+    } else {
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // Painter's algorithm: z-sort by sortY (fall back to y).
+    const props = (level.props ?? [])
+      .slice()
+      .sort((a, b) => (a.sortY ?? a.y) - (b.sortY ?? b.y));
+    for (const p of props) drawProp(p);
+
+    if ((level.props ?? []).length === 0 && !bg) {
+      ctx.fillStyle = '#888';
+      ctx.font = '20px system-ui';
+      ctx.fillText('Empty level. Add props in OGF\\'s Scenes tab,', 40, 60);
+      ctx.fillText('or ask Codex to generate a background + props.', 40, 90);
+    }
+
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+start().catch((err) => {
+  console.error(err);
+  ctx.fillStyle = '#400';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#fcc';
+  ctx.font = '16px system-ui';
+  ctx.fillText('start() failed: ' + err.message, 20, 30);
+});
 `;
 
 const WEB_LEVELS_JSON = `{

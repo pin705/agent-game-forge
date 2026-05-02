@@ -205,19 +205,46 @@ OGF will render the \`background\` image, then overlay every shape from this
 file with the correct semantic color. The user drags a shape → OGF rewrites
 the JSON in place.
 
+### Anchor conventions
+
+- **Props** use a **bottom-center** anchor: \`(p.x, p.y)\` = (horizontal center,
+  feet / ground line). Renders as
+  \`ctx.drawImage(img, p.x - p.w/2, p.y - p.h, p.w, p.h)\`. This matches how
+  characters stand on the ground and how OGF drags them.
+- **Rects / blockers / walkBounds** use **top-left** anchor: \`(x, y)\` = upper-left
+  corner, plus \`w\`, \`h\`.
+- **Points** (spawn, exits, goals) are just \`{ x, y }\` with no anchor concept.
+- \`sortY\` (optional) is the y used for back-to-front draw order; defaults
+  to \`y\`. Use it when the visual feet sit above the collision feet (e.g.
+  a shrine whose roof should sort behind a tree even though its base is in
+  front).
+
 ### Code patterns
 
-- \`game.js\` should fetch level JSON at runtime:
+- **\`game.js\` MUST read level JSON at boot. Never hardcode coordinates,
+  prop lists, or catalogs in JS.** The whole point of the JSON layout is
+  that OGF (or the user, or Codex) can edit data/\\*.json and the next
+  reload sees the change with zero code edits.
+
   \`\`\`js
-  const data = await fetch('data/temple.json').then(r => r.json());
-  ctx.drawImage(await loadImage(data.background), 0, 0);
-  for (const b of data.blockers) drawShape(b);
+  const level = await fetch('data/temple.json').then(r => r.json());
+  ctx.drawImage(await loadImage(level.background), 0, 0);
+  for (const p of level.props) {
+    ctx.drawImage(images[p.image], p.x - p.w/2, p.y - p.h, p.w, p.h);
+  }
+  for (const b of level.blockers) drawShape(b);
   \`\`\`
-- Don't hardcode coordinates in \`game.js\`. They go in the level JSON.
+
+- Pre-load every \`props[*].image\` into an \`images\` map keyed by the
+  path string itself; look up via \`images[p.image]\` at draw time.
 - Catalogs (\`enemies.json\`, \`items.json\`) are array-of-objects; load once
   at boot, look up by id at runtime.
 - Keep \`game.js\` modular. If it grows past ~600 lines, split into
   \`level.js\` / \`player.js\` / \`combat.js\` etc.
+
+The bootstrap \`src/game.js\` already wires this pipeline up (fitCanvas →
+loadPropImages → frame loop with z-sorted prop draw). Build on top of it;
+don't replace the data-loading skeleton.
 
 ### Image generation
 
