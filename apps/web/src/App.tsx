@@ -858,6 +858,7 @@ function EditorPane(props: {
               onRefresh={props.onRefresh}
               recentlyChanged={props.recentlyChanged}
               usedAssets={props.usedAssets}
+              mainScene={props.mainScene}
               filter={treeFilter}
               engine={props.project.engine}
               scopeKey={props.project.path}

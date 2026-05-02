@@ -1698,6 +1698,23 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   margin-left: auto;
   flex-shrink: 0;
 }
+.main-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-line);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.tree-row.main-scene .name {
+  color: var(--accent);
+  font-weight: 600;
+}
 .used-dot {
   width: 5px;
   height: 5px;

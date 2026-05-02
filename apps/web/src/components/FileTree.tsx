@@ -13,6 +13,8 @@ interface Props {
   recentlyChanged?: Set<string>;
   /** Set of relative paths that are referenced from somewhere in the project. */
   usedAssets?: Set<string>;
+  /** Project's main scene (run/main_scene from project.godot). Marked with a 'main' badge. */
+  mainScene?: string | null;
   filter?: TreeFilter;
   engine?: EngineKind;
   /** Stable identifier (project path) — used to scope localStorage of folder-open state. */
@@ -164,6 +166,7 @@ export function FileTree(props: Props) {
             onSelect={props.onSelect}
             recentlyChanged={props.recentlyChanged}
             usedAssets={props.usedAssets}
+            mainScene={props.mainScene}
             filter={filter}
             engine={engine}
             openFolders={openFolders}
@@ -191,6 +194,7 @@ function Node(props: {
   onSelect: (rel: string, fileKind: FileNode['fileKind']) => void;
   recentlyChanged?: Set<string>;
   usedAssets?: Set<string>;
+  mainScene?: string | null;
   filter: TreeFilter;
   engine: EngineKind;
   openFolders: Set<string>;
@@ -227,6 +231,7 @@ function Node(props: {
             onSelect={props.onSelect}
             recentlyChanged={props.recentlyChanged}
             usedAssets={props.usedAssets}
+            mainScene={props.mainScene}
             filter={filter}
             engine={engine}
             openFolders={openFolders}
@@ -245,20 +250,26 @@ function Node(props: {
   const isAsset = node.fileKind === 'image' || /\.(tscn|tres|prefab|unity|json)$/i.test(node.name);
   const isUsed = props.usedAssets ? props.usedAssets.has(node.relPath) : true;
   const showUnused = filter !== 'code' && isAsset && !!props.usedAssets && !isUsed;
+  const isMain = !!props.mainScene && props.mainScene === node.relPath;
 
   return (
     <div
-      className={`tree-row ${isSelected ? 'selected' : ''}${showUnused ? ' unused' : ''}`}
+      className={`tree-row ${isSelected ? 'selected' : ''}${showUnused ? ' unused' : ''}${isMain ? ' main-scene' : ''}`}
       style={{ ['--depth' as never]: depth } as React.CSSProperties}
       onClick={() => props.onSelect(node.relPath, node.fileKind)}
       role="treeitem"
-      title={node.relPath + (showUnused ? ' (not referenced anywhere)' : '')}
+      title={
+        node.relPath +
+        (isMain ? '  (main scene — runs on Play)' : '') +
+        (showUnused ? ' (not referenced anywhere)' : '')
+      }
     >
       <span className="twirl"></span>
       <span className="ficon">{fileIcon(node)}</span>
       <span className="name">{node.name}</span>
+      {isMain && <span className="main-badge" title="Main scene">main</span>}
       {showUnused && <span className="unused-badge" title="Not referenced">unused</span>}
-      {isUsed && isAsset && props.usedAssets && (
+      {isUsed && isAsset && props.usedAssets && !isMain && (
         <span className="used-dot" title="Referenced in project" />
       )}
       {isChanged && <span className="stale-dot" title="Just regenerated" />}
