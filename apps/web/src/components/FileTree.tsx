@@ -34,9 +34,12 @@ export function FileTree(props: Props) {
   const lsKey = props.scopeKey ? `ogf:openFolders:${props.scopeKey}` : null;
   const usedOnlyKey = props.scopeKey ? `ogf:usedOnly:${props.scopeKey}` : null;
 
+  // Default to hiding unused so the tree stays focused on what the project
+  // actually references. User can toggle off to see everything.
   const [usedOnly, setUsedOnly] = useState<boolean>(() => {
-    if (!usedOnlyKey) return false;
-    return localStorage.getItem(usedOnlyKey) === '1';
+    if (!usedOnlyKey) return true;
+    const raw = localStorage.getItem(usedOnlyKey);
+    return raw === null ? true : raw === '1';
   });
   useEffect(() => {
     if (!usedOnlyKey) return;
@@ -45,14 +48,14 @@ export function FileTree(props: Props) {
   // Reset when scope changes
   useEffect(() => {
     if (!usedOnlyKey) {
-      setUsedOnly(false);
+      setUsedOnly(true);
       return;
     }
-    setUsedOnly(localStorage.getItem(usedOnlyKey) === '1');
+    const raw = localStorage.getItem(usedOnlyKey);
+    setUsedOnly(raw === null ? true : raw === '1');
   }, [usedOnlyKey]);
 
-  // Toggle is only meaningful when we have a usedAssets set and we're in assets/all view
-  const usedOnlyAvailable = !!props.usedAssets && filter !== 'code';
+  const usedOnlyAvailable = !!props.usedAssets;
   const effectiveUsedOnly = usedOnly && usedOnlyAvailable;
 
   const [openFolders, setOpenFolders] = useState<Set<string>>(() => {
@@ -126,7 +129,7 @@ export function FileTree(props: Props) {
   return (
     <div className="tree-pane">
       <div className="tree-head">
-        <span>{filter === 'code' ? 'Code' : filter === 'assets' ? 'Assets' : 'Project'}</span>
+        <span>Project</span>
         <span style={{ flex: 1 }} />
         {usedOnlyAvailable && (
           <button
@@ -179,7 +182,7 @@ export function FileTree(props: Props) {
       <div className="tree-foot">
         <span>{fileCount} files{effectiveUsedOnly ? ' (used only)' : ''}</span>
         <span style={{ flex: 1 }} />
-        {props.usedAssets && filter !== 'code' && !effectiveUsedOnly && (
+        {props.usedAssets && !effectiveUsedOnly && (
           <span style={{ color: 'var(--ink-3)' }}>· {props.usedAssets.size} used</span>
         )}
       </div>
@@ -249,7 +252,7 @@ function Node(props: {
   const isChanged = props.recentlyChanged?.has(node.relPath);
   const isAsset = node.fileKind === 'image' || /\.(tscn|tres|prefab|unity|json)$/i.test(node.name);
   const isUsed = props.usedAssets ? props.usedAssets.has(node.relPath) : true;
-  const showUnused = filter !== 'code' && isAsset && !!props.usedAssets && !isUsed;
+  const showUnused = isAsset && !!props.usedAssets && !isUsed;
   const isMain = !!props.mainScene && props.mainScene === node.relPath;
 
   return (
@@ -293,13 +296,11 @@ function isVisible(
   if (node.kind === 'dir') {
     return (node.children ?? []).some((c) => isVisible(c, filter, engine, usedOnly, usedAssets));
   }
-  const code = isCodeFile(node, engine);
-  // Tab filter
-  if (filter === 'code') return code;
-  if (filter === 'assets' && code) return false;
-  // Used-only filter only applies to assets (and only when we have a set).
-  if (usedOnly && usedAssets && !code) {
-    if (!usedAssets.has(node.relPath)) return false;
+  // Used-only hides assets that aren't referenced. Code files are always shown
+  // (we don't track their usage; hiding them based on .gd grep would be wrong).
+  if (usedOnly && usedAssets) {
+    const code = isCodeFile(node, engine);
+    if (!code && !usedAssets.has(node.relPath)) return false;
   }
   return true;
 }

@@ -62,7 +62,7 @@ const LS_TREE_W = 'ogf:treeWidth';
 const LS_TREE_COLLAPSED = 'ogf:treeCollapsed';
 const LS_LAST_FILE_PREFIX = 'ogf:lastFile:'; // per-project: { tab, relPath }
 
-type Tab = 'assets' | 'scenes' | 'code' | 'play';
+type Tab = 'assets' | 'scenes' | 'play';
 type Density = 'compact' | 'regular' | 'comfy';
 
 export function App() {
@@ -300,11 +300,14 @@ export function App() {
         const saved = localStorage.getItem(LS_LAST_FILE_PREFIX + p.path);
         if (saved) {
           const parsed = JSON.parse(saved) as {
-            tab?: Tab;
+            // The 'code' tab was removed; older entries get migrated to 'assets'.
+            tab?: Tab | 'code';
             relPath?: string;
             fileKind?: FileNode['fileKind'];
           };
-          if (parsed.tab) setTab(parsed.tab);
+          const migratedTab: Tab | undefined =
+            parsed.tab === 'code' ? 'assets' : (parsed.tab as Tab | undefined);
+          if (migratedTab) setTab(migratedTab);
           if (parsed.relPath) {
             setSelectedFile({ relPath: parsed.relPath, fileKind: parsed.fileKind });
             restoredFile = true;
@@ -581,12 +584,11 @@ export function App() {
             tree={fileTree}
             selectedFile={selectedFile}
             onSelectFile={(rel, fk) => {
-              // Route the file to the right tab based on extension so the
-              // correct editor renders. Same rules as onJumpTo below.
+              // .tscn → scenes (canvas view); everything else → assets
+              // (which now hosts Monaco / FileEditor / TableEditor for any kind).
               const ext = rel.split('.').pop()?.toLowerCase() ?? '';
-              const isCode = ['gd', 'cs', 'gdshader', 'js', 'jsx', 'ts', 'tsx', 'py'].includes(ext);
               const isScene = ext === 'tscn';
-              setTab(isScene ? 'scenes' : isCode ? 'code' : 'assets');
+              setTab(isScene ? 'scenes' : 'assets');
               setSelectedFile({ relPath: rel, fileKind: fk });
             }}
             onCloseFile={() => setSelectedFile(null)}
@@ -598,9 +600,8 @@ export function App() {
             sceneReloadKey={sceneReloadKey}
             onJumpTo={(rel) => {
               const ext = rel.split('.').pop()?.toLowerCase() ?? '';
-              const isCode = ['gd', 'cs', 'js', 'jsx', 'ts', 'tsx', 'py'].includes(ext);
               const isScene = ext === 'tscn';
-              setTab(isScene ? 'scenes' : isCode ? 'code' : 'assets');
+              setTab(isScene ? 'scenes' : 'assets');
               setSelectedFile({ relPath: rel, fileKind: isImageExt(ext) ? 'image' : 'text' });
             }}
             onAskCodex={(text) => {
@@ -783,8 +784,8 @@ function EditorPane(props: {
   treeCollapsed: boolean;
   onToggleTree: () => void;
 }) {
-  const treeFilter: 'assets' | 'code' | 'all' =
-    props.tab === 'assets' ? 'assets' : props.tab === 'code' ? 'code' : 'all';
+  // Tree no longer filters by tab — every tab sees the full file list.
+  const treeFilter: 'all' = 'all';
 
   function onTreeDragStart(e: React.MouseEvent) {
     e.preventDefault();
@@ -838,9 +839,6 @@ function EditorPane(props: {
         </button>
         <button className="tab" role="tab" aria-selected={props.tab === 'scenes'} onClick={() => props.setTab('scenes')}>
           {I.tscn} Scenes
-        </button>
-        <button className="tab" role="tab" aria-selected={props.tab === 'code'} onClick={() => props.setTab('code')}>
-          {I.gd} Code
         </button>
         <button className="tab" role="tab" aria-selected={props.tab === 'play'} onClick={() => props.setTab('play')}>
           {I.play} Play
@@ -916,24 +914,6 @@ function EditorPane(props: {
               usedAssets={props.usedAssets}
               mainScene={props.mainScene}
             />
-          )
-        )}
-        {props.tab === 'code' && (
-          props.selectedFile ? (
-            <FileEditor
-              key={props.selectedFile.relPath}
-              projectPath={props.project.path}
-              relPath={props.selectedFile.relPath}
-              fileKind="text"
-              recentlyChanged={props.recentlyChanged.has(props.selectedFile.relPath)}
-              onClose={props.onCloseFile}
-              onJumpTo={props.onJumpTo}
-              onAskCodex={props.onAskCodex}
-              onSlicingSaved={props.onSlicingSaved}
-              metadataRev={props.metadataRev}
-            />
-          ) : (
-            <PlaceholderView title="Code" hint="Pick a script in the file tree" />
           )
         )}
         {props.tab === 'play' && (
