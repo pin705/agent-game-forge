@@ -278,6 +278,35 @@ export function createServer() {
     }
   });
 
+  // -------------------- Web project Play (static serve) --------------------
+  // Mount any registered project's root under /api/web-play/<slug>/. The slug
+  // is base64url(projectPath) so the iframe URL looks like a real directory
+  // and relative refs (src="src/game.js" / fetch("data/x.json")) just work.
+  app.use('/api/web-play/:slug', (req, res, next) => {
+    let projectPath: string;
+    try {
+      projectPath = Buffer.from(req.params.slug, 'base64url').toString('utf8');
+    } catch {
+      res.status(400).end('bad slug');
+      return;
+    }
+    const row = getProject(projectPath);
+    if (!row) {
+      res.status(404).end('project not registered');
+      return;
+    }
+    if (row.engine !== 'web') {
+      res.status(400).end('not a web project');
+      return;
+    }
+    return express.static(path.resolve(projectPath), {
+      index: 'index.html',
+      fallthrough: false,
+      etag: false,
+      cacheControl: false,
+    })(req, res, next);
+  });
+
   // -------------------- Filesystem browser --------------------
 
   app.get('/api/fs/list', (req, res) => {

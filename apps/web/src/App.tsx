@@ -952,6 +952,7 @@ function EditorPane(props: {
         {props.tab === 'play' && (
           <PlayPane
             projectPath={props.project.path}
+            engine={props.project.engine}
             mainScene={props.mainScene}
             onJumpTo={(rel, line) => {
               const ext = rel.split('.').pop()?.toLowerCase() ?? '';
