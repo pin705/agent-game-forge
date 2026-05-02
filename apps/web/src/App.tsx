@@ -580,7 +580,15 @@ export function App() {
             project={project}
             tree={fileTree}
             selectedFile={selectedFile}
-            onSelectFile={(rel, fk) => setSelectedFile({ relPath: rel, fileKind: fk })}
+            onSelectFile={(rel, fk) => {
+              // Route the file to the right tab based on extension so the
+              // correct editor renders. Same rules as onJumpTo below.
+              const ext = rel.split('.').pop()?.toLowerCase() ?? '';
+              const isCode = ['gd', 'cs', 'gdshader', 'js', 'jsx', 'ts', 'tsx', 'py'].includes(ext);
+              const isScene = ext === 'tscn';
+              setTab(isScene ? 'scenes' : isCode ? 'code' : 'assets');
+              setSelectedFile({ relPath: rel, fileKind: fk });
+            }}
             onCloseFile={() => setSelectedFile(null)}
             onNewFile={() => setShowNewFile(true)}
             onRefresh={() => void refreshTree(project)}

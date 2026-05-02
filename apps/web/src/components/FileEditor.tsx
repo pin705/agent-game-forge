@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import type { UsagesResponse } from '@ogf/contracts';
 import { fetchFileContent, fetchUsages, writeFileContent } from '../lib/api.js';
 import { I } from './icons.js';
 import { SpriteSlicerModal, type SliceMetadata } from './SpriteSlicerModal.js';
+import { TableEditor } from './TableEditor.js';
 
 interface Props {
   projectPath: string;
@@ -56,9 +57,31 @@ export function FileEditor(props: Props) {
   const [zoom, setZoom] = useState(1);
   const [usages, setUsages] = useState<UsagesResponse['hits'] | null>(null);
   const [usagesLoading, setUsagesLoading] = useState(false);
+  const [jsonView, setJsonView] = useState<'auto' | 'text' | 'table'>('auto');
 
   const segments = props.relPath.split('/').filter(Boolean);
   const dir = segments.slice(0, -1).join('/');
+
+  // Is this file a JSON that's likely table-shaped (array-of-objects somewhere)?
+  const jsonHasTable = useMemo(() => {
+    if (!props.relPath.toLowerCase().endsWith('.json') || content === null) return false;
+    try {
+      const data = JSON.parse(content);
+      if (Array.isArray(data) && data.length > 0 && data.every((x) => x && typeof x === 'object' && !Array.isArray(x))) {
+        return true;
+      }
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        return Object.values(data as Record<string, unknown>).some(
+          (v) => Array.isArray(v) && v.length > 0 && (v as unknown[]).every((x) => x && typeof x === 'object' && !Array.isArray(x)),
+        );
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  }, [content, props.relPath]);
+
+  const showAsTable = jsonHasTable && (jsonView === 'auto' || jsonView === 'table');
 
   // Initial file fetch
   useEffect(() => {
@@ -246,6 +269,24 @@ Show me the diff before applying.`;
           </span>
         )}
         <span className="actions">
+          {kind === 'text' && jsonHasTable && (
+            <span className="view-toggle" style={{ marginRight: 6 }}>
+              <button
+                className={`view-toggle-btn ${showAsTable ? 'active' : ''}`}
+                onClick={() => setJsonView('table')}
+                title="Edit as a table"
+              >
+                table
+              </button>
+              <button
+                className={`view-toggle-btn ${!showAsTable ? 'active' : ''}`}
+                onClick={() => setJsonView('text')}
+                title="Edit as raw JSON"
+              >
+                text
+              </button>
+            </span>
+          )}
           {kind === 'text' && (
             <button
               className={`btn btn-sm ${dirty ? 'btn-primary' : ''}`}
@@ -284,7 +325,21 @@ Show me the diff before applying.`;
       {error && <div className="msg-sys err" style={{ margin: 12, alignSelf: 'flex-start' }}>{I.warn} {error}</div>}
       {truncated && <div className="msg-sys" style={{ margin: 12, alignSelf: 'flex-start' }}>{I.warn} File too large ({formatSize(size)})</div>}
 
-      {kind === 'text' && content !== null && (
+      {kind === 'text' && content !== null && showAsTable && (
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <TableEditor
+            content={content}
+            projectPath={props.projectPath}
+            relPath={props.relPath}
+            onContentChange={(next) => {
+              setContent(next);
+              setDirty(next !== lastLoadedRef.current);
+            }}
+          />
+        </div>
+      )}
+
+      {kind === 'text' && content !== null && !showAsTable && (
         <div style={{ flex: 1, minHeight: 0 }}>
           <Editor
             height="100%"

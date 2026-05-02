@@ -59,7 +59,18 @@ export type ColliderRef =
       /** When set, resize-circle patches `<property> = N`. */
       markerRadiusProperty?: string;
     }
-  | { backend: 'json'; relPath: string; section: string; id: string };
+  | {
+      backend: 'json';
+      relPath: string;
+      /** Top-level field name in the JSON. For arrays it's the array key; for
+       *  single-object fields (heroSpawn) it equals `id`. */
+      section: string;
+      id: string;
+      /** When true, `section` points to a top-level object field
+       *  (e.g. `"heroSpawn": { x, y }`), not an array of items.
+       *  Writers patch x/y inside that object directly. */
+      singleField?: boolean;
+    };
 
 export interface SceneCollider {
   /** Stable per-load id for UI keys. Not used by writers — use `ref` instead. */

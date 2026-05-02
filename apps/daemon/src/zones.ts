@@ -313,6 +313,91 @@ interface ZonesJson {
   exits?: JsonZone[];
 }
 
+/** Read top-level point-style fields from any JSON file (typically the
+ *  collision sidecar): `heroSpawn`, `playerSpawn`, `spawn`, plus arrays
+ *  `entrances` / `goals` of {id, x, y} entries. */
+export function readJsonPointMarkers(rootAbs: string, jsonRel: string): SceneZone[] {
+  const abs = path.join(rootAbs, jsonRel);
+  if (!existsSync(abs)) return [];
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(readFileSync(abs, 'utf8'));
+  } catch {
+    return [];
+  }
+  const out: SceneZone[] = [];
+
+  // Single-point fields like heroSpawn / playerSpawn
+  const SINGLE: { field: string; kind: ZoneKind }[] = [
+    { field: 'heroSpawn', kind: 'spawn' },
+    { field: 'playerSpawn', kind: 'spawn' },
+    { field: 'spawn', kind: 'spawn' },
+  ];
+  for (const { field, kind } of SINGLE) {
+    const v = data[field];
+    if (
+      v &&
+      typeof v === 'object' &&
+      typeof (v as Record<string, unknown>).x === 'number' &&
+      typeof (v as Record<string, unknown>).y === 'number'
+    ) {
+      const o = v as { x: number; y: number; facing?: string };
+      const fields: Record<string, string | number> = {};
+      if (o.facing) fields.facing = o.facing;
+      out.push({
+        uid: `zone-json:${jsonRel}:${field}`,
+        ref: {
+          backend: 'json',
+          relPath: jsonRel,
+          section: field,
+          id: field,
+          singleField: true,
+        },
+        name: field,
+        zoneKind: kind,
+        position: { x: o.x, y: o.y },
+        shape: { kind: 'point' },
+        fields,
+        editable: true,
+      });
+    }
+  }
+
+  // Array-of-points fields
+  const ARRAYS: { field: string; kind: ZoneKind }[] = [
+    { field: 'entrances', kind: 'spawn' },
+    { field: 'goals', kind: 'exit' },
+  ];
+  for (const { field, kind } of ARRAYS) {
+    const arr = data[field];
+    if (!Array.isArray(arr)) continue;
+    arr.forEach((it: unknown, idx: number) => {
+      if (
+        !it ||
+        typeof it !== 'object' ||
+        typeof (it as { x?: unknown }).x !== 'number' ||
+        typeof (it as { y?: unknown }).y !== 'number'
+      ) {
+        return;
+      }
+      const o = it as { id?: string; x: number; y: number };
+      const id = String(o.id ?? `${field}_${idx}`);
+      out.push({
+        uid: `zone-json:${jsonRel}:${field}:${id}`,
+        ref: { backend: 'json', relPath: jsonRel, section: field, id },
+        name: id,
+        zoneKind: kind,
+        position: { x: o.x, y: o.y },
+        shape: { kind: 'point' },
+        fields: {},
+        editable: true,
+      });
+    });
+  }
+
+  return out;
+}
+
 export function readJsonZones(rootAbs: string, jsonRel: string): SceneZone[] {
   const abs = path.join(rootAbs, jsonRel);
   if (!existsSync(abs)) return [];

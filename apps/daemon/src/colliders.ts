@@ -357,6 +357,56 @@ export function readJsonColliders(rootAbs: string, jsonRel: string): SceneCollid
   return out;
 }
 
+/** Patch a top-level single-object field like `"heroSpawn": { "x": 760, "y": 520 }`.
+ *  Used for fields that aren't part of an array. */
+export function applyJsonSingleFieldEdit(
+  rootAbs: string,
+  ref: ColliderRef & { backend: 'json' },
+  patch: { x?: number; y?: number },
+): void {
+  const abs = path.join(rootAbs, ref.relPath);
+  const text = readFileSync(abs, 'utf8');
+  const lines = text.split(/\r?\n/);
+
+  const startRe = new RegExp(`"${escapeRe(ref.section)}"\\s*:\\s*\\{`);
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (startRe.test(lines[i])) {
+      start = i;
+      break;
+    }
+  }
+  if (start < 0) {
+    throw new Error(`single-field "${ref.section}" not found in ${ref.relPath}`);
+  }
+
+  // Single-line case: `"heroSpawn": { "x": 760, "y": 520 }`
+  if (lines[start].includes('}')) {
+    let next = lines[start];
+    for (const [k, v] of Object.entries(patch)) {
+      if (typeof v !== 'number') continue;
+      next = patchField(next, k, v);
+    }
+    lines[start] = next;
+  } else {
+    // Multi-line: walk until matching close brace.
+    let depth = countChar(lines[start], '{') - countChar(lines[start], '}');
+    for (let i = start + 1; i < lines.length && depth > 0; i++) {
+      depth += countChar(lines[i], '{') - countChar(lines[i], '}');
+      let next = lines[i];
+      for (const [k, v] of Object.entries(patch)) {
+        if (typeof v !== 'number') continue;
+        next = patchField(next, k, v);
+      }
+      lines[i] = next;
+      if (depth <= 0) break;
+    }
+  }
+
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  writeFileSync(abs, lines.join(eol), 'utf8');
+}
+
 /** Patch a single collider's fields in JSON text via line-targeted regex. */
 export function applyJsonColliderEdit(
   rootAbs: string,

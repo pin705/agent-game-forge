@@ -12,6 +12,7 @@ import type {
 } from '@ogf/contracts';
 import {
   applyJsonColliderEdit,
+  applyJsonSingleFieldEdit,
   findCollisionJsonPath,
   readJsonColliders,
   readTscnColliders,
@@ -19,7 +20,12 @@ import {
   writeTscnResizeCircle,
   writeTscnResizeRect,
 } from './colliders.js';
-import { findZonesJsonPath, readJsonZones, readTscnZones } from './zones.js';
+import {
+  findZonesJsonPath,
+  readJsonPointMarkers,
+  readJsonZones,
+  readTscnZones,
+} from './zones.js';
 import { readTscnPaths, writeTscnMovePathPoint } from './paths.js';
 import {
   findBodyLine,
@@ -430,6 +436,20 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
     }
   }
 
+  // ----- Point markers (heroSpawn / entrances / goals) -----
+  // Often live inside the collision sidecar, sometimes the zones sidecar.
+  // Always read both files and merge whatever's there into zones.
+  const pointMarkerSeen = new Set<string>();
+  const candidatePaths = [collidersJsonPath, zonesJsonPath].filter(
+    (p): p is string => !!p,
+  );
+  for (const p of candidatePaths) {
+    if (pointMarkerSeen.has(p)) continue;
+    pointMarkerSeen.add(p);
+    const markers = readJsonPointMarkers(opts.rootAbs, p);
+    for (const m of markers) zones.push(m);
+  }
+
   // ----- Paths -----
   const paths = readTscnPaths(parsed);
 
@@ -575,13 +595,30 @@ export function applyOps(opts: ApplyOpsOptions): ApplyOpsResult {
 }
 
 /** JSON colliders store rects as top-left + (w,h) but our model uses center.
- *  Convert center-position back to top-left when writing.
+ *  Convert center-position back to top-left when writing. Also handles
+ *  single-object fields (heroSpawn) and point-array entries (entrances /
+ *  goals) which store {x,y} directly without center conversion.
  */
 function applyJsonColliderEditForMove(
   rootAbs: string,
   ref: import('@ogf/contracts').ColliderRef & { backend: 'json' },
   centerPos: { x: number; y: number },
 ): void {
+  // Single-object field (e.g. "heroSpawn": {x, y}) — patch directly.
+  if (ref.singleField) {
+    applyJsonSingleFieldEdit(rootAbs, ref, { x: centerPos.x, y: centerPos.y });
+    return;
+  }
+
+  // Point-array entries (entrances / goals / similar) store {x,y} as-is —
+  // no center conversion. Their section names sit outside the
+  // blockers/buildZones reader, so they won't show up in readJsonColliders.
+  const POINT_ARRAY_SECTIONS = new Set(['entrances', 'goals', 'spawn_points']);
+  if (POINT_ARRAY_SECTIONS.has(ref.section)) {
+    applyJsonColliderEdit(rootAbs, ref, { x: centerPos.x, y: centerPos.y });
+    return;
+  }
+
   // We need the current shape to know whether to translate center→tl (rect) or pass through (circle/polygon).
   // Re-read from disk; cheap.
   const colliders = readJsonColliders(rootAbs, ref.relPath);
