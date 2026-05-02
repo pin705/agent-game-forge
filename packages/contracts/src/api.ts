@@ -20,7 +20,7 @@ export interface AgentsResponse {
   agents: AgentInfo[];
 }
 
-export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'extra_high';
 
 export interface CreateRunRequest {
   agentId: AgentId;

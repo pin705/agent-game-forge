@@ -1241,10 +1241,10 @@ function AgentPane(props: {
               onChange={(e) => props.setReasoning(e.target.value as ReasoningEffort)}
               style={{ background: 'transparent', color: 'inherit', border: 0, outline: 0, fontSize: 11, fontFamily: 'inherit' }}
             >
-              <option value="minimal" style={{ background: 'var(--bg-1)' }}>minimal</option>
-              <option value="low" style={{ background: 'var(--bg-1)' }}>low</option>
-              <option value="medium" style={{ background: 'var(--bg-1)' }}>medium</option>
-              <option value="high" style={{ background: 'var(--bg-1)' }}>high</option>
+              <option value="low" style={{ background: 'var(--bg-1)' }}>low · fast</option>
+              <option value="medium" style={{ background: 'var(--bg-1)' }}>medium · balanced</option>
+              <option value="high" style={{ background: 'var(--bg-1)' }}>high · deep</option>
+              <option value="extra_high" style={{ background: 'var(--bg-1)' }}>extra_high · max</option>
             </select>
           </button>
           <span style={{ flex: 1 }} />

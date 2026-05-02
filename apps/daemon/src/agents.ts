@@ -17,10 +17,17 @@ export const AGENT_DEFS: AgentDef[] = [
     name: 'Codex CLI',
     bin: 'codex',
     versionArgs: ['--version'],
+    // Mirrors what the Codex CLI's interactive picker shows. Update when
+    // OpenAI publishes a newer set; OGF passes whatever id you pick straight
+    // to `codex --model <id>` so any string Codex CLI accepts works here.
     fallbackModels: [
-      { id: 'default', label: 'Default' },
-      { id: 'gpt-5-codex', label: 'gpt-5-codex' },
-      { id: 'gpt-5', label: 'gpt-5' },
+      { id: 'default', label: 'Default · CLI default' },
+      { id: 'gpt-5.5', label: 'gpt-5.5 · frontier coding' },
+      { id: 'gpt-5.4', label: 'gpt-5.4 · everyday' },
+      { id: 'gpt-5.4-mini', label: 'gpt-5.4-mini · cheap & fast' },
+      { id: 'gpt-5.3-codex', label: 'gpt-5.3-codex · coding-tuned' },
+      { id: 'gpt-5.3-codex-spark', label: 'gpt-5.3-codex-spark · ultra fast' },
+      { id: 'gpt-5.2', label: 'gpt-5.2 · long-running agents' },
     ],
   },
 ];
