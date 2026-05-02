@@ -61,6 +61,19 @@ export interface SceneCollider {
   editable: boolean;
 }
 
+export interface ScenePath {
+  uid: string;
+  ref: ColliderRef;
+  name: string;
+  /** Position of the Path2D parent node — child point coords are relative. */
+  origin: Vec2;
+  /** Each point in node-local space (add `origin` to render in world). */
+  points: Vec2[];
+  /** Phase 4: only handles-zero straight-line edits; bezier-handles are flagged unsupported. */
+  hasBezierHandles: boolean;
+  editable: boolean;
+}
+
 /** Gameplay zones: encounter triggers, scene exits, spawn points. */
 export type ZoneKind = 'encounter' | 'exit' | 'spawn' | 'unknown';
 
@@ -92,6 +105,8 @@ export interface SceneModel {
   /** Encounter zones, exits, spawn points (Area2D / Marker2D / JSON sidecar). */
   zones: SceneZone[];
   zonesJsonPath: string | null;
+  /** Path2D / Curve2D — currently .tscn only. */
+  paths: ScenePath[];
   /** Notes the editor surfaces in the UI (e.g. "TileMap layers not yet editable"). */
   notes: string[];
 }
@@ -145,7 +160,20 @@ export interface ResizeCircleColliderOp {
   r: number;
 }
 
-export type SceneOp = MovePropOp | MoveColliderOp | ResizeRectColliderOp | ResizeCircleColliderOp;
+export interface MovePathPointOp {
+  kind: 'move-path-point';
+  ref: ColliderRef;
+  index: number;
+  /** Node-local coords (already relative to the Path2D's own position). */
+  position: Vec2;
+}
+
+export type SceneOp =
+  | MovePropOp
+  | MoveColliderOp
+  | ResizeRectColliderOp
+  | ResizeCircleColliderOp
+  | MovePathPointOp;
 
 export interface ApplySceneOpsRequest {
   projectPath: string;

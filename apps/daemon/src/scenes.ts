@@ -20,6 +20,7 @@ import {
   writeTscnResizeRect,
 } from './colliders.js';
 import { findZonesJsonPath, readJsonZones, readTscnZones } from './zones.js';
+import { readTscnPaths, writeTscnMovePathPoint } from './paths.js';
 import {
   findBodyLine,
   formatVector2,
@@ -366,6 +367,9 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
     }
   }
 
+  // ----- Paths -----
+  const paths = readTscnPaths(parsed);
+
   const scene: SceneModel = {
     scenePath: opts.relPath,
     rootName,
@@ -375,6 +379,7 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
     collidersJsonPath,
     zones,
     zonesJsonPath,
+    paths,
     notes,
   };
 
@@ -453,6 +458,12 @@ export function applyOps(opts: ApplyOpsOptions): ApplyOpsResult {
       } else {
         applyJsonColliderEdit(opts.rootAbs, op.ref, { radius: op.r });
       }
+    } else if (op.kind === 'move-path-point') {
+      if (op.ref.backend !== 'tscn') {
+        throw new Error('path point edit currently only supports .tscn paths');
+      }
+      writeTscnMovePathPoint(parsed, op.ref, op.index, op.position);
+      tscnDirty = true;
     } else {
       throw new Error(`unsupported op kind: ${(op as { kind: string }).kind}`);
     }

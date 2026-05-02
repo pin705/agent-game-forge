@@ -254,6 +254,55 @@ async function main() {
   assert.strictEqual(readFileSync(path.join(ROOT, REL), 'utf8'), beforeMeadowZ);
   console.log('[ok] meadow spawn move/restore byte-identical');
 
+  // ---------- Phase 4: Path2D ----------
+  console.log('\n--- kindomrush paths (.tscn Curve2D) ---');
+  const krP = loadScene({ rootAbs: KR_ROOT, relPath: KR_REL });
+  console.log(`[ok] paths: ${krP.scene.paths.length}`);
+  for (const p of krP.scene.paths) {
+    console.log(`     - ${p.name} ${p.points.length} points origin=(${p.origin.x},${p.origin.y}) bezier=${p.hasBezierHandles}`);
+  }
+  const enemyMain = krP.scene.paths.find((p) => p.name === 'EnemyPath');
+  assert.ok(enemyMain);
+  assert.ok(enemyMain.points.length >= 2);
+  console.log(`[ok] EnemyPath first=(${enemyMain.points[0].x},${enemyMain.points[0].y})`);
+
+  // Move first point + restore
+  const beforeKrP = readFileSync(path.join(KR_ROOT, KR_REL), 'utf8');
+  const orig0 = { ...enemyMain.points[0] };
+  applyOps({
+    rootAbs: KR_ROOT,
+    relPath: KR_REL,
+    ops: [
+      {
+        kind: 'move-path-point',
+        ref: enemyMain.ref,
+        index: 0,
+        position: { x: -100, y: 600 },
+      },
+    ],
+  });
+  const krP2 = loadScene({ rootAbs: KR_ROOT, relPath: KR_REL });
+  const em2 = krP2.scene.paths.find((p) => p.name === 'EnemyPath');
+  assert.strictEqual(em2?.points[0].x, -100);
+  assert.strictEqual(em2?.points[0].y, 600);
+  console.log(`[ok] EnemyPath[0] moved to (${em2.points[0].x},${em2.points[0].y})`);
+
+  applyOps({
+    rootAbs: KR_ROOT,
+    relPath: KR_REL,
+    ops: [
+      {
+        kind: 'move-path-point',
+        ref: enemyMain.ref,
+        index: 0,
+        position: orig0,
+      },
+    ],
+  });
+  const afterKrP = readFileSync(path.join(KR_ROOT, KR_REL), 'utf8');
+  assert.strictEqual(afterKrP, beforeKrP, 'kr path move/restore byte-identical');
+  console.log('[ok] kr path move/restore byte-identical');
+
   console.log('\n[PASS] all smoke checks');
 }
 

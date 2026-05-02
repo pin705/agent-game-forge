@@ -6,6 +6,7 @@ import type {
   SceneImagePayload,
   SceneModel,
   SceneOp,
+  ScenePath,
   SceneProp,
   SceneZone,
   Vec2,
@@ -14,7 +15,7 @@ import type {
 import { applySceneOps, fetchScene } from '../lib/api.js';
 import { I } from './icons.js';
 
-type EditMode = 'props' | 'colliders' | 'zones';
+type EditMode = 'props' | 'colliders' | 'zones' | 'paths';
 type ResizeCorner = 'tl' | 'tr' | 'bl' | 'br';
 
 /** Unify the colliders + zones interaction code by working over a `Shape` lens. */
@@ -62,6 +63,7 @@ export function SceneEditor(props: Props) {
   const [selectedNodePath, setSelectedNodePath] = useState<string | null>(null);
   const [selectedColliderUid, setSelectedColliderUid] = useState<string | null>(null);
   const [selectedZoneUid, setSelectedZoneUid] = useState<string | null>(null);
+  const [selectedPath, setSelectedPath] = useState<{ uid: string; pointIdx: number | null } | null>(null);
   const [mode, setMode] = useState<EditMode>('props');
   const [savingState, setSavingState] = useState<'idle' | 'saving' | 'error' | 'saved'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -202,11 +204,23 @@ export function SceneEditor(props: Props) {
       );
     }
 
+    // Paths — always rendered, dimmed when not active.
+    for (const p of scene.paths) {
+      drawPath(
+        ctx,
+        p,
+        mode === 'paths',
+        mode === 'paths' && selectedPath?.uid === p.uid,
+        mode === 'paths' && selectedPath?.uid === p.uid ? selectedPath.pointIdx : null,
+        camera.scale,
+      );
+    }
+
     ctx.restore();
 
     // HUD
     drawHud(ctx, cssW, cssH, camera);
-  }, [scene, bank, camera, selectedNodePath, selectedColliderUid, selectedZoneUid, mode]);
+  }, [scene, bank, camera, selectedNodePath, selectedColliderUid, selectedZoneUid, selectedPath, mode]);
 
   useEffect(() => {
     draw();
@@ -251,6 +265,15 @@ export function SceneEditor(props: Props) {
         startWorld: Vec2;
         startCenter: Vec2;
         startR: number;
+      }
+    | {
+        kind: 'path-point';
+        uid: string;
+        ref: ColliderRef;
+        index: number;
+        origin: Vec2;
+        startWorld: Vec2;
+        startPoint: Vec2;
       };
   const dragRef = useRef<DragState | null>(null);
   const saveTimerRef = useRef<number | null>(null);
@@ -333,6 +356,38 @@ export function SceneEditor(props: Props) {
     return null;
   }
 
+  function findPathPointAt(world: Vec2): { path: ScenePath; index: number } | null {
+    if (!scene) return null;
+    const tol = (HANDLE_RADIUS + 2) / camera.scale;
+    for (let i = scene.paths.length - 1; i >= 0; i--) {
+      const p = scene.paths[i];
+      for (let j = 0; j < p.points.length; j++) {
+        const wx = p.origin.x + p.points[j].x;
+        const wy = p.origin.y + p.points[j].y;
+        if (Math.abs(world.x - wx) <= tol && Math.abs(world.y - wy) <= tol) {
+          return { path: p, index: j };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findPathSegmentAt(world: Vec2): { uid: string } | null {
+    if (!scene) return null;
+    const tol = 6 / camera.scale;
+    for (let i = scene.paths.length - 1; i >= 0; i--) {
+      const p = scene.paths[i];
+      for (let j = 0; j < p.points.length - 1; j++) {
+        const a = { x: p.origin.x + p.points[j].x, y: p.origin.y + p.points[j].y };
+        const b = { x: p.origin.x + p.points[j + 1].x, y: p.origin.y + p.points[j + 1].y };
+        if (distancePointToSegment(world, a, b) <= tol) {
+          return { uid: p.uid };
+        }
+      }
+    }
+    return null;
+  }
+
   function findCircleRadiusHandle(world: Vec2): { uid: string; bucket: Bucket } | null {
     const sel = selectedShape();
     if (!sel) return null;
@@ -349,6 +404,44 @@ export function SceneEditor(props: Props) {
   function onMouseDown(e: React.MouseEvent) {
     if (!scene) return;
     const w = clientToWorld(e);
+
+    // ----- Paths mode -----
+    if (mode === 'paths' && e.button === 0 && !e.altKey) {
+      const hit = findPathPointAt(w);
+      if (hit) {
+        setSelectedPath({ uid: hit.path.uid, pointIdx: hit.index });
+        const worldPt = {
+          x: hit.path.origin.x + hit.path.points[hit.index].x,
+          y: hit.path.origin.y + hit.path.points[hit.index].y,
+        };
+        dragRef.current = {
+          kind: 'path-point',
+          uid: hit.path.uid,
+          ref: hit.path.ref,
+          index: hit.index,
+          origin: hit.path.origin,
+          startWorld: w,
+          startPoint: worldPt,
+        };
+        attachWindowDrag();
+        return;
+      }
+      // Clicked a path body (segment) → select it but don't drag
+      const pathHit = findPathSegmentAt(w);
+      if (pathHit) {
+        setSelectedPath({ uid: pathHit.uid, pointIdx: null });
+      } else {
+        setSelectedPath(null);
+      }
+      dragRef.current = {
+        kind: 'pan',
+        startX: e.clientX,
+        startY: e.clientY,
+        startPan: { x: camera.panX, y: camera.panY },
+      };
+      attachWindowDrag();
+      return;
+    }
 
     // ----- Shape modes (colliders or zones) -----
     if ((mode === 'colliders' || mode === 'zones') && e.button === 0 && !e.altKey) {
@@ -520,6 +613,21 @@ export function SceneEditor(props: Props) {
       setScene((s) => updateShapeCircle(s, ds.bucket, ds.uid, ds.startCenter, r));
       return;
     }
+    if (ds.kind === 'path-point') {
+      const w = clientToWorld(ev);
+      const dx = w.x - ds.startWorld.x;
+      const dy = w.y - ds.startWorld.y;
+      const snap = !ev.shiftKey;
+      // Convert world delta back to node-local point.
+      const localX = ds.startPoint.x - ds.origin.x + dx;
+      const localY = ds.startPoint.y - ds.origin.y + dy;
+      const next = {
+        x: snap ? Math.round(localX) : localX,
+        y: snap ? Math.round(localY) : localY,
+      };
+      setScene((s) => updatePathPoint(s, ds.uid, ds.index, next));
+      return;
+    }
   }
 
   function onMouseUp() {
@@ -576,6 +684,24 @@ export function SceneEditor(props: Props) {
       const cur = list.find((c) => c.uid === ds.uid);
       if (cur && cur.shape.kind === 'circle' && cur.shape.r !== ds.startR) {
         scheduleSave({ kind: 'resize-circle-collider', ref: ds.ref, r: cur.shape.r });
+      }
+      return;
+    }
+    if (ds.kind === 'path-point') {
+      const cur = scene.paths.find((p) => p.uid === ds.uid);
+      if (!cur) return;
+      const pt = cur.points[ds.index];
+      const local = {
+        x: ds.startPoint.x - ds.origin.x,
+        y: ds.startPoint.y - ds.origin.y,
+      };
+      if (pt.x !== local.x || pt.y !== local.y) {
+        scheduleSave({
+          kind: 'move-path-point',
+          ref: ds.ref,
+          index: ds.index,
+          position: pt,
+        });
       }
       return;
     }
@@ -674,6 +800,7 @@ export function SceneEditor(props: Props) {
         {scene && <span className="badge-dim">{scene.props.length} props</span>}
         {scene && <span className="badge-dim">{scene.colliders.length} colliders</span>}
         {scene && <span className="badge-dim">{scene.zones.length} zones</span>}
+        {scene && <span className="badge-dim">{scene.paths.length} paths</span>}
         {scene?.background && (
           <span className="badge-dim">
             {scene.background.source === 'tilemap-preview' ? 'tilemap (preview)' : 'image bg'}
@@ -735,9 +862,11 @@ export function SceneEditor(props: Props) {
           selectedProp={selectedProp}
           selectedCollider={selectedCollider}
           selectedZone={selectedZone}
+          selectedPath={selectedPath}
           onSelectProp={setSelectedNodePath}
           onSelectCollider={setSelectedColliderUid}
           onSelectZone={setSelectedZoneUid}
+          onSelectPath={(uid) => setSelectedPath(uid ? { uid, pointIdx: null } : null)}
         />
       </div>
     </div>
@@ -777,19 +906,24 @@ function ScenePanel({
   selectedProp,
   selectedCollider,
   selectedZone,
+  selectedPath,
   onSelectProp,
   onSelectCollider,
   onSelectZone,
+  onSelectPath,
 }: {
   scene: SceneModel | null;
   mode: EditMode;
   selectedProp: SceneProp | null;
   selectedCollider: SceneCollider | null;
   selectedZone: SceneZone | null;
+  selectedPath: { uid: string; pointIdx: number | null } | null;
   onSelectProp: (path: string | null) => void;
   onSelectCollider: (uid: string | null) => void;
   onSelectZone: (uid: string | null) => void;
+  onSelectPath: (uid: string | null) => void;
 }) {
+  const selPath = scene?.paths.find((p) => p.uid === selectedPath?.uid) ?? null;
   return (
     <aside className="scene-panel">
       <div className="scene-panel-section">
@@ -1036,12 +1170,70 @@ function ScenePanel({
         </div>
       )}
 
+      {mode === 'paths' && (
+        <div className="scene-panel-section" style={{ flex: 1, minHeight: 0 }}>
+          <div className="scene-panel-title">Paths</div>
+          <div className="scene-panel-list">
+            {scene?.paths.map((p) => (
+              <button
+                key={p.uid}
+                className={`scene-prop-item ${selectedPath?.uid === p.uid ? 'active' : ''}`}
+                onClick={() => onSelectPath(p.uid)}
+                title={p.hasBezierHandles ? 'Has bezier handles — straight-line edits preserve them' : ''}
+              >
+                <span className="mono">⌒ {p.name}</span>
+                <span className="muted mono">{p.points.length} pts</span>
+              </button>
+            ))}
+            {scene && scene.paths.length === 0 && (
+              <div className="muted" style={{ padding: 8 }}>No Path2D nodes in this scene.</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {mode === 'paths' && selPath && (
+        <div className="scene-panel-section">
+          <div className="scene-panel-title">Selected path</div>
+          <div className="scene-panel-row">
+            <span className="muted">name</span>
+            <span className="mono">{selPath.name}</span>
+          </div>
+          <div className="scene-panel-row">
+            <span className="muted">points</span>
+            <span className="mono">{selPath.points.length}</span>
+          </div>
+          <div className="scene-panel-row">
+            <span className="muted">origin</span>
+            <span className="mono">
+              ({Math.round(selPath.origin.x)}, {Math.round(selPath.origin.y)})
+            </span>
+          </div>
+          {selPath.hasBezierHandles && (
+            <div className="muted" style={{ fontSize: 10.5, marginTop: 4 }}>
+              Bezier handles preserved — straight-line drag only.
+            </div>
+          )}
+          {selectedPath?.pointIdx !== null && selectedPath?.pointIdx !== undefined && (
+            <div className="scene-panel-row">
+              <span className="muted">point #{selectedPath.pointIdx}</span>
+              <span className="mono">
+                ({Math.round(selPath.points[selectedPath.pointIdx]?.x ?? 0)},{' '}
+                {Math.round(selPath.points[selectedPath.pointIdx]?.y ?? 0)})
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="scene-panel-foot muted">
         {mode === 'props'
           ? 'Drag a prop to move. Drag empty space to pan. Wheel to zoom. Shift = sub-pixel.'
           : mode === 'colliders'
           ? 'Click a collider to select. Drag body to move, drag corner/handle to resize.'
-          : 'Click a zone to select. Drag body to move, drag corner/handle to resize.'}
+          : mode === 'zones'
+          ? 'Click a zone to select. Drag body to move, drag corner/handle to resize.'
+          : 'Click a path to select; drag any point to move it. Bezier handles are kept.'}
       </div>
     </aside>
   );
@@ -1083,6 +1275,15 @@ function ModeToggle({ mode, setMode }: { mode: EditMode; setMode: (m: EditMode) 
         title="Edit gameplay zones (encounter / exit / spawn)"
       >
         zones
+      </button>
+      <button
+        role="tab"
+        aria-selected={mode === 'paths'}
+        onClick={() => setMode('paths')}
+        className={`scene-mode-btn ${mode === 'paths' ? 'active' : ''}`}
+        title="Edit Path2D points"
+      >
+        paths
       </button>
     </span>
   );
@@ -1385,6 +1586,81 @@ function drawShape(
   }
 }
 
+function drawPath(
+  ctx: CanvasRenderingContext2D,
+  path: ScenePath,
+  active: boolean,
+  selected: boolean,
+  selectedIdx: number | null,
+  scale: number,
+) {
+  if (path.points.length === 0) return;
+
+  const lineColor = active
+    ? selected
+      ? 'rgba(255, 220, 100, 1)'
+      : 'rgba(255, 220, 100, 0.85)'
+    : 'rgba(255, 220, 100, 0.4)';
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = (selected ? 2.5 : 1.5) / scale;
+  ctx.beginPath();
+  for (let i = 0; i < path.points.length; i++) {
+    const wx = path.origin.x + path.points[i].x;
+    const wy = path.origin.y + path.points[i].y;
+    if (i === 0) ctx.moveTo(wx, wy);
+    else ctx.lineTo(wx, wy);
+  }
+  ctx.stroke();
+
+  if (active) {
+    for (let i = 0; i < path.points.length; i++) {
+      const wx = path.origin.x + path.points[i].x;
+      const wy = path.origin.y + path.points[i].y;
+      const isSel = selected && selectedIdx === i;
+      const r = (isSel ? HANDLE_RADIUS + 2 : HANDLE_RADIUS) / scale;
+      ctx.fillStyle = isSel ? 'rgba(255, 200, 80, 1)' : 'rgba(20, 20, 20, 0.9)';
+      ctx.strokeStyle = isSel ? 'rgba(0,0,0,0.7)' : lineColor;
+      ctx.lineWidth = 1 / scale;
+      ctx.beginPath();
+      ctx.arc(wx, wy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+
+  if (selected) {
+    drawLabel(ctx, path.origin.x + path.points[0].x, path.origin.y + path.points[0].y, path.name, scale);
+  }
+}
+
+function distancePointToSegment(p: Vec2, a: Vec2, b: Vec2): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+  const px = a.x + t * dx;
+  const py = a.y + t * dy;
+  return Math.hypot(p.x - px, p.y - py);
+}
+
+function updatePathPoint(
+  s: SceneModel | null,
+  uid: string,
+  index: number,
+  point: Vec2,
+): SceneModel | null {
+  if (!s) return s;
+  return {
+    ...s,
+    paths: s.paths.map((p) =>
+      p.uid === uid
+        ? { ...p, points: p.points.map((pt, i) => (i === index ? point : pt)) }
+        : p,
+    ),
+  };
+}
+
 function zoneColor(kind: ZoneKind, active: boolean): { stroke: string; fill: string } {
   let stroke = 'rgba(180, 140, 255, 0.95)'; // unknown / default
   let fill = 'rgba(180, 140, 255, 0.16)';
@@ -1503,6 +1779,19 @@ function sceneBounds(s: SceneModel, bank: ImageBank): { x: number; y: number; w:
   for (const p of s.props) {
     const r = propBounds(p, bank);
     if (r) rects.push(r);
+  }
+  for (const p of s.paths) {
+    if (p.points.length === 0) continue;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const pt of p.points) {
+      const wx = p.origin.x + pt.x;
+      const wy = p.origin.y + pt.y;
+      if (wx < minX) minX = wx;
+      if (wy < minY) minY = wy;
+      if (wx > maxX) maxX = wx;
+      if (wy > maxY) maxY = wy;
+    }
+    rects.push({ x: minX, y: minY, w: maxX - minX, h: maxY - minY });
   }
   for (const c of [...s.colliders, ...s.zones]) {
     if (c.shape.kind === 'rect') {
