@@ -373,6 +373,11 @@ export function SceneEditor(props: Props) {
 
     // Comment pins — only rendered while in comments mode.
     if (mode === 'comments') {
+      // Highlight the node currently being drafted (if any).
+      if (draftAnchor && draftAnchor.kind === 'node') {
+        drawNodeHighlight(ctx, draftAnchor.nodePath, scene, bank, camera.scale);
+      }
+      // Pins for every visible thread + draft pin.
       for (const t of visibleThreads) {
         const at = anchorWorldPos(t.anchor, scene);
         if (!at) continue;
@@ -1270,13 +1275,19 @@ export function SceneEditor(props: Props) {
         <div
           ref={containerRef}
           className="scene-canvas-wrap"
+          data-mode={mode}
           onMouseDown={onMouseDown}
           onWheel={onWheel}
           style={{
             position: 'relative',
             overflow: 'hidden',
             background: 'var(--bg-0)',
-            cursor: dragRef.current?.kind === 'pan' ? 'grabbing' : 'default',
+            cursor:
+              dragRef.current?.kind === 'pan'
+                ? 'grabbing'
+                : mode === 'comments'
+                ? 'crosshair'
+                : 'default',
           }}
         >
           <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
@@ -1293,6 +1304,28 @@ export function SceneEditor(props: Props) {
               ))}
             </div>
           )}
+          {mode === 'comments' && draftAnchor && scene && (
+            <CommentPopover
+              anchor={draftAnchor}
+              screenPos={anchorScreenPos(draftAnchor, scene, camera, containerRef.current)}
+              onCancel={() => setDraftAnchor(null)}
+              onSubmit={async (text) => {
+                try {
+                  const r = await createCommentThread({
+                    projectPath: props.projectPath,
+                    scene: props.relPath,
+                    anchor: draftAnchor,
+                    text,
+                  });
+                  setDraftAnchor(null);
+                  setSelectedThreadId(r.thread.id);
+                  await refreshThreads();
+                } catch {
+                  // best-effort
+                }
+              }}
+            />
+          )}
         </div>
         <ScenePanel
           scene={scene}
@@ -1306,7 +1339,6 @@ export function SceneEditor(props: Props) {
           showResolved={showResolvedThreads}
           onToggleShowResolved={() => setShowResolvedThreads((v) => !v)}
           selectedThreadId={selectedThreadId}
-          draftAnchor={draftAnchor}
           projectPath={props.projectPath}
           scenePath={props.relPath}
           onSelectProp={setSelectedNodePath}
@@ -1317,23 +1349,6 @@ export function SceneEditor(props: Props) {
             setSelectedThreadId(id);
             setDraftAnchor(null);
           }}
-          onCreateThreadFromDraft={async (text) => {
-            if (!draftAnchor) return;
-            try {
-              const r = await createCommentThread({
-                projectPath: props.projectPath,
-                scene: props.relPath,
-                anchor: draftAnchor,
-                text,
-              });
-              setDraftAnchor(null);
-              setSelectedThreadId(r.thread.id);
-              await refreshThreads();
-            } catch {
-              /* ignore */
-            }
-          }}
-          onCancelDraft={() => setDraftAnchor(null)}
           onAppendMessage={async (threadId, text) => {
             try {
               await appendCommentMessage(threadId, {
@@ -1414,14 +1429,11 @@ function ScenePanel({
   showResolved,
   onToggleShowResolved,
   selectedThreadId,
-  draftAnchor,
   onSelectProp,
   onSelectCollider,
   onSelectZone,
   onSelectPath,
   onSelectThread,
-  onCreateThreadFromDraft,
-  onCancelDraft,
   onAppendMessage,
   onResolveThread,
   onDeleteThread,
@@ -1438,7 +1450,6 @@ function ScenePanel({
   showResolved: boolean;
   onToggleShowResolved: () => void;
   selectedThreadId: string | null;
-  draftAnchor: CommentAnchor | null;
   projectPath: string;
   scenePath: string;
   onSelectProp: (path: string | null) => void;
@@ -1446,8 +1457,6 @@ function ScenePanel({
   onSelectZone: (uid: string | null) => void;
   onSelectPath: (uid: string | null) => void;
   onSelectThread: (id: string | null) => void;
-  onCreateThreadFromDraft: (text: string) => void;
-  onCancelDraft: () => void;
   onAppendMessage: (threadId: string, text: string) => void;
   onResolveThread: (threadId: string, resolved: boolean) => void;
   onDeleteThread: (threadId: string) => void;
@@ -1701,7 +1710,7 @@ function ScenePanel({
         </div>
       )}
 
-      {mode === 'comments' && !draftAnchor && !selThread && (
+      {mode === 'comments' && !selThread && (
         <div className="scene-panel-section" style={{ flex: 1, minHeight: 0 }}>
           <div className="scene-panel-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ flex: 1 }}>Comments</span>
@@ -1719,7 +1728,8 @@ function ScenePanel({
           <div className="scene-panel-list">
             {threads.length === 0 ? (
               <div className="muted" style={{ padding: 8, lineHeight: 1.5 }}>
-                Click anywhere on the canvas to drop a pin. Click on a prop / collider / zone to anchor to it; hold Shift for a free-floating pin.
+                Click on a prop / collider / zone to attach a comment to it.
+                Click empty canvas for a free pin. Hold Shift to force a free pin.
               </div>
             ) : (
               threads.map((t) => (
@@ -1750,14 +1760,6 @@ function ScenePanel({
             )}
           </div>
         </div>
-      )}
-
-      {mode === 'comments' && draftAnchor && (
-        <CommentDraftPanel
-          anchor={draftAnchor}
-          onCancel={onCancelDraft}
-          onSubmit={onCreateThreadFromDraft}
-        />
       )}
 
       {mode === 'comments' && selThread && (
@@ -1842,38 +1844,89 @@ function ScenePanel({
   );
 }
 
-function CommentDraftPanel({
+function CommentPopover({
   anchor,
+  screenPos,
   onCancel,
   onSubmit,
 }: {
   anchor: CommentAnchor;
+  screenPos: { x: number; y: number } | null;
   onCancel: () => void;
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string) => void | Promise<void>;
 }) {
   const [text, setText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Focus textarea on mount, listen for Esc / Cmd+Enter.
+  useEffect(() => {
+    taRef.current?.focus();
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancel();
+      } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        const v = taRef.current?.value.trim();
+        if (v && !submitting) {
+          setSubmitting(true);
+          void Promise.resolve(onSubmit(v)).finally(() => setSubmitting(false));
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel, onSubmit, submitting]);
+
+  if (!screenPos) return null;
+
+  // Offset from the pin so the popover doesn't cover the click point.
+  const left = screenPos.x + 16;
+  const top = screenPos.y + 16;
+
   return (
-    <div className="scene-panel-section comment-draft">
-      <div className="scene-panel-title">New comment</div>
-      <div className="scene-panel-row">
-        <span className="muted">at</span>
-        <span className="mono">{describeAnchor(anchor)}</span>
+    <div
+      className="comment-popover"
+      style={{ left, top }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onWheel={(e) => e.stopPropagation()}
+    >
+      <div className="comment-popover-head">
+        {anchor.kind === 'node' ? (
+          <span className="mono" title={anchor.nodePath}>
+            ⚓ {anchor.nodePath.split('/').pop()}
+          </span>
+        ) : (
+          <span className="mono">
+            ◉ ({Math.round(anchor.x)}, {Math.round(anchor.y)})
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+        <button className="comment-popover-x" onClick={onCancel} title="Cancel (Esc)">
+          ×
+        </button>
       </div>
       <textarea
-        autoFocus
-        rows={4}
+        ref={taRef}
+        rows={3}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="What about this spot?"
+        placeholder="What about this?"
         className="comment-textarea"
       />
-      <div className="comment-buttons">
-        <button className="btn btn-sm" onClick={onCancel}>Cancel</button>
+      <div className="comment-popover-foot">
+        <span className="muted">⌘⏎ post · Esc cancel</span>
+        <span style={{ flex: 1 }} />
         <button
           className="btn btn-sm btn-primary"
-          disabled={!text.trim()}
+          disabled={!text.trim() || submitting}
           onClick={() => {
-            if (text.trim()) onSubmit(text.trim());
+            const v = text.trim();
+            if (v && !submitting) {
+              setSubmitting(true);
+              void Promise.resolve(onSubmit(v)).finally(() => setSubmitting(false));
+            }
           }}
         >
           Post
@@ -1881,6 +1934,28 @@ function CommentDraftPanel({
       </div>
     </div>
   );
+}
+
+interface CameraLite {
+  scale: number;
+  panX: number;
+  panY: number;
+}
+
+/** World coords of the anchor → CSS-pixel offset within the canvas wrap. */
+function anchorScreenPos(
+  anchor: CommentAnchor,
+  scene: SceneModel,
+  camera: CameraLite,
+  wrap: HTMLDivElement | null,
+): { x: number; y: number } | null {
+  void wrap; // wrap reserved in case we ever want to clamp inside
+  const world = anchorWorldPos(anchor, scene);
+  if (!world) return null;
+  return {
+    x: (world.x - camera.panX) * camera.scale,
+    y: (world.y - camera.panY) * camera.scale,
+  };
 }
 
 function CommentThreadPanel({
@@ -2203,6 +2278,86 @@ function findCommentPinAt(
 function describeAnchor(anchor: CommentAnchor): string {
   if (anchor.kind === 'node') return `node ${anchor.nodePath}`;
   return `point (${Math.round(anchor.x)}, ${Math.round(anchor.y)})`;
+}
+
+/** Outline the node a comment-draft is anchored to, so the user has visual
+ *  confirmation of what they're attaching to. */
+function drawNodeHighlight(
+  ctx: CanvasRenderingContext2D,
+  nodePath: string,
+  scene: SceneModel,
+  bank: ImageBank,
+  scale: number,
+): void {
+  // Try props first
+  const prop = scene.props.find((p) => p.nodePath === nodePath);
+  if (prop) {
+    const r = propBounds(prop, bank);
+    if (r) {
+      strokeHighlight(ctx, r.x, r.y, r.w, r.h, scale);
+    }
+    return;
+  }
+  const col = scene.colliders.find(
+    (c) => c.ref.backend === 'tscn' && c.ref.nodePath === nodePath,
+  );
+  if (col) {
+    if (col.shape.kind === 'rect') {
+      const r = rectFromShape(col);
+      strokeHighlight(ctx, r.x, r.y, r.w, r.h, scale);
+    } else if (col.shape.kind === 'circle') {
+      strokeHighlightCircle(ctx, col.position.x, col.position.y, col.shape.r, scale);
+    }
+    return;
+  }
+  const zone = scene.zones.find(
+    (z) => z.ref.backend === 'tscn' && z.ref.nodePath === nodePath,
+  );
+  if (zone) {
+    if (zone.shape.kind === 'rect') {
+      const r = rectFromShape(zone);
+      strokeHighlight(ctx, r.x, r.y, r.w, r.h, scale);
+    } else if (zone.shape.kind === 'circle') {
+      strokeHighlightCircle(ctx, zone.position.x, zone.position.y, zone.shape.r, scale);
+    } else if (zone.shape.kind === 'point') {
+      strokeHighlightCircle(ctx, zone.position.x, zone.position.y, 12, scale);
+    }
+  }
+}
+
+function strokeHighlight(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  scale: number,
+): void {
+  ctx.lineWidth = 4 / scale;
+  ctx.strokeStyle = 'rgba(255, 130, 90, 0.55)';
+  ctx.strokeRect(x - 2 / scale, y - 2 / scale, w + 4 / scale, h + 4 / scale);
+  ctx.lineWidth = 2 / scale;
+  ctx.strokeStyle = 'rgba(255, 130, 90, 1)';
+  ctx.strokeRect(x, y, w, h);
+}
+
+function strokeHighlightCircle(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+  scale: number,
+): void {
+  ctx.lineWidth = 4 / scale;
+  ctx.strokeStyle = 'rgba(255, 130, 90, 0.55)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 2 / scale, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.lineWidth = 2 / scale;
+  ctx.strokeStyle = 'rgba(255, 130, 90, 1)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
 }
 
 /** When clicking in comments mode, prefer attaching to whatever node is under

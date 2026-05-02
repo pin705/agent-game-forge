@@ -2114,9 +2114,60 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
 }
 
 /* =============== COMMENT THREADS =============== */
-.comment-draft {
-  background: var(--bg-1);
+.scene-canvas-wrap[data-mode="comments"] {
+  /* Inline style on the wrap sets cursor too — this is the fallback /
+     ensures the cursor stays as crosshair even when we override inline. */
+  cursor: crosshair;
 }
+.comment-popover {
+  position: absolute;
+  width: 280px;
+  background: var(--bg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 5;
+}
+.comment-popover-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  padding: 0 2px;
+}
+.comment-popover-head .mono {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+  color: var(--ink-1);
+}
+.comment-popover-x {
+  background: transparent;
+  border: 0;
+  color: var(--ink-3);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.comment-popover-x:hover { color: var(--ink-0); }
+.comment-popover-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+.comment-popover-foot .muted { color: var(--ink-3); }
 .comment-textarea {
   background: var(--bg-2);
   border: 1px solid var(--line);
