@@ -752,19 +752,22 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   margin-bottom: 8px;
 }
 /* Rail moved to per-block: only text / status blocks get the accent bar.
-   Tool cards stand on their own without it. */
+   Tool cards and the turn footer stand on their own without it. */
 .msg-agent .md-block,
 .msg-agent .agent-thinking,
-.msg-agent .turn-footer,
 .msg-agent .msg-sys {
   position: relative;
 }
 .msg-agent .md-block::before,
 .msg-agent .agent-thinking::before,
-.msg-agent .turn-footer::before,
 .msg-agent .msg-sys::before {
   content: ""; position: absolute; left: -12px; top: 2px; bottom: 2px;
   width: 2px; background: var(--accent); border-radius: 2px;
+}
+/* Footer ("done · 22s · 12K tokens") aligns left to match tool cards. */
+.msg-agent .turn-footer {
+  margin-left: -12px;
+  margin-top: 8px;
 }
 .msg-agent p { margin: 0 0 8px; }
 .msg-agent code {
