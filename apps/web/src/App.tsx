@@ -112,6 +112,7 @@ export function App() {
   const [recentlyChanged, setRecentlyChanged] = useState<Set<string>>(new Set());
   const [showNewFile, setShowNewFile] = useState(false);
   const [usedAssets, setUsedAssets] = useState<Set<string>>(new Set());
+  const [mainScene, setMainScene] = useState<string | null>(null);
 
   // Navigation history (back/forward through tab + file selection)
   type NavState = { tab: Tab; selectedFile: { relPath: string; fileKind?: FileNode['fileKind'] } | null };
@@ -232,8 +233,14 @@ export function App() {
       setFileTree(null);
     }
     fetchAnalyze(p.path)
-      .then((a) => setUsedAssets(new Set(a.usedAssets)))
-      .catch(() => setUsedAssets(new Set()));
+      .then((a) => {
+        setUsedAssets(new Set(a.usedAssets));
+        setMainScene(a.mainScene ?? null);
+      })
+      .catch(() => {
+        setUsedAssets(new Set());
+        setMainScene(null);
+      });
   }, []);
 
   // Boot
@@ -518,6 +525,7 @@ export function App() {
             onRefresh={() => void refreshTree(project)}
             recentlyChanged={recentlyChanged}
             usedAssets={usedAssets}
+            mainScene={mainScene}
             onJumpTo={(rel) => {
               const ext = rel.split('.').pop()?.toLowerCase() ?? '';
               const isCode = ['gd', 'cs', 'js', 'jsx', 'ts', 'tsx', 'py'].includes(ext);
@@ -690,6 +698,7 @@ function EditorPane(props: {
   onRefresh: () => void;
   recentlyChanged: Set<string>;
   usedAssets: Set<string>;
+  mainScene: string | null;
   onJumpTo: (relPath: string, line: number) => void;
   onAskCodex: (text: string) => void;
   onSlicingSaved?: () => void;
@@ -830,6 +839,8 @@ function EditorPane(props: {
               tree={props.tree}
               onPick={(rel) => props.onSelectFile(rel, 'text')}
               project={props.project}
+              usedAssets={props.usedAssets}
+              mainScene={props.mainScene}
             />
           )
         )}
@@ -885,37 +896,78 @@ function ScenePicker({
   tree,
   onPick,
   project,
+  usedAssets,
+  mainScene,
 }: {
   tree: FileNode | null;
   onPick: (relPath: string) => void;
   project: Project;
+  usedAssets: Set<string>;
+  mainScene: string | null;
 }) {
-  const scenes: FileNode[] = [];
-  if (tree) collectScenes(tree, scenes);
+  const [usedOnly, setUsedOnly] = useState<boolean>(() => {
+    return localStorage.getItem('ogf:scenes:usedOnly') === '1';
+  });
+  useEffect(() => {
+    localStorage.setItem('ogf:scenes:usedOnly', usedOnly ? '1' : '0');
+  }, [usedOnly]);
+
+  const all: FileNode[] = [];
+  if (tree) collectScenes(tree, all);
+
+  const items = all.map((s) => {
+    const isMain = mainScene === s.relPath;
+    const isUsed = isMain || usedAssets.has(s.relPath);
+    return { node: s, isMain, isUsed };
+  });
+
+  const visible = usedOnly ? items.filter((x) => x.isUsed) : items;
+  const unusedCount = items.filter((x) => !x.isUsed).length;
 
   return (
     <div className="inspector">
       <div className="crumbs">
         <span className="last">{project.name}</span>
         <span className="badge-dim">scenes</span>
+        <span className="actions">
+          {unusedCount > 0 && (
+            <button
+              className="btn btn-sm btn-ghost"
+              onClick={() => setUsedOnly((v) => !v)}
+              title={usedOnly ? 'Show all scenes' : 'Hide unused scenes'}
+            >
+              {usedOnly ? '👁' : '◐'} {usedOnly ? 'showing used' : `${unusedCount} unused`}
+            </button>
+          )}
+        </span>
       </div>
       <div style={{ overflow: 'auto', padding: 24 }}>
-        {scenes.length === 0 ? (
+        {items.length === 0 ? (
           <div className="muted mono" style={{ fontSize: 12 }}>
             No .tscn files found in this project.
+          </div>
+        ) : visible.length === 0 ? (
+          <div className="muted mono" style={{ fontSize: 12 }}>
+            No used scenes — toggle the filter to see all {items.length}.
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 6, maxWidth: 600 }}>
             <div className="muted mono" style={{ fontSize: 11, marginBottom: 4 }}>
-              Pick a scene to edit
+              {usedOnly
+                ? `Showing ${visible.length} used scene${visible.length === 1 ? '' : 's'} (${unusedCount} hidden)`
+                : `${items.length} scene${items.length === 1 ? '' : 's'} — ${unusedCount} unused`}
             </div>
-            {scenes.map((s) => (
+            {visible.map(({ node: s, isMain, isUsed }) => (
               <button
                 key={s.relPath}
-                className="scene-pick-row"
+                className={`scene-pick-row ${isUsed ? '' : 'unused'}`}
                 onClick={() => onPick(s.relPath)}
               >
-                <span className="mono" style={{ fontSize: 12 }}>{s.name}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span className="mono" style={{ fontSize: 12 }}>{s.name}</span>
+                  {isMain && <span className="badge-dim" style={{ color: 'var(--accent)' }}>main</span>}
+                  {!isUsed && <span className="badge-dim" style={{ color: 'var(--ink-3)' }}>unused</span>}
+                </div>
                 <span className="muted mono" style={{ fontSize: 11 }}>{s.relPath}</span>
               </button>
             ))}

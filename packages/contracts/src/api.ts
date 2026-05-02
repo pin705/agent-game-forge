@@ -138,6 +138,8 @@ export interface AnalyzeResponse {
   engine: EngineKind;
   usedAssets: string[];
   scanned: number;
+  /** Godot only: the run/main_scene from project.godot (project-relative). */
+  mainScene?: string;
 }
 
 export interface UsageHit {

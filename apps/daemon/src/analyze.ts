@@ -28,12 +28,29 @@ export interface AnalyzeResult {
   usedAssets: string[];
   /** Total scanned source files (.tscn / .tres / .gd / etc.). */
   scanned: number;
+  /** Project-relative path to the main scene (Godot only), if discovered. */
+  mainScene?: string;
 }
 
 export function analyzeProject(rootAbs: string, engine: EngineKind): AnalyzeResult {
   const used = new Set<string>();
   let scanned = 0;
   const seen = { count: 0 };
+  let mainScene: string | undefined;
+
+  // Godot main scene is declared in project.godot — count it as referenced.
+  if (engine === 'godot') {
+    try {
+      const projectGodot = readFileSync(path.join(rootAbs, 'project.godot'), 'utf8');
+      const m = /run\/main_scene\s*=\s*"res:\/\/([^"]+)"/m.exec(projectGodot);
+      if (m) {
+        mainScene = m[1].replace(/\\/g, '/');
+        used.add(mainScene);
+      }
+    } catch {
+      // project.godot missing or unreadable — skip
+    }
+  }
 
   function walk(dirAbs: string) {
     if (seen.count >= MAX_FILES_TO_SCAN) return;
@@ -108,5 +125,6 @@ export function analyzeProject(rootAbs: string, engine: EngineKind): AnalyzeResu
     engine,
     usedAssets: [...used].sort(),
     scanned,
+    mainScene,
   };
 }
