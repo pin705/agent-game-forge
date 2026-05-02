@@ -141,6 +141,13 @@ export interface MovePropOp {
   position: Vec2;
 }
 
+/** Scale a prop's Sprite2D (independent X/Y scale). */
+export interface ScalePropOp {
+  kind: 'scale-prop';
+  nodePath: string;
+  scale: Vec2;
+}
+
 export interface MoveColliderOp {
   kind: 'move-collider';
   ref: ColliderRef;
@@ -170,6 +177,7 @@ export interface MovePathPointOp {
 
 export type SceneOp =
   | MovePropOp
+  | ScalePropOp
   | MoveColliderOp
   | ResizeRectColliderOp
   | ResizeCircleColliderOp

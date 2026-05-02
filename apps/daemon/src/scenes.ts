@@ -425,6 +425,37 @@ export function applyOps(opts: ApplyOpsOptions): ApplyOpsResult {
         }
       }
       tscnDirty = true;
+    } else if (op.kind === 'scale-prop') {
+      // Find the Sprite2D node holding the visible scale.
+      // Pattern A: Sprite2D child whose parent === op.nodePath
+      // Pattern B: op.nodePath itself is a Sprite2D
+      let target = parsed.sections.find(
+        (s) =>
+          s.kind === 'node' &&
+          s.attrs.type === 'Sprite2D' &&
+          s.attrs.parent === op.nodePath,
+      );
+      if (!target) {
+        const own = nodes.byPath.get(op.nodePath);
+        if (own && own.attrs.type === 'Sprite2D') target = own;
+      }
+      if (!target) throw new Error(`prop scale target not found: ${op.nodePath}`);
+      const newLine = `scale = ${formatVector2(op.scale)}`;
+      const idx = findBodyLine(parsed, target, 'scale');
+      if (idx >= 0) {
+        parsed.lines[idx] = newLine;
+      } else {
+        parsed.lines.splice(target.headerLine + 1, 0, newLine);
+        for (const s of parsed.sections) {
+          if (s.headerLine > target.headerLine) {
+            s.headerLine++;
+            s.endLine++;
+          } else if (s.headerLine === target.headerLine) {
+            s.endLine++;
+          }
+        }
+      }
+      tscnDirty = true;
     } else if (op.kind === 'move-collider') {
       if (op.ref.backend === 'tscn') {
         writeTscnMoveCollider(parsed, op.ref, op.position);

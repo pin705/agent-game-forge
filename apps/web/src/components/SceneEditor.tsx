@@ -190,7 +190,13 @@ export function SceneEditor(props: Props) {
 
     // Props
     for (const p of scene.props) {
-      drawProp(ctx, p, bank, mode === 'props' && p.nodePath === selectedNodePath);
+      drawProp(
+        ctx,
+        p,
+        bank,
+        mode === 'props' && p.nodePath === selectedNodePath,
+        camera.scale,
+      );
     }
 
     // Colliders — always rendered, dimmed when not active.
@@ -249,6 +255,17 @@ export function SceneEditor(props: Props) {
   type DragState =
     | { kind: 'pan'; startX: number; startY: number; startPan: Vec2 }
     | { kind: 'prop'; nodePath: string; startWorld: Vec2; startProp: Vec2 }
+    | {
+        kind: 'prop-scale';
+        nodePath: string;
+        corner: ResizeCorner;
+        startWorld: Vec2;
+        startScale: Vec2;
+        /** Visual center of the prop in world space — scale pivots around this. */
+        center: Vec2;
+        /** Distance from cursor to center at drag start (used for ratio). */
+        startDist: number;
+      }
     | {
         kind: 'shape-move';
         bucket: Bucket;
@@ -310,6 +327,28 @@ export function SceneEditor(props: Props) {
         world.y <= r.y + r.h
       ) {
         return p;
+      }
+    }
+    return null;
+  }
+
+  /** Hit-test the 4 corner handles of the currently selected prop. */
+  function findPropResizeHandle(world: Vec2): { prop: SceneProp; corner: ResizeCorner } | null {
+    if (!scene || mode !== 'props' || !selectedNodePath) return null;
+    const p = scene.props.find((x) => x.nodePath === selectedNodePath);
+    if (!p) return null;
+    const r = propBounds(p, bank);
+    if (!r) return null;
+    const tol = (HANDLE_RADIUS + 2) / camera.scale;
+    const corners: { name: ResizeCorner; pt: Vec2 }[] = [
+      { name: 'tl', pt: { x: r.x, y: r.y } },
+      { name: 'tr', pt: { x: r.x + r.w, y: r.y } },
+      { name: 'bl', pt: { x: r.x, y: r.y + r.h } },
+      { name: 'br', pt: { x: r.x + r.w, y: r.y + r.h } },
+    ];
+    for (const c of corners) {
+      if (Math.abs(world.x - c.pt.x) <= tol && Math.abs(world.y - c.pt.y) <= tol) {
+        return { prop: p, corner: c.name };
       }
     }
     return null;
@@ -414,6 +453,12 @@ export function SceneEditor(props: Props) {
 
   function onMouseDown(e: React.MouseEvent) {
     if (!scene) return;
+    // Take focus away from any input so window-level keyboard shortcuts (undo,
+    // delete, etc.) start firing immediately. Without this, focus is sticky on
+    // the chat textarea after the user typed there last.
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
     const w = clientToWorld(e);
 
     // ----- Paths mode -----
@@ -536,24 +581,52 @@ export function SceneEditor(props: Props) {
     }
 
     // ----- Props mode (default) -----
-    const hit = findPropAt(w);
-    if (e.button === 0 && hit && !e.altKey && !e.shiftKey) {
-      setSelectedNodePath(hit.nodePath);
-      dragRef.current = {
-        kind: 'prop',
-        nodePath: hit.nodePath,
-        startWorld: w,
-        startProp: { ...hit.position },
-      };
-    } else {
-      if (e.button === 0 && !hit) setSelectedNodePath(null);
-      dragRef.current = {
-        kind: 'pan',
-        startX: e.clientX,
-        startY: e.clientY,
-        startPan: { x: camera.panX, y: camera.panY },
-      };
+    if (e.button === 0 && !e.altKey) {
+      // 1) Resize handle on selected prop?
+      const handle = findPropResizeHandle(w);
+      if (handle) {
+        const center = {
+          x: handle.prop.position.x + handle.prop.spriteOffset.x,
+          y: handle.prop.position.y + handle.prop.spriteOffset.y,
+        };
+        const dx = w.x - center.x;
+        const dy = w.y - center.y;
+        const startDist = Math.hypot(dx, dy);
+        if (startDist > 1) {
+          dragRef.current = {
+            kind: 'prop-scale',
+            nodePath: handle.prop.nodePath,
+            corner: handle.corner,
+            startWorld: w,
+            startScale: { ...handle.prop.scale },
+            center,
+            startDist,
+          };
+          attachWindowDrag();
+          return;
+        }
+      }
+      // 2) Body of any prop?
+      const hit = findPropAt(w);
+      if (hit && !e.shiftKey) {
+        setSelectedNodePath(hit.nodePath);
+        dragRef.current = {
+          kind: 'prop',
+          nodePath: hit.nodePath,
+          startWorld: w,
+          startProp: { ...hit.position },
+        };
+        attachWindowDrag();
+        return;
+      }
+      if (!hit) setSelectedNodePath(null);
     }
+    dragRef.current = {
+      kind: 'pan',
+      startX: e.clientX,
+      startY: e.clientY,
+      startPan: { x: camera.panX, y: camera.panY },
+    };
     attachWindowDrag();
   }
 
@@ -585,6 +658,41 @@ export function SceneEditor(props: Props) {
               ...s,
               props: s.props.map((p) =>
                 p.nodePath === ds.nodePath ? { ...p, position: pos } : p,
+              ),
+            }
+          : s,
+      );
+      return;
+    }
+    if (ds.kind === 'prop-scale') {
+      const w = clientToWorld(ev);
+      const dx = w.x - ds.center.x;
+      const dy = w.y - ds.center.y;
+      const dist = Math.hypot(dx, dy);
+      const ratio = Math.max(0.02, dist / ds.startDist);
+      // Hold Alt for non-uniform (independent X/Y).
+      let nextScale: Vec2;
+      if (ev.altKey) {
+        const startDx = ds.startWorld.x - ds.center.x;
+        const startDy = ds.startWorld.y - ds.center.y;
+        const ratioX = startDx === 0 ? 1 : dx / startDx;
+        const ratioY = startDy === 0 ? 1 : dy / startDy;
+        nextScale = {
+          x: Math.max(0.02, ds.startScale.x * ratioX),
+          y: Math.max(0.02, ds.startScale.y * ratioY),
+        };
+      } else {
+        nextScale = {
+          x: ds.startScale.x * ratio,
+          y: ds.startScale.y * ratio,
+        };
+      }
+      setScene((s) =>
+        s
+          ? {
+              ...s,
+              props: s.props.map((p) =>
+                p.nodePath === ds.nodePath ? { ...p, scale: nextScale } : p,
               ),
             }
           : s,
@@ -658,6 +766,20 @@ export function SceneEditor(props: Props) {
           [{ kind: 'move-prop', nodePath: ds.nodePath, position: moved.position }],
           [{ kind: 'move-prop', nodePath: ds.nodePath, position: ds.startProp }],
           `move ${ds.nodePath.split('/').pop() ?? ds.nodePath}`,
+        );
+      }
+      return;
+    }
+    if (ds.kind === 'prop-scale') {
+      const cur = scene.props.find((p) => p.nodePath === ds.nodePath);
+      if (
+        cur &&
+        (cur.scale.x !== ds.startScale.x || cur.scale.y !== ds.startScale.y)
+      ) {
+        commitOps(
+          [{ kind: 'scale-prop', nodePath: ds.nodePath, scale: cur.scale }],
+          [{ kind: 'scale-prop', nodePath: ds.nodePath, scale: ds.startScale }],
+          `scale ${ds.nodePath.split('/').pop() ?? ds.nodePath}`,
         );
       }
       return;
@@ -785,15 +907,22 @@ export function SceneEditor(props: Props) {
   }
 
   // Keyboard shortcuts — Ctrl/Cmd+Z, Ctrl+Shift+Z / Ctrl+Y for redo.
+  // The blur-on-mousedown above is the real fix for "Ctrl+Z stuck on chat
+  // textarea after typing". This handler bails when an editable element is
+  // focused so the user's normal typing-undo still works there.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      const target = e.target as HTMLElement | null;
-      // Don't intercept while typing in an input/textarea.
-      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
-      if (target?.isContentEditable) return;
       const mod = e.ctrlKey || e.metaKey;
       if (!mod) return;
       const key = e.key.toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+
+      const active = document.activeElement as HTMLElement | null;
+      const inEditable =
+        !!active &&
+        (/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable);
+      if (inEditable) return;
+
       if (key === 'z' && !e.shiftKey) {
         e.preventDefault();
         undo();
@@ -1485,6 +1614,14 @@ function applyOpToScene(s: SceneModel, op: SceneOp): SceneModel {
       ),
     };
   }
+  if (op.kind === 'scale-prop') {
+    return {
+      ...s,
+      props: s.props.map((p) =>
+        p.nodePath === op.nodePath ? { ...p, scale: op.scale } : p,
+      ),
+    };
+  }
   if (op.kind === 'move-collider') {
     const ci = s.colliders.findIndex((c) => sameRef(c.ref, op.ref));
     if (ci >= 0) {
@@ -1963,6 +2100,7 @@ function drawProp(
   p: SceneProp,
   bank: ImageBank,
   selected: boolean,
+  scale = 1,
 ) {
   const r = propBounds(p, bank);
   if (!r) return;
@@ -1975,14 +2113,28 @@ function drawProp(
   }
 
   // Origin marker (small cross at the parent Node2D position)
-  drawCross(ctx, p.position.x, p.position.y, selected ? 'rgba(255,200,80,1)' : 'rgba(255,255,255,0.4)');
+  drawCross(
+    ctx,
+    p.position.x,
+    p.position.y,
+    selected ? 'rgba(255, 220, 100, 1)' : 'rgba(255,255,255,0.4)',
+  );
 
   if (selected) {
-    ctx.strokeStyle = 'rgba(255, 200, 80, 0.95)';
-    ctx.lineWidth = 1.5 / 1; // logical px; scaled by ctx
-    ctx.setLineDash([4, 3]);
+    // Bright outline — outer glow + inner solid stroke for visibility on
+    // both light and dark backgrounds.
+    ctx.lineWidth = 4 / scale;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
     ctx.strokeRect(r.x, r.y, r.w, r.h);
-    ctx.setLineDash([]);
+    ctx.lineWidth = 2 / scale;
+    ctx.strokeStyle = 'rgba(255, 220, 100, 1)';
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+
+    // Resize handles at the 4 corners.
+    drawHandle(ctx, r.x, r.y, scale);
+    drawHandle(ctx, r.x + r.w, r.y, scale);
+    drawHandle(ctx, r.x, r.y + r.h, scale);
+    drawHandle(ctx, r.x + r.w, r.y + r.h, scale);
   }
 }
 

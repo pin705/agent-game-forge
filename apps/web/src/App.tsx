@@ -60,6 +60,7 @@ const LS_SPLIT = 'ogf:split';
 const LS_DENSITY = 'ogf:density';
 const LS_TREE_W = 'ogf:treeWidth';
 const LS_TREE_COLLAPSED = 'ogf:treeCollapsed';
+const LS_LAST_FILE_PREFIX = 'ogf:lastFile:'; // per-project: { tab, relPath }
 
 type Tab = 'assets' | 'scenes' | 'code' | 'play';
 type Density = 'compact' | 'regular' | 'comfy';
@@ -169,6 +170,23 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, selectedFile?.relPath]);
 
+  // Persist last tab + selectedFile per project so reload returns to where you left off.
+  useEffect(() => {
+    if (!project) return;
+    if (selectedFile) {
+      localStorage.setItem(
+        LS_LAST_FILE_PREFIX + project.path,
+        JSON.stringify({
+          tab,
+          relPath: selectedFile.relPath,
+          fileKind: selectedFile.fileKind,
+        }),
+      );
+    } else {
+      localStorage.setItem(LS_LAST_FILE_PREFIX + project.path, JSON.stringify({ tab }));
+    }
+  }, [project?.path, tab, selectedFile?.relPath, selectedFile?.fileKind]);
+
   // Reference images
   const [refs, setRefs] = useState<RefImage[]>([]);
 
@@ -270,9 +288,30 @@ export function App() {
   const selectProject = useCallback(
     async (p: Project) => {
       setProject(p);
-      setSelectedFile(null);
       setRecentlyChanged(new Set());
       setRefs([]);
+
+      // Restore last tab + file for THIS project, if any.
+      let restoredFile = false;
+      try {
+        const saved = localStorage.getItem(LS_LAST_FILE_PREFIX + p.path);
+        if (saved) {
+          const parsed = JSON.parse(saved) as {
+            tab?: Tab;
+            relPath?: string;
+            fileKind?: FileNode['fileKind'];
+          };
+          if (parsed.tab) setTab(parsed.tab);
+          if (parsed.relPath) {
+            setSelectedFile({ relPath: parsed.relPath, fileKind: parsed.fileKind });
+            restoredFile = true;
+          }
+        }
+      } catch {
+        // ignore corrupted entry
+      }
+      if (!restoredFile) setSelectedFile(null);
+
       // reset nav history for new project
       navStackRef.current = [{ tab: 'assets', selectedFile: null }];
       navIndexRef.current = 0;
@@ -283,6 +322,22 @@ export function App() {
       fetchRefs(p.path)
         .then((r) => setRefs(r.refs))
         .catch(() => setRefs([]));
+
+      // Default-load the main scene if we don't have a saved selection yet.
+      // We wait for analyze to come back so mainScene is known.
+      fetchAnalyze(p.path)
+        .then((a) => {
+          setUsedAssets(new Set(a.usedAssets));
+          setMainScene(a.mainScene ?? null);
+          if (!restoredFile && a.mainScene) {
+            setTab('scenes');
+            setSelectedFile({ relPath: a.mainScene, fileKind: 'text' });
+          }
+        })
+        .catch(() => {
+          setUsedAssets(new Set());
+          setMainScene(null);
+        });
 
       const r = await fetchConversations(p.path);
       setConversations(r.conversations);

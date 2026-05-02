@@ -303,6 +303,45 @@ async function main() {
   assert.strictEqual(afterKrP, beforeKrP, 'kr path move/restore byte-identical');
   console.log('[ok] kr path move/restore byte-identical');
 
+  // ---------- scale-prop op ----------
+  console.log('\n--- scale-prop ops ---');
+  const beforeScaleMeadow = readFileSync(path.join(ROOT, REL), 'utf8');
+  applyOps({
+    rootAbs: ROOT,
+    relPath: REL,
+    ops: [{ kind: 'scale-prop', nodePath: tree.nodePath, scale: { x: 0.6, y: 0.6 } }],
+  });
+  const meadowS = loadScene({ rootAbs: ROOT, relPath: REL });
+  const treeS = meadowS.scene.props.find((p) => p.name === 'tree_north_1');
+  assert.strictEqual(treeS?.scale.x, 0.6);
+  console.log('[ok] meadow tree_north_1 scale → 0.6');
+  applyOps({
+    rootAbs: ROOT,
+    relPath: REL,
+    ops: [{ kind: 'scale-prop', nodePath: tree.nodePath, scale: { x: 0.42, y: 0.42 } }],
+  });
+  assert.strictEqual(readFileSync(path.join(ROOT, REL), 'utf8'), beforeScaleMeadow);
+  console.log('[ok] meadow scale-prop restore byte-identical');
+
+  const beforeScaleKr = readFileSync(path.join(KR_ROOT, KR_REL), 'utf8');
+  applyOps({
+    rootAbs: KR_ROOT,
+    relPath: KR_REL,
+    ops: [{ kind: 'scale-prop', nodePath: oak.nodePath, scale: { x: 0.5, y: 0.5 } }],
+  });
+  const krS = loadScene({ rootAbs: KR_ROOT, relPath: KR_REL });
+  const oakS = krS.scene.props.find((p) => p.name === 'OakTree_Northwest');
+  assert.strictEqual(oakS?.scale.x, 0.5);
+  console.log('[ok] kindomrush OakTree_Northwest (Pattern B) scale → 0.5');
+  // Restore
+  applyOps({
+    rootAbs: KR_ROOT,
+    relPath: KR_REL,
+    ops: [{ kind: 'scale-prop', nodePath: oak.nodePath, scale: oak.scale }],
+  });
+  assert.strictEqual(readFileSync(path.join(KR_ROOT, KR_REL), 'utf8'), beforeScaleKr);
+  console.log('[ok] kr scale-prop restore byte-identical');
+
   console.log('\n[PASS] all smoke checks');
 }
 
