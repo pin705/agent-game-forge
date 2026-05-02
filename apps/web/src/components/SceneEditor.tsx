@@ -2429,6 +2429,7 @@ function zoneIcon(kind: ZoneKind): string {
   if (kind === 'encounter') return '✦';
   if (kind === 'exit') return '⤴';
   if (kind === 'spawn') return '◆';
+  if (kind === 'marker') return '◉';
   return '?';
 }
 
@@ -3020,6 +3021,9 @@ function zoneColor(kind: ZoneKind, active: boolean): { stroke: string; fill: str
   } else if (kind === 'spawn') {
     stroke = 'rgba(255, 220, 100, 1)'; // yellow
     fill = 'rgba(255, 220, 100, 0.55)';
+  } else if (kind === 'marker') {
+    stroke = 'rgba(120, 200, 255, 0.95)'; // cyan/blue — script-driven editor handles
+    fill = 'rgba(120, 200, 255, 0.18)';
   }
   if (!active) {
     return {

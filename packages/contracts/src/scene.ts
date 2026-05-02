@@ -43,9 +43,22 @@ export type ColliderShape =
   | { kind: 'polygon'; points: Vec2[] }
   | { kind: 'point' };
 
-/** Where this collider lives + how to address it for writes. */
+/** Where this collider/marker lives + how to address it for writes.
+ *  For 'tscn' refs: when subResourceId is empty AND markerSizeProperty is set,
+ *  resize ops write the named body property of the node itself
+ *  (e.g. `pad_size = Vector2(...)`) rather than a SubResource's `size`.
+ *  This covers script-driven editor markers (MapEdit-style TowerPad nodes,
+ *  PathPoint nodes, Blocker nodes). */
 export type ColliderRef =
-  | { backend: 'tscn'; nodePath: string; subResourceId: string }
+  | {
+      backend: 'tscn';
+      nodePath: string;
+      subResourceId: string;
+      /** When set + subResourceId is '', resize patches `<property> = Vector2(w, h)`. */
+      markerSizeProperty?: string;
+      /** When set, resize-circle patches `<property> = N`. */
+      markerRadiusProperty?: string;
+    }
   | { backend: 'json'; relPath: string; section: string; id: string };
 
 export interface SceneCollider {
@@ -74,8 +87,10 @@ export interface ScenePath {
   editable: boolean;
 }
 
-/** Gameplay zones: encounter triggers, scene exits, spawn points. */
-export type ZoneKind = 'encounter' | 'exit' | 'spawn' | 'unknown';
+/** Gameplay zones: encounter triggers, scene exits, spawn points,
+ *  plus generic 'marker' for script-driven Node2D editor handles
+ *  (TowerPads, PathPoints, Blockers, etc.) */
+export type ZoneKind = 'encounter' | 'exit' | 'spawn' | 'marker' | 'unknown';
 
 export interface SceneZone {
   uid: string;

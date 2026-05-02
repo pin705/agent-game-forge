@@ -177,6 +177,88 @@ export function readTscnZones(parsed: ParsedTscn): SceneZone[] {
     });
   }
 
+  // 3) Script-driven markers: Node2D under a non-root parent, with a script
+  //    attached and recognized shape body properties. Catches MapEdit-style
+  //    TowerPads / PathPoints / Blockers — pure data, no Sprite2D / Area2D /
+  //    StaticBody2D involvement.
+  // Size-property name → shape inference. First match wins.
+  const sizePropOrder = ['pad_size', 'blocker_size', 'size'] as const;
+
+  for (const node of parsed.sections) {
+    if (node.kind !== 'node' || node.attrs.type !== 'Node2D') continue;
+    const parent = node.attrs.parent;
+    // Skip top-level / unparented Node2Ds (those are usually layer containers).
+    if (!parent || parent === '.' || parent === undefined) continue;
+    // Must have an attached script — that's our 'this is a marker' signal.
+    const hasScript = parsed.lines
+      .slice(node.headerLine + 1, node.endLine)
+      .some((l) => /^\s*script\s*=\s*ExtResource/.test(l));
+    if (!hasScript) continue;
+
+    const np = nodeKey(node);
+    const position = parseVector2(readBodyValue(parsed, node, 'position')) ?? { x: 0, y: 0 };
+    const { fields } = classifyZone(node, parsed);
+
+    // Detect rect-like shape from a Vector2 body property.
+    let foundRect = false;
+    for (const prop of sizePropOrder) {
+      const sz = parseVector2(readBodyValue(parsed, node, prop));
+      if (sz) {
+        out.push({
+          uid: `zone-tscn:${np}:${counter++}`,
+          ref: {
+            backend: 'tscn',
+            nodePath: np,
+            subResourceId: '',
+            markerSizeProperty: prop,
+          },
+          name: node.attrs.name ?? '',
+          zoneKind: 'marker',
+          position,
+          shape: { kind: 'rect', w: sz.x, h: sz.y },
+          fields,
+          editable: true,
+        });
+        foundRect = true;
+        break;
+      }
+    }
+    if (foundRect) continue;
+
+    // Detect circle-like shape from a numeric `radius` property.
+    const radiusRaw = readBodyValue(parsed, node, 'radius');
+    if (radiusRaw && Number.isFinite(Number(radiusRaw))) {
+      out.push({
+        uid: `zone-tscn:${np}:${counter++}`,
+        ref: {
+          backend: 'tscn',
+          nodePath: np,
+          subResourceId: '',
+          markerRadiusProperty: 'radius',
+        },
+        name: node.attrs.name ?? '',
+        zoneKind: 'marker',
+        position,
+        shape: { kind: 'circle', r: Number(radiusRaw) },
+        fields,
+        editable: true,
+      });
+      continue;
+    }
+
+    // No shape inferred — fall back to a draggable point.
+    out.push({
+      uid: `zone-tscn:${np}:${counter++}`,
+      ref: { backend: 'tscn', nodePath: np, subResourceId: '' },
+      name: node.attrs.name ?? '',
+      zoneKind: 'marker',
+      position,
+      shape: { kind: 'point' },
+      fields,
+      editable: true,
+    });
+  }
+
   return out;
 }
 

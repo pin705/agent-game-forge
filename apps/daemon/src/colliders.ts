@@ -176,7 +176,23 @@ export function writeTscnResizeRect(
   w: number,
   h: number,
 ): void {
-  const sub = parsed.sections.find((s) => s.kind === 'sub_resource' && s.attrs.id === ref.subResourceId);
+  // Marker case: shape size lives on the node body, not a SubResource.
+  if (!ref.subResourceId && ref.markerSizeProperty) {
+    const node = parsed.sections.find(
+      (s) => s.kind === 'node' && nodeKey(s) === ref.nodePath,
+    );
+    if (!node) throw new Error(`tscn node not found: ${ref.nodePath}`);
+    patchOrInsertBodyLine(
+      parsed,
+      node,
+      ref.markerSizeProperty,
+      `Vector2(${formatTwo(w, h)})`,
+    );
+    return;
+  }
+  const sub = parsed.sections.find(
+    (s) => s.kind === 'sub_resource' && s.attrs.id === ref.subResourceId,
+  );
   if (!sub) throw new Error(`sub_resource not found: ${ref.subResourceId}`);
   patchOrInsertBodyLine(parsed, sub, 'size', `Vector2(${formatTwo(w, h)})`);
 }
@@ -186,7 +202,18 @@ export function writeTscnResizeCircle(
   ref: ColliderRef & { backend: 'tscn' },
   r: number,
 ): void {
-  const sub = parsed.sections.find((s) => s.kind === 'sub_resource' && s.attrs.id === ref.subResourceId);
+  // Marker case: radius is a body property of the node.
+  if (!ref.subResourceId && ref.markerRadiusProperty) {
+    const node = parsed.sections.find(
+      (s) => s.kind === 'node' && nodeKey(s) === ref.nodePath,
+    );
+    if (!node) throw new Error(`tscn node not found: ${ref.nodePath}`);
+    patchOrInsertBodyLine(parsed, node, ref.markerRadiusProperty, formatNumber(r));
+    return;
+  }
+  const sub = parsed.sections.find(
+    (s) => s.kind === 'sub_resource' && s.attrs.id === ref.subResourceId,
+  );
   if (!sub) throw new Error(`sub_resource not found: ${ref.subResourceId}`);
   patchOrInsertBodyLine(parsed, sub, 'radius', formatNumber(r));
 }
