@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { detectAgents, getAgentDef, resolveOnPath } from './agents.js';
 import { spawnCodex, createJsonlParser } from './codex.js';
@@ -42,6 +42,7 @@ import { findUsages } from './usages.js';
 import { findSessionsForCwd, replaySession } from './codex-sessions.js';
 import { applyOps as applySceneOps, loadScene } from './scenes.js';
 import { detectGodot, GodotRunManager } from './godot.js';
+import { formatSceneContextSnippet, readSceneContext } from './scene-context.js';
 import type {
   AgentEvent,
   AgentsResponse,
@@ -438,6 +439,34 @@ export function createServer() {
     }
   });
 
+  // Live scene context dump — frontend pushes a snapshot here whenever the
+  // user drags / selects / changes scene. Stored in <project>/.ogf/scene-context.json
+  // for the agent to read on demand. Also consumed by composePrompt to build
+  // the per-turn mini-snapshot.
+  app.post('/api/scenes/context', (req, res) => {
+    const body = req.body as { projectPath?: string; content?: unknown };
+    if (!body?.projectPath || body.content === undefined) {
+      return res.status(400).json({ error: 'projectPath and content required' });
+    }
+    const projectAbs = path.resolve(body.projectPath);
+    if (!existsSync(projectAbs)) {
+      return res.status(404).json({ error: 'project folder missing' });
+    }
+    const ogfDir = path.join(projectAbs, '.ogf');
+    try {
+      mkdirSync(ogfDir, { recursive: true });
+      const text = JSON.stringify(body.content, null, 2);
+      // Use a temp+rename so concurrent reads never see a partially-written file.
+      const tmp = path.join(ogfDir, '.scene-context.tmp');
+      const final = path.join(ogfDir, 'scene-context.json');
+      writeFileSync(tmp, text, 'utf8');
+      renameSync(tmp, final);
+      res.json({ ok: true, size: Buffer.byteLength(text, 'utf8') });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   // -------------------- Conversations --------------------
 
   app.get('/api/conversations', (req, res) => {
@@ -590,7 +619,12 @@ export function createServer() {
       resumed: !!conv.codex_thread_id,
     });
 
-    const composed = composePrompt(body.prompt, body.refImagePaths, !!conv.codex_thread_id);
+    const composed = composePrompt(
+      body.prompt,
+      body.refImagePaths,
+      !!conv.codex_thread_id,
+      cwd,
+    );
 
     let child;
     try {
@@ -684,6 +718,7 @@ function composePrompt(
   userPrompt: string,
   refImagePaths: string[] | undefined,
   isResumed: boolean,
+  cwd: string,
 ): string {
   const refs = refImagePaths?.length
     ? `\n\n# Reference images\n${refImagePaths
@@ -691,15 +726,31 @@ function composePrompt(
         .join('\n')}\n\nview_image these references first, then preserve their identity / style when generating new assets.\n`
     : '';
 
+  // Per-turn scene snippet — kept small (~80–230 tokens). Always written so
+  // the agent doesn't need to fetch when the user's prompt already implies
+  // the relevant target ("this prop", "the selected zone", etc).
+  const ctx = readSceneContext(cwd);
+  const sceneSnippet = formatSceneContextSnippet(ctx);
+  const sceneBlock = sceneSnippet ? `\n${sceneSnippet}\n` : '';
+
   if (isResumed) {
-    // No need to repeat instructions when resuming — they're in the prior turn.
-    return `${refs}# User request\n\n${userPrompt}\n`;
+    // No need to repeat the system instructions — they're in the prior turn.
+    return `${sceneBlock}${refs}# User request\n\n${userPrompt}\n`;
   }
 
   return `# Open Game Forge — agent run
 
 You are working inside an Open Game Forge project. The user is editing a 2D game in this directory. Edit files on disk in the cwd. When generating visible assets, use image_gen and place files under assets/. Report changed files at the end.
-${refs}
+
+# Live editor state
+
+The user's in-app scene editor writes its current state to \`.ogf/scene-context.json\` whenever they drag, select, or change scene. Read that file when:
+- the user refers to \"this\" / \"the selected\" / a node by visual position
+- you need a list of all props / colliders / zones / paths beyond what's already in the per-turn snippet
+- you want to verify a position or shape before/after editing
+
+The file is YOUR live source of truth for the editor's state. Each user turn includes a small snapshot of the most relevant bits inline; cat the file for everything else.
+${sceneBlock}${refs}
 # User request
 
 ${userPrompt}

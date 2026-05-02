@@ -127,6 +127,48 @@ export function SceneEditor(props: Props) {
     sceneRef.current = scene;
   }, [scene]);
 
+  // -------- Auto-dump .ogf/scene-context.json --------
+  // Debounced 500ms — the agent reads this file on demand for spatial info.
+  const contextDumpTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!scene) return;
+    if (contextDumpTimerRef.current !== null) {
+      window.clearTimeout(contextDumpTimerRef.current);
+    }
+    contextDumpTimerRef.current = window.setTimeout(() => {
+      void dumpSceneContext(
+        props.projectPath,
+        scene,
+        camera,
+        containerRef.current,
+        {
+          selectedNodePath,
+          selectedColliderUid,
+          selectedZoneUid,
+          selectedPath,
+        },
+      );
+    }, 500);
+    return () => {
+      if (contextDumpTimerRef.current !== null) {
+        window.clearTimeout(contextDumpTimerRef.current);
+        contextDumpTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    scene,
+    camera.scale,
+    camera.panX,
+    camera.panY,
+    selectedNodePath,
+    selectedColliderUid,
+    selectedZoneUid,
+    selectedPath?.uid,
+    selectedPath?.pointIdx,
+    props.projectPath,
+  ]);
+
   // -------- Initial camera fit --------
 
   useEffect(() => {
@@ -1474,6 +1516,151 @@ function ScenePanel({
       </div>
     </aside>
   );
+}
+
+// ============= Scene context dump =============
+
+interface SelectionSnapshot {
+  selectedNodePath: string | null;
+  selectedColliderUid: string | null;
+  selectedZoneUid: string | null;
+  selectedPath: { uid: string; pointIdx: number | null } | null;
+}
+
+async function dumpSceneContext(
+  projectPath: string,
+  scene: SceneModel,
+  camera: { scale: number; panX: number; panY: number },
+  containerEl: HTMLDivElement | null,
+  sel: SelectionSnapshot,
+): Promise<void> {
+  // Compute viewport in world coords from the canvas size + camera.
+  const viewport = (() => {
+    if (!containerEl) return undefined;
+    const w = containerEl.clientWidth / camera.scale;
+    const h = containerEl.clientHeight / camera.scale;
+    return {
+      x: Math.round(camera.panX),
+      y: Math.round(camera.panY),
+      w: Math.round(w),
+      h: Math.round(h),
+    };
+  })();
+
+  let selected: unknown = null;
+  if (sel.selectedNodePath) {
+    const p = scene.props.find((x) => x.nodePath === sel.selectedNodePath);
+    if (p) {
+      selected = {
+        kind: 'prop',
+        nodePath: p.nodePath,
+        name: p.name,
+        position: p.position,
+        scale: p.scale,
+        texture: p.texture,
+      };
+    }
+  } else if (sel.selectedColliderUid) {
+    const c = scene.colliders.find((x) => x.uid === sel.selectedColliderUid);
+    if (c) {
+      selected = {
+        kind: 'collider',
+        nodePath:
+          c.ref.backend === 'tscn' ? c.ref.nodePath : `${c.ref.relPath}#${c.ref.id}`,
+        name: c.name,
+        position: c.position,
+        shape: c.shape,
+        zoneKind: c.kind,
+      };
+    }
+  } else if (sel.selectedZoneUid) {
+    const z = scene.zones.find((x) => x.uid === sel.selectedZoneUid);
+    if (z) {
+      selected = {
+        kind: 'zone',
+        nodePath:
+          z.ref.backend === 'tscn' ? z.ref.nodePath : `${z.ref.relPath}#${z.ref.id}`,
+        name: z.name,
+        position: z.position,
+        shape: z.shape,
+        zoneKind: z.zoneKind,
+      };
+    }
+  } else if (sel.selectedPath) {
+    const pa = scene.paths.find((x) => x.uid === sel.selectedPath!.uid);
+    if (pa) {
+      const idx = sel.selectedPath.pointIdx;
+      const pt = idx !== null && idx !== undefined ? pa.points[idx] : null;
+      selected = {
+        kind: 'path-point',
+        nodePath: pa.ref.backend === 'tscn' ? pa.ref.nodePath : '',
+        name: pa.name,
+        position: pt
+          ? { x: pa.origin.x + pt.x, y: pa.origin.y + pt.y }
+          : pa.origin,
+        pointIndex: idx ?? undefined,
+      };
+    }
+  }
+
+  const payload = {
+    version: 1,
+    updatedAt: Date.now(),
+    project: { path: projectPath, engine: 'godot' },
+    scene: {
+      relPath: scene.scenePath,
+      rootName: scene.rootName,
+      background: scene.background,
+    },
+    selected,
+    viewport,
+    props: scene.props.map((p) => ({
+      nodePath: p.nodePath,
+      name: p.name,
+      position: p.position,
+      scale: p.scale,
+      texture: p.texture,
+    })),
+    colliders: scene.colliders.map((c) => ({
+      nodePath: c.ref.backend === 'tscn' ? c.ref.nodePath : undefined,
+      name: c.name,
+      kind: c.kind,
+      position: c.position,
+      shape: c.shape,
+    })),
+    zones: scene.zones.map((z) => ({
+      name: z.name,
+      zoneKind: z.zoneKind,
+      position: z.position,
+      shape: z.shape,
+      fields: z.fields,
+    })),
+    // Paths can have many points; include ALL points (the agent often needs
+    // them for collision-vs-path logic) but flag pointCount up front so the
+    // model can decide whether to skim.
+    paths: scene.paths.map((pa) => ({
+      name: pa.name,
+      origin: pa.origin,
+      pointCount: pa.points.length,
+      samplePoints: pa.points,
+    })),
+    stats: {
+      props: scene.props.length,
+      colliders: scene.colliders.length,
+      zones: scene.zones.length,
+      paths: scene.paths.length,
+    },
+  };
+
+  try {
+    await fetch('/api/scenes/context', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectPath, content: payload }),
+    });
+  } catch {
+    // best-effort — context dump is not critical for editor function
+  }
 }
 
 function zoneIcon(kind: ZoneKind): string {
