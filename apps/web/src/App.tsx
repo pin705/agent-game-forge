@@ -896,6 +896,7 @@ function EditorPane(props: {
               projectPath={props.project.path}
               relPath={props.selectedFile.relPath}
               reloadKey={props.sceneReloadKey}
+              onAskCodex={props.onAskCodex}
               onClose={props.onCloseFile}
             />
           ) : (

@@ -43,13 +43,24 @@ import { findSessionsForCwd, replaySession } from './codex-sessions.js';
 import { applyOps as applySceneOps, loadScene } from './scenes.js';
 import { detectGodot, GodotRunManager } from './godot.js';
 import { formatSceneContextSnippet, readSceneContext } from './scene-context.js';
+import {
+  appendMessage as appendCommentMessage,
+  createThread as createCommentThread,
+  deleteThread as deleteCommentThread,
+  listThreads as listCommentThreads,
+  updateThread as updateCommentThread,
+} from './comments.js';
 import type {
   AgentEvent,
   AgentsResponse,
+  AppendCommentMessageRequest,
+  AppendCommentMessageResponse,
   ApplySceneOpsRequest,
   ApplySceneOpsResponse,
   Conversation,
   ConversationsResponse,
+  CreateCommentThreadRequest,
+  CreateCommentThreadResponse,
   CreateConversationRequest,
   CreateRunRequest,
   CreateRunResponse,
@@ -57,12 +68,15 @@ import type {
   GodotDetectResponse,
   GodotStartRequest,
   GodotStartResponse,
+  ListCommentsResponse,
   LoadSceneResponse,
   Message,
   MessagesResponse,
   OpenProjectRequest,
   Project,
   ProjectsResponse,
+  UpdateCommentThreadRequest,
+  UpdateCommentThreadResponse,
 } from '@ogf/contracts';
 
 export function createServer() {
@@ -462,6 +476,94 @@ export function createServer() {
       writeFileSync(tmp, text, 'utf8');
       renameSync(tmp, final);
       res.json({ ok: true, size: Buffer.byteLength(text, 'utf8') });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // -------------------- Comments --------------------
+
+  app.get('/api/comments', (req, res) => {
+    const projectPath = req.query.projectPath;
+    const scene = req.query.scene;
+    if (typeof projectPath !== 'string') {
+      return res.status(400).json({ error: 'projectPath required' });
+    }
+    try {
+      const threads = listCommentThreads(
+        path.resolve(projectPath),
+        typeof scene === 'string' ? scene : undefined,
+      );
+      res.json({ threads } satisfies ListCommentsResponse);
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.post('/api/comments', (req, res) => {
+    const body = req.body as CreateCommentThreadRequest;
+    if (!body?.projectPath || !body?.scene || !body?.anchor || !body?.text) {
+      return res.status(400).json({ error: 'projectPath, scene, anchor, text required' });
+    }
+    try {
+      const thread = createCommentThread({
+        projectAbs: path.resolve(body.projectPath),
+        scene: body.scene,
+        anchor: body.anchor,
+        text: body.text,
+        author: body.author,
+      });
+      res.json({ thread } satisfies CreateCommentThreadResponse);
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.post('/api/comments/:id/messages', (req, res) => {
+    const body = req.body as AppendCommentMessageRequest;
+    if (!body?.projectPath || !body?.text) {
+      return res.status(400).json({ error: 'projectPath and text required' });
+    }
+    try {
+      const thread = appendCommentMessage({
+        projectAbs: path.resolve(body.projectPath),
+        threadId: req.params.id,
+        text: body.text,
+        author: body.author,
+      });
+      res.json({ thread } satisfies AppendCommentMessageResponse);
+    } catch (err) {
+      res.status(404).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.patch('/api/comments/:id', (req, res) => {
+    const body = req.body as UpdateCommentThreadRequest;
+    if (!body?.projectPath) return res.status(400).json({ error: 'projectPath required' });
+    try {
+      const thread = updateCommentThread({
+        projectAbs: path.resolve(body.projectPath),
+        threadId: req.params.id,
+        status: body.status,
+        anchor: body.anchor,
+      });
+      res.json({ thread } satisfies UpdateCommentThreadResponse);
+    } catch (err) {
+      res.status(404).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.delete('/api/comments/:id', (req, res) => {
+    const projectPath = req.query.projectPath;
+    if (typeof projectPath !== 'string') {
+      return res.status(400).json({ error: 'projectPath query required' });
+    }
+    try {
+      deleteCommentThread({
+        projectAbs: path.resolve(projectPath),
+        threadId: req.params.id,
+      });
+      res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }

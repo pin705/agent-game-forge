@@ -2,10 +2,15 @@ import type {
   AgentEvent,
   AgentsResponse,
   AnalyzeResponse,
+  AppendCommentMessageRequest,
+  AppendCommentMessageResponse,
   ApplySceneOpsRequest,
   ApplySceneOpsResponse,
+  CommentThread,
   Conversation,
   ConversationsResponse,
+  CreateCommentThreadRequest,
+  CreateCommentThreadResponse,
   CreateConversationRequest,
   CreateRunRequest,
   CreateRunResponse,
@@ -16,6 +21,7 @@ import type {
   GodotDetectResponse,
   GodotStartRequest,
   GodotStartResponse,
+  ListCommentsResponse,
   LoadSceneResponse,
   Message,
   MessagesResponse,
@@ -27,6 +33,8 @@ import type {
   ReadFileResponse,
   RefImage,
   RefImagesResponse,
+  UpdateCommentThreadRequest,
+  UpdateCommentThreadResponse,
   UploadRefRequest,
   UsagesResponse,
   WriteFileRequest,
@@ -206,6 +214,41 @@ export function subscribeGodotRun(
   es.onerror = () => es.close();
   return () => es.close();
 }
+
+// Comments
+export const fetchComments = (projectPath: string, scene?: string) => {
+  const q = `projectPath=${encodeURIComponent(projectPath)}${scene ? `&scene=${encodeURIComponent(scene)}` : ''}`;
+  return jsonFetch<ListCommentsResponse>(`/api/comments?${q}`);
+};
+
+export const createCommentThread = (req: CreateCommentThreadRequest) =>
+  jsonFetch<CreateCommentThreadResponse>('/api/comments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+
+export const appendCommentMessage = (threadId: string, req: AppendCommentMessageRequest) =>
+  jsonFetch<AppendCommentMessageResponse>(`/api/comments/${threadId}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+
+export const updateCommentThread = (threadId: string, req: UpdateCommentThreadRequest) =>
+  jsonFetch<UpdateCommentThreadResponse>(`/api/comments/${threadId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+
+export const deleteCommentThread = (threadId: string, projectPath: string) =>
+  jsonFetch<{ ok: true }>(
+    `/api/comments/${threadId}?projectPath=${encodeURIComponent(projectPath)}`,
+    { method: 'DELETE' },
+  );
+
+export type { CommentThread };
 
 // Reference images
 export const fetchRefs = (projectPath: string) =>
