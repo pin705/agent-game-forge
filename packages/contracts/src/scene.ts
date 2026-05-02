@@ -40,7 +40,8 @@ export interface SceneProp {
 export type ColliderShape =
   | { kind: 'rect'; w: number; h: number }
   | { kind: 'circle'; r: number }
-  | { kind: 'polygon'; points: Vec2[] };
+  | { kind: 'polygon'; points: Vec2[] }
+  | { kind: 'point' };
 
 /** Where this collider lives + how to address it for writes. */
 export type ColliderRef =
@@ -60,6 +61,21 @@ export interface SceneCollider {
   editable: boolean;
 }
 
+/** Gameplay zones: encounter triggers, scene exits, spawn points. */
+export type ZoneKind = 'encounter' | 'exit' | 'spawn' | 'unknown';
+
+export interface SceneZone {
+  uid: string;
+  ref: ColliderRef;
+  name: string;
+  zoneKind: ZoneKind;
+  position: Vec2;
+  shape: ColliderShape;
+  /** Script-bound or JSON-stored fields: encounter_rate, target, facing, etc. */
+  fields: Record<string, string | number>;
+  editable: boolean;
+}
+
 export interface SceneModel {
   /** Source .tscn path, project-relative. */
   scenePath: string;
@@ -73,6 +89,9 @@ export interface SceneModel {
   colliders: SceneCollider[];
   /** When non-empty, the daemon used a JSON sidecar (project-relative). */
   collidersJsonPath: string | null;
+  /** Encounter zones, exits, spawn points (Area2D / Marker2D / JSON sidecar). */
+  zones: SceneZone[];
+  zonesJsonPath: string | null;
   /** Notes the editor surfaces in the UI (e.g. "TileMap layers not yet editable"). */
   notes: string[];
 }

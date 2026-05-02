@@ -212,6 +212,48 @@ async function main() {
   }
   console.log(`[ok] slot_01 circle r=58 at (${slot.position.x},${slot.position.y})`);
 
+  // ---------- Phase 3: zones ----------
+  console.log('\n--- meadow zones (.tscn) ---');
+  const meadowZ = loadScene({ rootAbs: ROOT, relPath: REL });
+  console.log(`[ok] zones: ${meadowZ.scene.zones.length} jsonPath=${meadowZ.scene.zonesJsonPath}`);
+  for (const z of meadowZ.scene.zones) {
+    console.log(`     - ${z.name} kind=${z.zoneKind} shape=${z.shape.kind} fields=${Object.keys(z.fields).join(',')}`);
+  }
+  const westMeadow = meadowZ.scene.zones.find((z) => z.name === 'west_meadow');
+  assert.ok(westMeadow);
+  assert.strictEqual(westMeadow.zoneKind, 'encounter');
+  if (westMeadow.shape.kind === 'rect') {
+    assert.strictEqual(westMeadow.shape.w, 320);
+    assert.strictEqual(westMeadow.shape.h, 256);
+  }
+  console.log(`[ok] west_meadow encounter rect 320x256 at (${westMeadow.position.x},${westMeadow.position.y})`);
+
+  const playerSpawn = meadowZ.scene.zones.find((z) => z.name === 'player_spawn');
+  assert.ok(playerSpawn);
+  assert.strictEqual(playerSpawn.zoneKind, 'spawn');
+  assert.strictEqual(playerSpawn.shape.kind, 'point');
+  assert.strictEqual(playerSpawn.fields.facing, 'north');
+  console.log(`[ok] player_spawn point at (${playerSpawn.position.x},${playerSpawn.position.y}) facing=${playerSpawn.fields.facing}`);
+
+  // Move the spawn point + restore
+  const beforeMeadowZ = readFileSync(path.join(ROOT, REL), 'utf8');
+  applyOps({
+    rootAbs: ROOT,
+    relPath: REL,
+    ops: [{ kind: 'move-collider', ref: playerSpawn.ref, position: { x: 800, y: 1200 } }],
+  });
+  const meadowZ2 = loadScene({ rootAbs: ROOT, relPath: REL });
+  const ps2 = meadowZ2.scene.zones.find((z) => z.name === 'player_spawn');
+  assert.strictEqual(ps2?.position.x, 800);
+  assert.strictEqual(ps2?.position.y, 1200);
+  applyOps({
+    rootAbs: ROOT,
+    relPath: REL,
+    ops: [{ kind: 'move-collider', ref: playerSpawn.ref, position: { x: 896, y: 1140 } }],
+  });
+  assert.strictEqual(readFileSync(path.join(ROOT, REL), 'utf8'), beforeMeadowZ);
+  console.log('[ok] meadow spawn move/restore byte-identical');
+
   console.log('\n[PASS] all smoke checks');
 }
 

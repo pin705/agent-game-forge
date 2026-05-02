@@ -7,13 +7,26 @@ import type {
   SceneModel,
   SceneOp,
   SceneProp,
+  SceneZone,
   Vec2,
+  ZoneKind,
 } from '@ogf/contracts';
 import { applySceneOps, fetchScene } from '../lib/api.js';
 import { I } from './icons.js';
 
-type EditMode = 'props' | 'colliders';
+type EditMode = 'props' | 'colliders' | 'zones';
 type ResizeCorner = 'tl' | 'tr' | 'bl' | 'br';
+
+/** Unify the colliders + zones interaction code by working over a `Shape` lens. */
+type ShapeLens = {
+  uid: string;
+  ref: ColliderRef;
+  position: Vec2;
+  shape: SceneCollider['shape'];
+  editable: boolean;
+  /** Where to write back. */
+  bucket: 'colliders' | 'zones';
+};
 
 interface Props {
   projectPath: string;
@@ -48,6 +61,7 @@ export function SceneEditor(props: Props) {
   const [bank, setBank] = useState<ImageBank>({ imgs: new Map(), sizes: new Map() });
   const [selectedNodePath, setSelectedNodePath] = useState<string | null>(null);
   const [selectedColliderUid, setSelectedColliderUid] = useState<string | null>(null);
+  const [selectedZoneUid, setSelectedZoneUid] = useState<string | null>(null);
   const [mode, setMode] = useState<EditMode>('props');
   const [savingState, setSavingState] = useState<'idle' | 'saving' | 'error' | 'saved'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -166,7 +180,7 @@ export function SceneEditor(props: Props) {
       drawProp(ctx, p, bank, mode === 'props' && p.nodePath === selectedNodePath);
     }
 
-    // Colliders — always rendered, but only "active" appearance in collider mode.
+    // Colliders — always rendered, dimmed when not active.
     for (const c of scene.colliders) {
       drawCollider(
         ctx,
@@ -177,11 +191,22 @@ export function SceneEditor(props: Props) {
       );
     }
 
+    // Zones — always rendered, dimmed when not active.
+    for (const z of scene.zones) {
+      drawZone(
+        ctx,
+        z,
+        mode === 'zones',
+        mode === 'zones' && z.uid === selectedZoneUid,
+        camera.scale,
+      );
+    }
+
     ctx.restore();
 
     // HUD
     drawHud(ctx, cssW, cssH, camera);
-  }, [scene, bank, camera, selectedNodePath, selectedColliderUid, mode]);
+  }, [scene, bank, camera, selectedNodePath, selectedColliderUid, selectedZoneUid, mode]);
 
   useEffect(() => {
     draw();
@@ -195,18 +220,21 @@ export function SceneEditor(props: Props) {
 
   // -------- Mouse interaction --------
 
+  type Bucket = 'colliders' | 'zones';
   type DragState =
     | { kind: 'pan'; startX: number; startY: number; startPan: Vec2 }
     | { kind: 'prop'; nodePath: string; startWorld: Vec2; startProp: Vec2 }
     | {
-        kind: 'collider-move';
+        kind: 'shape-move';
+        bucket: Bucket;
         uid: string;
         ref: ColliderRef;
         startWorld: Vec2;
         startPos: Vec2;
       }
     | {
-        kind: 'collider-resize-rect';
+        kind: 'shape-resize-rect';
+        bucket: Bucket;
         uid: string;
         ref: ColliderRef;
         corner: ResizeCorner;
@@ -216,7 +244,8 @@ export function SceneEditor(props: Props) {
         startH: number;
       }
     | {
-        kind: 'collider-resize-circle';
+        kind: 'shape-resize-circle';
+        bucket: Bucket;
         uid: string;
         ref: ColliderRef;
         startWorld: Vec2;
@@ -252,21 +281,43 @@ export function SceneEditor(props: Props) {
     return null;
   }
 
-  function findColliderAt(world: Vec2): SceneCollider | null {
+  function activeShapes(): { bucket: Bucket; items: (SceneCollider | SceneZone)[] } | null {
     if (!scene) return null;
-    for (let i = scene.colliders.length - 1; i >= 0; i--) {
-      const c = scene.colliders[i];
-      if (insideCollider(world, c)) return c;
+    if (mode === 'colliders') return { bucket: 'colliders', items: scene.colliders };
+    if (mode === 'zones') return { bucket: 'zones', items: scene.zones };
+    return null;
+  }
+
+  function selectedShape(): { bucket: Bucket; item: SceneCollider | SceneZone } | null {
+    if (!scene) return null;
+    if (mode === 'colliders' && selectedColliderUid) {
+      const item = scene.colliders.find((x) => x.uid === selectedColliderUid);
+      if (item) return { bucket: 'colliders', item };
+    }
+    if (mode === 'zones' && selectedZoneUid) {
+      const item = scene.zones.find((x) => x.uid === selectedZoneUid);
+      if (item) return { bucket: 'zones', item };
     }
     return null;
   }
 
-  /** Hit-test rect resize handles for the selected collider. World-space radius scaled by camera. */
-  function findResizeHandle(world: Vec2): { uid: string; corner: ResizeCorner } | null {
-    if (!scene || mode !== 'colliders' || !selectedColliderUid) return null;
-    const c = scene.colliders.find((x) => x.uid === selectedColliderUid);
-    if (!c || c.shape.kind !== 'rect' || !c.editable) return null;
-    const r = rectFromCollider(c);
+  function findShapeAt(world: Vec2): { bucket: Bucket; item: SceneCollider | SceneZone } | null {
+    const active = activeShapes();
+    if (!active) return null;
+    for (let i = active.items.length - 1; i >= 0; i--) {
+      const it = active.items[i];
+      if (insideShape(world, it)) return { bucket: active.bucket, item: it };
+    }
+    return null;
+  }
+
+  /** Hit-test rect resize handles for the selected shape. */
+  function findResizeHandle(world: Vec2): { uid: string; corner: ResizeCorner; bucket: Bucket } | null {
+    const sel = selectedShape();
+    if (!sel) return null;
+    const c = sel.item;
+    if (c.shape.kind !== 'rect' || !c.editable) return null;
+    const r = rectFromShape(c);
     const corners: { name: ResizeCorner; p: Vec2 }[] = [
       { name: 'tl', p: { x: r.x, y: r.y } },
       { name: 'tr', p: { x: r.x + r.w, y: r.y } },
@@ -276,20 +327,21 @@ export function SceneEditor(props: Props) {
     const tol = (HANDLE_RADIUS + 2) / camera.scale;
     for (const cor of corners) {
       if (Math.abs(world.x - cor.p.x) <= tol && Math.abs(world.y - cor.p.y) <= tol) {
-        return { uid: c.uid, corner: cor.name };
+        return { uid: c.uid, corner: cor.name, bucket: sel.bucket };
       }
     }
     return null;
   }
 
-  function findCircleRadiusHandle(world: Vec2): string | null {
-    if (!scene || mode !== 'colliders' || !selectedColliderUid) return null;
-    const c = scene.colliders.find((x) => x.uid === selectedColliderUid);
-    if (!c || c.shape.kind !== 'circle' || !c.editable) return null;
+  function findCircleRadiusHandle(world: Vec2): { uid: string; bucket: Bucket } | null {
+    const sel = selectedShape();
+    if (!sel) return null;
+    const c = sel.item;
+    if (c.shape.kind !== 'circle' || !c.editable) return null;
     const handle = { x: c.position.x + c.shape.r, y: c.position.y };
     const tol = (HANDLE_RADIUS + 2) / camera.scale;
     if (Math.abs(world.x - handle.x) <= tol && Math.abs(world.y - handle.y) <= tol) {
-      return c.uid;
+      return { uid: c.uid, bucket: sel.bucket };
     }
     return null;
   }
@@ -298,16 +350,18 @@ export function SceneEditor(props: Props) {
     if (!scene) return;
     const w = clientToWorld(e);
 
-    // ----- Collider mode -----
-    if (mode === 'colliders' && e.button === 0 && !e.altKey) {
-      // 1) Resize handle on selected rect collider?
+    // ----- Shape modes (colliders or zones) -----
+    if ((mode === 'colliders' || mode === 'zones') && e.button === 0 && !e.altKey) {
+      // 1) Resize handle on selected rect?
       const handle = findResizeHandle(w);
       if (handle) {
-        const c = scene.colliders.find((x) => x.uid === handle.uid);
+        const list = handle.bucket === 'colliders' ? scene.colliders : scene.zones;
+        const c = list.find((x) => x.uid === handle.uid);
         if (c && c.shape.kind === 'rect') {
-          const r = rectFromCollider(c);
+          const r = rectFromShape(c);
           dragRef.current = {
-            kind: 'collider-resize-rect',
+            kind: 'shape-resize-rect',
+            bucket: handle.bucket,
             uid: c.uid,
             ref: c.ref,
             corner: handle.corner,
@@ -320,13 +374,15 @@ export function SceneEditor(props: Props) {
           return;
         }
       }
-      // 2) Radius handle on selected circle?
-      const circleUid = findCircleRadiusHandle(w);
-      if (circleUid) {
-        const c = scene.colliders.find((x) => x.uid === circleUid);
+      // 2) Circle radius handle?
+      const circleHandle = findCircleRadiusHandle(w);
+      if (circleHandle) {
+        const list = circleHandle.bucket === 'colliders' ? scene.colliders : scene.zones;
+        const c = list.find((x) => x.uid === circleHandle.uid);
         if (c && c.shape.kind === 'circle') {
           dragRef.current = {
-            kind: 'collider-resize-circle',
+            kind: 'shape-resize-circle',
+            bucket: circleHandle.bucket,
             uid: c.uid,
             ref: c.ref,
             startWorld: w,
@@ -337,20 +393,21 @@ export function SceneEditor(props: Props) {
           return;
         }
       }
-      // 3) Body of any collider?
-      const colHit = findColliderAt(w);
-      if (colHit) {
-        setSelectedColliderUid(colHit.uid);
-        if (colHit.editable) {
+      // 3) Hit-test body
+      const hit = findShapeAt(w);
+      if (hit) {
+        if (hit.bucket === 'colliders') setSelectedColliderUid(hit.item.uid);
+        else setSelectedZoneUid(hit.item.uid);
+        if (hit.item.editable) {
           dragRef.current = {
-            kind: 'collider-move',
-            uid: colHit.uid,
-            ref: colHit.ref,
+            kind: 'shape-move',
+            bucket: hit.bucket,
+            uid: hit.item.uid,
+            ref: hit.item.ref,
             startWorld: w,
-            startPos: { ...colHit.position },
+            startPos: { ...hit.item.position },
           };
         } else {
-          // Read-only — pan instead so users can keep moving the camera.
           dragRef.current = {
             kind: 'pan',
             startX: e.clientX,
@@ -362,7 +419,8 @@ export function SceneEditor(props: Props) {
         return;
       }
       // 4) Empty space → deselect + pan
-      setSelectedColliderUid(null);
+      if (mode === 'colliders') setSelectedColliderUid(null);
+      else setSelectedZoneUid(null);
       dragRef.current = {
         kind: 'pan',
         startX: e.clientX,
@@ -429,7 +487,7 @@ export function SceneEditor(props: Props) {
       );
       return;
     }
-    if (ds.kind === 'collider-move') {
+    if (ds.kind === 'shape-move') {
       const w = clientToWorld(ev);
       const dx = w.x - ds.startWorld.x;
       const dy = w.y - ds.startWorld.y;
@@ -438,22 +496,20 @@ export function SceneEditor(props: Props) {
         x: snap ? Math.round(ds.startPos.x + dx) : ds.startPos.x + dx,
         y: snap ? Math.round(ds.startPos.y + dy) : ds.startPos.y + dy,
       };
-      setScene((s) => updateColliderPosition(s, ds.uid, pos));
+      setScene((s) => updateShapePosition(s, ds.bucket, ds.uid, pos));
       return;
     }
-    if (ds.kind === 'collider-resize-rect') {
+    if (ds.kind === 'shape-resize-rect') {
       const w = clientToWorld(ev);
       const r = resizedRect(ds.corner, ds.startPos, ds.startW, ds.startH, w);
       const snap = !ev.shiftKey;
       const newW = Math.max(2, snap ? Math.round(r.w) : r.w);
       const newH = Math.max(2, snap ? Math.round(r.h) : r.h);
       const newCenter = { x: r.x + newW / 2, y: r.y + newH / 2 };
-      setScene((s) =>
-        updateColliderRect(s, ds.uid, newCenter, newW, newH),
-      );
+      setScene((s) => updateShapeRect(s, ds.bucket, ds.uid, newCenter, newW, newH));
       return;
     }
-    if (ds.kind === 'collider-resize-circle') {
+    if (ds.kind === 'shape-resize-circle') {
       const w = clientToWorld(ev);
       const dx = w.x - ds.startCenter.x;
       const dy = w.y - ds.startCenter.y;
@@ -461,9 +517,7 @@ export function SceneEditor(props: Props) {
       let r = Math.sqrt(dx * dx + dy * dy);
       if (snap) r = Math.round(r);
       r = Math.max(2, r);
-      setScene((s) =>
-        updateColliderCircle(s, ds.uid, ds.startCenter, r),
-      );
+      setScene((s) => updateShapeCircle(s, ds.bucket, ds.uid, ds.startCenter, r));
       return;
     }
   }
@@ -485,8 +539,9 @@ export function SceneEditor(props: Props) {
       }
       return;
     }
-    if (ds.kind === 'collider-move') {
-      const cur = scene.colliders.find((c) => c.uid === ds.uid);
+    if (ds.kind === 'shape-move') {
+      const list = ds.bucket === 'colliders' ? scene.colliders : scene.zones;
+      const cur = list.find((c) => c.uid === ds.uid);
       if (
         cur &&
         (cur.position.x !== ds.startPos.x || cur.position.y !== ds.startPos.y)
@@ -495,8 +550,9 @@ export function SceneEditor(props: Props) {
       }
       return;
     }
-    if (ds.kind === 'collider-resize-rect') {
-      const cur = scene.colliders.find((c) => c.uid === ds.uid);
+    if (ds.kind === 'shape-resize-rect') {
+      const list = ds.bucket === 'colliders' ? scene.colliders : scene.zones;
+      const cur = list.find((c) => c.uid === ds.uid);
       if (cur && cur.shape.kind === 'rect') {
         const sizeChanged = cur.shape.w !== ds.startW || cur.shape.h !== ds.startH;
         const movedX = cur.position.x !== ds.startPos.x + ds.startW / 2;
@@ -515,8 +571,9 @@ export function SceneEditor(props: Props) {
       }
       return;
     }
-    if (ds.kind === 'collider-resize-circle') {
-      const cur = scene.colliders.find((c) => c.uid === ds.uid);
+    if (ds.kind === 'shape-resize-circle') {
+      const list = ds.bucket === 'colliders' ? scene.colliders : scene.zones;
+      const cur = list.find((c) => c.uid === ds.uid);
       if (cur && cur.shape.kind === 'circle' && cur.shape.r !== ds.startR) {
         scheduleSave({ kind: 'resize-circle-collider', ref: ds.ref, r: cur.shape.r });
       }
@@ -603,6 +660,10 @@ export function SceneEditor(props: Props) {
     () => scene?.colliders.find((c) => c.uid === selectedColliderUid) ?? null,
     [scene, selectedColliderUid],
   );
+  const selectedZone = useMemo(
+    () => scene?.zones.find((z) => z.uid === selectedZoneUid) ?? null,
+    [scene, selectedZoneUid],
+  );
 
   // -------- Render UI --------
 
@@ -612,6 +673,7 @@ export function SceneEditor(props: Props) {
         <span>{props.relPath}</span>
         {scene && <span className="badge-dim">{scene.props.length} props</span>}
         {scene && <span className="badge-dim">{scene.colliders.length} colliders</span>}
+        {scene && <span className="badge-dim">{scene.zones.length} zones</span>}
         {scene?.background && (
           <span className="badge-dim">
             {scene.background.source === 'tilemap-preview' ? 'tilemap (preview)' : 'image bg'}
@@ -672,8 +734,10 @@ export function SceneEditor(props: Props) {
           mode={mode}
           selectedProp={selectedProp}
           selectedCollider={selectedCollider}
+          selectedZone={selectedZone}
           onSelectProp={setSelectedNodePath}
           onSelectCollider={setSelectedColliderUid}
+          onSelectZone={setSelectedZoneUid}
         />
       </div>
     </div>
@@ -712,15 +776,19 @@ function ScenePanel({
   mode,
   selectedProp,
   selectedCollider,
+  selectedZone,
   onSelectProp,
   onSelectCollider,
+  onSelectZone,
 }: {
   scene: SceneModel | null;
   mode: EditMode;
   selectedProp: SceneProp | null;
   selectedCollider: SceneCollider | null;
+  selectedZone: SceneZone | null;
   onSelectProp: (path: string | null) => void;
   onSelectCollider: (uid: string | null) => void;
+  onSelectZone: (uid: string | null) => void;
 }) {
   return (
     <aside className="scene-panel">
@@ -844,6 +912,81 @@ function ScenePanel({
         </div>
       )}
 
+      {mode === 'zones' && (
+        <div className="scene-panel-section" style={{ flex: 1, minHeight: 0 }}>
+          <div className="scene-panel-title">Zones</div>
+          <div className="scene-panel-list">
+            {scene?.zones.map((z) => (
+              <button
+                key={z.uid}
+                className={`scene-prop-item ${selectedZone?.uid === z.uid ? 'active' : ''}`}
+                onClick={() => onSelectZone(z.uid)}
+                title={z.editable ? '' : 'Read-only'}
+              >
+                <span className="mono">
+                  {zoneIcon(z.zoneKind)} {z.name}
+                </span>
+                <span className="muted mono">{z.zoneKind}</span>
+              </button>
+            ))}
+            {scene && scene.zones.length === 0 && (
+              <div className="muted" style={{ padding: 8 }}>
+                No zones in this scene.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {mode === 'zones' && selectedZone && (
+        <div className="scene-panel-section">
+          <div className="scene-panel-title">Selected zone</div>
+          <div className="scene-panel-row">
+            <span className="muted">name</span>
+            <span className="mono">{selectedZone.name}</span>
+          </div>
+          <div className="scene-panel-row">
+            <span className="muted">kind</span>
+            <span className="mono">{selectedZone.zoneKind}</span>
+          </div>
+          <div className="scene-panel-row">
+            <span className="muted">shape</span>
+            <span className="mono">{selectedZone.shape.kind}</span>
+          </div>
+          <div className="scene-panel-row">
+            <span className="muted">center</span>
+            <span className="mono">
+              ({Math.round(selectedZone.position.x)}, {Math.round(selectedZone.position.y)})
+            </span>
+          </div>
+          {selectedZone.shape.kind === 'rect' && (
+            <div className="scene-panel-row">
+              <span className="muted">size</span>
+              <span className="mono">
+                {Math.round(selectedZone.shape.w)} × {Math.round(selectedZone.shape.h)}
+              </span>
+            </div>
+          )}
+          {selectedZone.shape.kind === 'circle' && (
+            <div className="scene-panel-row">
+              <span className="muted">radius</span>
+              <span className="mono">{Math.round(selectedZone.shape.r)}</span>
+            </div>
+          )}
+          {Object.entries(selectedZone.fields).length > 0 && (
+            <>
+              <div className="scene-panel-title sub">fields</div>
+              {Object.entries(selectedZone.fields).map(([k, v]) => (
+                <div className="scene-panel-row" key={k}>
+                  <span className="muted">{k}</span>
+                  <span className="mono">{String(v)}</span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
       {mode === 'colliders' && selectedCollider && (
         <div className="scene-panel-section">
           <div className="scene-panel-title">Selected collider</div>
@@ -896,10 +1039,19 @@ function ScenePanel({
       <div className="scene-panel-foot muted">
         {mode === 'props'
           ? 'Drag a prop to move. Drag empty space to pan. Wheel to zoom. Shift = sub-pixel.'
-          : 'Click a collider to select. Drag body to move, drag corner/handle to resize. Shift = sub-pixel.'}
+          : mode === 'colliders'
+          ? 'Click a collider to select. Drag body to move, drag corner/handle to resize.'
+          : 'Click a zone to select. Drag body to move, drag corner/handle to resize.'}
       </div>
     </aside>
   );
+}
+
+function zoneIcon(kind: ZoneKind): string {
+  if (kind === 'encounter') return '✦';
+  if (kind === 'exit') return '⤴';
+  if (kind === 'spawn') return '◆';
+  return '?';
 }
 
 function ModeToggle({ mode, setMode }: { mode: EditMode; setMode: (m: EditMode) => void }) {
@@ -922,6 +1074,15 @@ function ModeToggle({ mode, setMode }: { mode: EditMode; setMode: (m: EditMode) 
         title="Edit collision shapes"
       >
         colliders
+      </button>
+      <button
+        role="tab"
+        aria-selected={mode === 'zones'}
+        onClick={() => setMode('zones')}
+        className={`scene-mode-btn ${mode === 'zones' ? 'active' : ''}`}
+        title="Edit gameplay zones (encounter / exit / spawn)"
+      >
+        zones
       </button>
     </span>
   );
@@ -962,7 +1123,9 @@ async function decodeImages(r: LoadSceneResponse): Promise<ImageBank> {
 
 // ============= Collider helpers =============
 
-function rectFromCollider(c: SceneCollider): { x: number; y: number; w: number; h: number } {
+type AnyShape = SceneCollider | SceneZone;
+
+function rectFromShape(c: AnyShape): { x: number; y: number; w: number; h: number } {
   if (c.shape.kind !== 'rect') return { x: c.position.x, y: c.position.y, w: 0, h: 0 };
   return {
     x: c.position.x - c.shape.w / 2,
@@ -972,9 +1135,9 @@ function rectFromCollider(c: SceneCollider): { x: number; y: number; w: number; 
   };
 }
 
-function insideCollider(p: Vec2, c: SceneCollider): boolean {
+function insideShape(p: Vec2, c: AnyShape): boolean {
   if (c.shape.kind === 'rect') {
-    const r = rectFromCollider(c);
+    const r = rectFromShape(c);
     return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
   }
   if (c.shape.kind === 'circle') {
@@ -982,19 +1145,24 @@ function insideCollider(p: Vec2, c: SceneCollider): boolean {
     const dy = p.y - c.position.y;
     return dx * dx + dy * dy <= c.shape.r * c.shape.r;
   }
-  // polygon — point-in-polygon (ray cast)
-  const pts = c.shape.points;
-  let inside = false;
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-    const xi = pts[i].x;
-    const yi = pts[i].y;
-    const xj = pts[j].x;
-    const yj = pts[j].y;
-    const intersect =
-      yi > p.y !== yj > p.y && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi || 1e-9) + xi;
-    if (intersect) inside = !inside;
+  if (c.shape.kind === 'polygon') {
+    const pts = c.shape.points;
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const xi = pts[i].x;
+      const yi = pts[i].y;
+      const xj = pts[j].x;
+      const yj = pts[j].y;
+      const intersect =
+        yi > p.y !== yj > p.y && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi || 1e-9) + xi;
+      if (intersect) inside = !inside;
+    }
+    return inside;
   }
-  return inside;
+  // 'point' — small hit radius around the marker
+  const dx = p.x - c.position.x;
+  const dy = p.y - c.position.y;
+  return dx * dx + dy * dy <= 12 * 12;
 }
 
 function resizedRect(
@@ -1037,49 +1205,78 @@ function resizedRect(
   return { x, y, w, h };
 }
 
-function updateColliderPosition(
+function updateShapePosition(
   s: SceneModel | null,
+  bucket: 'colliders' | 'zones',
   uid: string,
   position: Vec2,
 ): SceneModel | null {
   if (!s) return s;
+  if (bucket === 'colliders') {
+    return {
+      ...s,
+      colliders: s.colliders.map((c) => (c.uid === uid ? { ...c, position } : c)),
+    };
+  }
   return {
     ...s,
-    colliders: s.colliders.map((c) => (c.uid === uid ? { ...c, position } : c)),
+    zones: s.zones.map((z) => (z.uid === uid ? { ...z, position } : z)),
   };
 }
 
-function updateColliderRect(
+function updateShapeRect(
   s: SceneModel | null,
+  bucket: 'colliders' | 'zones',
   uid: string,
   position: Vec2,
   w: number,
   h: number,
 ): SceneModel | null {
   if (!s) return s;
+  if (bucket === 'colliders') {
+    return {
+      ...s,
+      colliders: s.colliders.map((c) =>
+        c.uid === uid && c.shape.kind === 'rect'
+          ? { ...c, position, shape: { kind: 'rect', w, h } }
+          : c,
+      ),
+    };
+  }
   return {
     ...s,
-    colliders: s.colliders.map((c) =>
-      c.uid === uid && c.shape.kind === 'rect'
-        ? { ...c, position, shape: { kind: 'rect', w, h } }
-        : c,
+    zones: s.zones.map((z) =>
+      z.uid === uid && z.shape.kind === 'rect'
+        ? { ...z, position, shape: { kind: 'rect', w, h } }
+        : z,
     ),
   };
 }
 
-function updateColliderCircle(
+function updateShapeCircle(
   s: SceneModel | null,
+  bucket: 'colliders' | 'zones',
   uid: string,
   position: Vec2,
   r: number,
 ): SceneModel | null {
   if (!s) return s;
+  if (bucket === 'colliders') {
+    return {
+      ...s,
+      colliders: s.colliders.map((c) =>
+        c.uid === uid && c.shape.kind === 'circle'
+          ? { ...c, position, shape: { kind: 'circle', r } }
+          : c,
+      ),
+    };
+  }
   return {
     ...s,
-    colliders: s.colliders.map((c) =>
-      c.uid === uid && c.shape.kind === 'circle'
-        ? { ...c, position, shape: { kind: 'circle', r } }
-        : c,
+    zones: s.zones.map((z) =>
+      z.uid === uid && z.shape.kind === 'circle'
+        ? { ...z, position, shape: { kind: 'circle', r } }
+        : z,
     ),
   };
 }
@@ -1116,13 +1313,32 @@ function drawCollider(
   selected: boolean,
   scale: number,
 ) {
-  const { stroke, fill } = colliderColor(c, active);
+  drawShape(ctx, c, colliderColor(c, active), selected, scale);
+}
+
+function drawZone(
+  ctx: CanvasRenderingContext2D,
+  z: SceneZone,
+  active: boolean,
+  selected: boolean,
+  scale: number,
+) {
+  drawShape(ctx, z, zoneColor(z.zoneKind, active), selected, scale);
+}
+
+function drawShape(
+  ctx: CanvasRenderingContext2D,
+  c: AnyShape,
+  colors: { stroke: string; fill: string },
+  selected: boolean,
+  scale: number,
+) {
   ctx.lineWidth = (selected ? 2 : 1.25) / scale;
-  ctx.strokeStyle = stroke;
-  ctx.fillStyle = fill;
+  ctx.strokeStyle = colors.stroke;
+  ctx.fillStyle = colors.fill;
 
   if (c.shape.kind === 'rect') {
-    const r = rectFromCollider(c);
+    const r = rectFromShape(c);
     ctx.beginPath();
     ctx.rect(r.x, r.y, r.w, r.h);
     ctx.fill();
@@ -1141,8 +1357,7 @@ function drawCollider(
     if (selected && c.editable) {
       drawHandle(ctx, c.position.x + c.shape.r, c.position.y, scale);
     }
-  } else {
-    // polygon
+  } else if (c.shape.kind === 'polygon') {
     if (c.shape.points.length < 2) return;
     ctx.beginPath();
     ctx.moveTo(c.shape.points[0].x, c.shape.points[0].y);
@@ -1152,12 +1367,44 @@ function drawCollider(
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+  } else {
+    // 'point' — diamond marker
+    const s = 8 / scale;
+    ctx.beginPath();
+    ctx.moveTo(c.position.x, c.position.y - s);
+    ctx.lineTo(c.position.x + s, c.position.y);
+    ctx.lineTo(c.position.x, c.position.y + s);
+    ctx.lineTo(c.position.x - s, c.position.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
   }
 
   if (selected) {
-    // Label name above collider
     drawLabel(ctx, c.position.x, c.position.y, c.name, scale);
   }
+}
+
+function zoneColor(kind: ZoneKind, active: boolean): { stroke: string; fill: string } {
+  let stroke = 'rgba(180, 140, 255, 0.95)'; // unknown / default
+  let fill = 'rgba(180, 140, 255, 0.16)';
+  if (kind === 'encounter') {
+    stroke = 'rgba(220, 140, 220, 0.95)'; // pink/magenta
+    fill = 'rgba(220, 140, 220, 0.18)';
+  } else if (kind === 'exit') {
+    stroke = 'rgba(140, 230, 200, 0.95)'; // teal
+    fill = 'rgba(140, 230, 200, 0.18)';
+  } else if (kind === 'spawn') {
+    stroke = 'rgba(255, 220, 100, 1)'; // yellow
+    fill = 'rgba(255, 220, 100, 0.55)';
+  }
+  if (!active) {
+    return {
+      stroke: stroke.replace(/0\.95\)/, '0.5)').replace(/1\)/, '0.55)'),
+      fill: fill.replace(/0\.18\)/, '0.06)').replace(/0\.16\)/, '0.06)').replace(/0\.55\)/, '0.18)'),
+    };
+  }
+  return { stroke, fill };
 }
 
 function drawHandle(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number) {
@@ -1257,9 +1504,9 @@ function sceneBounds(s: SceneModel, bank: ImageBank): { x: number; y: number; w:
     const r = propBounds(p, bank);
     if (r) rects.push(r);
   }
-  for (const c of s.colliders) {
+  for (const c of [...s.colliders, ...s.zones]) {
     if (c.shape.kind === 'rect') {
-      rects.push(rectFromCollider(c));
+      rects.push(rectFromShape(c));
     } else if (c.shape.kind === 'circle') {
       rects.push({
         x: c.position.x - c.shape.r,
@@ -1267,7 +1514,7 @@ function sceneBounds(s: SceneModel, bank: ImageBank): { x: number; y: number; w:
         w: c.shape.r * 2,
         h: c.shape.r * 2,
       });
-    } else if (c.shape.points.length > 0) {
+    } else if (c.shape.kind === 'polygon' && c.shape.points.length > 0) {
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       for (const p of c.shape.points) {
         if (p.x < minX) minX = p.x;
@@ -1276,6 +1523,8 @@ function sceneBounds(s: SceneModel, bank: ImageBank): { x: number; y: number; w:
         if (p.y > maxY) maxY = p.y;
       }
       rects.push({ x: minX, y: minY, w: maxX - minX, h: maxY - minY });
+    } else if (c.shape.kind === 'point') {
+      rects.push({ x: c.position.x - 8, y: c.position.y - 8, w: 16, h: 16 });
     }
   }
   if (rects.length === 0) return { x: 0, y: 0, w: 1024, h: 1024 };

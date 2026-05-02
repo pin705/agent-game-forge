@@ -8,6 +8,7 @@ import type {
   SceneModel,
   SceneOp,
   SceneProp,
+  SceneZone,
 } from '@ogf/contracts';
 import {
   applyJsonColliderEdit,
@@ -18,6 +19,7 @@ import {
   writeTscnResizeCircle,
   writeTscnResizeRect,
 } from './colliders.js';
+import { findZonesJsonPath, readJsonZones, readTscnZones } from './zones.js';
 import {
   findBodyLine,
   formatVector2,
@@ -343,6 +345,27 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
     }
   }
 
+  // ----- Zones -----
+  // Prefer .tscn-resident zones (Area2D / Marker2D). Fall back to JSON sidecar.
+  const tscnZones: SceneZone[] = readTscnZones(parsed);
+  let zones: SceneZone[] = tscnZones;
+  let zonesJsonPath: string | null = null;
+  if (tscnZones.length === 0) {
+    const jsonRel = findZonesJsonPath(opts.rootAbs, opts.relPath);
+    if (jsonRel) {
+      zones = readJsonZones(opts.rootAbs, jsonRel);
+      zonesJsonPath = jsonRel;
+    }
+  } else {
+    const jsonRel = findZonesJsonPath(opts.rootAbs, opts.relPath);
+    if (jsonRel) {
+      zonesJsonPath = jsonRel;
+      notes.push(
+        `A JSON zones sidecar exists at ${jsonRel} — edits go to the .tscn (the scene-tree source of truth).`,
+      );
+    }
+  }
+
   const scene: SceneModel = {
     scenePath: opts.relPath,
     rootName,
@@ -350,6 +373,8 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
     props,
     colliders,
     collidersJsonPath,
+    zones,
+    zonesJsonPath,
     notes,
   };
 
