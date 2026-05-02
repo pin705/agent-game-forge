@@ -193,10 +193,10 @@ export function PlayPane(props: Props) {
     stdoutBufferRef.current = '';
     stderrBufferRef.current = '';
     try {
-      const r = await startGodot({
-        projectPath: props.projectPath,
-        mainScene: props.mainScene ?? undefined,
-      });
+      // Don't pass mainScene as a positional arg — let Godot resolve from
+      // project.godot's run/main_scene. Matches `godot --path X` behavior
+      // exactly so OGF Play === a normal "press F5 in Godot" run.
+      const r = await startGodot({ projectPath: props.projectPath });
       attachToRun(r.runId);
     } catch (err) {
       pushLine({
