@@ -972,6 +972,97 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
 }
 .dropzone .add-btn:hover { color: var(--accent); border-color: var(--accent-line); }
 
+/* Non-image attachment chip */
+.dropzone .ref-file {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 48px;
+  padding: 0 8px 0 6px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+  max-width: 220px;
+}
+.dropzone .ref-file-ico { font-size: 18px; line-height: 1; flex-shrink: 0; }
+.dropzone .ref-file-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.dropzone .ref-file-size {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+.dropzone .ref-file .x {
+  position: absolute; top: -4px; right: -4px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--bg-0);
+  border: 1px solid var(--line-strong);
+  color: var(--ink-1);
+  font-size: 10px;
+  line-height: 1;
+  display: grid; place-items: center;
+  z-index: 2;
+}
+.dropzone .ref-file .x:hover { color: var(--red); border-color: var(--red); }
+
+/* Drag-anywhere overlay on the agent pane */
+.agent-pane { position: relative; }
+.agent-drag-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklch, var(--accent-soft) 80%, transparent);
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  z-index: 10;
+  pointer-events: none;
+  backdrop-filter: blur(2px);
+}
+.agent-drag-card {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--ink-0);
+}
+.agent-drag-icon { font-size: 36px; margin-bottom: 8px; }
+.agent-drag-card .muted { color: var(--ink-2); }
+
+/* Paperclip button in composer */
+.attach-btn {
+  background: transparent;
+  border: 0;
+  color: var(--ink-2);
+  font-size: 18px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  align-self: flex-end;
+  margin-bottom: 4px;
+}
+.attach-btn:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--bg-3);
+}
+.attach-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 /* composer */
 .composer {
   border-top: 1px solid var(--line);

@@ -36,7 +36,7 @@ import { SceneEditor } from './components/SceneEditor.js';
 import { PlayPane } from './components/PlayPane.js';
 import { Header, type Theme } from './components/Header.js';
 import { StatusBar } from './components/StatusBar.js';
-import { Dropzone } from './components/Dropzone.js';
+import { Dropzone, type DropzoneHandle } from './components/Dropzone.js';
 import { FolderPickerModal } from './components/FolderPickerModal.js';
 import { PendingChangesModal } from './components/PendingChangesModal.js';
 import { ImportCodexSessionModal } from './components/ImportCodexSessionModal.js';
@@ -1146,9 +1146,65 @@ function AgentPane(props: {
   const currentTitle =
     props.conversations.find((c) => c.id === props.conversationId)?.title || 'New conversation';
   const isResuming = !!props.conversations.find((c) => c.id === props.conversationId)?.codexThreadId;
+  const dropzoneRef = useRef<DropzoneHandle>(null);
+  const [dragOver, setDragOver] = useState(false);
+  // Track depth of nested dragenter/leave events so we don't flicker the overlay.
+  const dragDepthRef = useRef(0);
+
+  function isFileDrag(e: React.DragEvent): boolean {
+    const types = e.dataTransfer?.types;
+    if (!types) return false;
+    for (let i = 0; i < types.length; i++) {
+      if (types[i] === 'Files') return true;
+    }
+    return false;
+  }
+
+  function onDragEnter(e: React.DragEvent) {
+    if (!isFileDrag(e) || !props.project) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setDragOver(true);
+  }
+  function onDragOver(e: React.DragEvent) {
+    if (!isFileDrag(e) || !props.project) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }
+  function onDragLeave(e: React.DragEvent) {
+    if (!isFileDrag(e)) return;
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragOver(false);
+  }
+  function onDrop(e: React.DragEvent) {
+    if (!isFileDrag(e) || !props.project) return;
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setDragOver(false);
+    if (e.dataTransfer.files.length > 0) {
+      void dropzoneRef.current?.uploadFiles(e.dataTransfer.files);
+    }
+  }
 
   return (
-    <aside className="agent-pane">
+    <aside
+      className={`agent-pane ${dragOver ? 'dragover' : ''}`}
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {dragOver && (
+        <div className="agent-drag-overlay">
+          <div className="agent-drag-card">
+            <div className="agent-drag-icon">📎</div>
+            <div>Drop to attach</div>
+            <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+              Any file — images, audio, configs, code, etc.
+            </div>
+          </div>
+        </div>
+      )}
       <div className="agent-head">
         <span className="title">Codex</span>
         <span className="sub">· {props.agent?.version?.replace(/^codex-cli\s*/, '') || 'detecting'}</span>
@@ -1212,6 +1268,7 @@ function AgentPane(props: {
       </div>
 
       <Dropzone
+        ref={dropzoneRef}
         projectPath={props.project?.path ?? null}
         refs={props.refs}
         onChange={props.onRefsChange}
@@ -1253,6 +1310,14 @@ function AgentPane(props: {
           </span>
         </div>
         <div className="composer-box">
+          <button
+            className="attach-btn"
+            onClick={() => dropzoneRef.current?.openFilePicker()}
+            disabled={!props.project}
+            title="Attach files (drag-and-drop also works)"
+          >
+            📎
+          </button>
           <ComposerTextarea
             value={props.prompt}
             onChange={props.setPrompt}

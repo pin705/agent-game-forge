@@ -183,24 +183,26 @@ export function deleteProjectFile(rootAbs: string, relPath: string): void {
 }
 
 const REF_DIR = '.ogf/refs';
-const ALLOWED_REF_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
+const MAX_REF_BYTES = 100 * 1024 * 1024; // 100 MB sanity cap
 
 export function saveRefImage(
   rootAbs: string,
   filename: string,
   base64: string,
 ): { relPath: string; absPath: string; size: number } {
-  const ext = path.extname(filename).toLowerCase();
-  if (!ALLOWED_REF_EXT.has(ext)) {
-    throw new Error(`unsupported image extension: ${ext || '(none)'}`);
-  }
+  // Accept any file type — references can be images, audio, text, configs, etc.
+  // Keep the function name 'saveRefImage' for API stability; semantics broadened.
   // sanitize: strip directory parts, keep base
   const safeName = path.basename(filename).replace(/[^A-Za-z0-9._-]+/g, '_');
+  if (!safeName) throw new Error('filename required');
   const relPath = `${REF_DIR}/${Date.now()}_${safeName}`;
   const abs = safeJoin(rootAbs, relPath);
   mkdirSync(path.dirname(abs), { recursive: true });
 
   const buf = Buffer.from(base64, 'base64');
+  if (buf.length > MAX_REF_BYTES) {
+    throw new Error(`file too large (${buf.length} bytes, max ${MAX_REF_BYTES})`);
+  }
   writeFileSync(abs, buf);
   return { relPath, absPath: abs, size: buf.length };
 }
