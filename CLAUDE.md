@@ -17,8 +17,6 @@ Project wiki directory: `C:\Users\User\.termhive\wiki\GameMaker`
 You are **Full-Stack**.
 
 Other agents you can message:
-- **FullStack** (claude)
-- **game_maker** (claude)
 - **agent-sprite-forge** (codex)
 
 To send a message to a teammate, use the `message_agent` MCP tool:
