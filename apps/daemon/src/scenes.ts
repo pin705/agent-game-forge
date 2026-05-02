@@ -27,6 +27,7 @@ import {
   readTscnZones,
 } from './zones.js';
 import { readTscnPaths, writeTscnMovePathPoint } from './paths.js';
+import { isWebLevelJson, loadWebLevel } from './web-scene.js';
 import {
   findBodyLine,
   formatVector2,
@@ -212,6 +213,17 @@ export interface LoadOptions {
 }
 
 export function loadScene(opts: LoadOptions): LoadSceneResponse {
+  // Web engine: a level is a JSON file. Dispatch to the web-scene loader.
+  if (opts.relPath.toLowerCase().endsWith('.json')) {
+    const abs = safeJoin(opts.rootAbs, opts.relPath);
+    if (!existsSync(abs)) throw new Error(`level not found: ${opts.relPath}`);
+    const probe = readFileSync(abs, 'utf8');
+    if (isWebLevelJson(probe)) {
+      return loadWebLevel(opts.rootAbs, opts.relPath);
+    }
+    throw new Error('JSON file is not a level (missing mapSize)');
+  }
+
   // If the requested scene is just a wrapper that instances another scene,
   // follow the instance and load that one instead.
   const actualRelPath = resolveActualScenePath(opts.rootAbs, opts.relPath);

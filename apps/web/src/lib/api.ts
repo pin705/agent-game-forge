@@ -7,6 +7,8 @@ import type {
   ApplySceneOpsRequest,
   ApplySceneOpsResponse,
   CommentThread,
+  CreateProjectRequest,
+  CreateProjectResponse,
   Conversation,
   ConversationsResponse,
   CreateCommentThreadRequest,
@@ -60,6 +62,13 @@ export const openProject = (path: string) =>
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path } satisfies OpenProjectRequest),
+  });
+
+export const createProject = (req: CreateProjectRequest) =>
+  jsonFetch<CreateProjectResponse>('/api/projects/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
   });
 
 export const fetchAnalyze = (projectPath: string) =>

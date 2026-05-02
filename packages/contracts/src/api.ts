@@ -50,6 +50,21 @@ export interface OpenProjectRequest {
   path: string;
 }
 
+export interface CreateProjectRequest {
+  /** Absolute path the new project folder should live at. */
+  path: string;
+  /** Engine to scaffold. Web is `Canvas 2D + vanilla JS`. Unity disabled for now. */
+  engine: Extract<EngineKind, 'godot' | 'web'>;
+  /** Display name (used for project.godot config/name and HTML <title>). */
+  name: string;
+}
+
+export interface CreateProjectResponse {
+  project: Project;
+  /** Files written by the scaffold (skipped any that already existed). */
+  files: string[];
+}
+
 export interface ProjectsResponse {
   projects: Project[];
 }

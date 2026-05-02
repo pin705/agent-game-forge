@@ -43,6 +43,9 @@ import { findSessionsForCwd, replaySession } from './codex-sessions.js';
 import { applyOps as applySceneOps, loadScene } from './scenes.js';
 import { detectGodot, GodotRunManager } from './godot.js';
 import { formatSceneContextSnippet, readSceneContext } from './scene-context.js';
+import { bootstrapProject } from './templates/bootstrap.js';
+import { summarizeConventions } from './templates/conventions.js';
+import { existsSync as fsExistsSync, readFileSync as fsReadFileSync } from 'node:fs';
 import {
   appendMessage as appendCommentMessage,
   createThread as createCommentThread,
@@ -62,6 +65,8 @@ import type {
   CreateCommentThreadRequest,
   CreateCommentThreadResponse,
   CreateConversationRequest,
+  CreateProjectRequest,
+  CreateProjectResponse,
   CreateRunRequest,
   CreateRunResponse,
   GodotActiveRunResponse,
@@ -128,6 +133,34 @@ export function createServer() {
 
     const row = upsertProject(abs);
     res.json({ project: rowToProject(row) });
+  });
+
+  app.post('/api/projects/create', (req, res) => {
+    const body = req.body as CreateProjectRequest;
+    if (!body?.path || !body?.engine || !body?.name) {
+      return res.status(400).json({ error: 'path, engine, name required' });
+    }
+    if (body.engine !== 'godot' && body.engine !== 'web') {
+      return res.status(400).json({ error: `unsupported engine: ${body.engine}` });
+    }
+    const abs = path.resolve(body.path);
+    try {
+      const { files } = bootstrapProject({
+        rootAbs: abs,
+        engine: body.engine,
+        name: body.name,
+      });
+      const row = upsertProject(abs);
+      const reply: CreateProjectResponse = {
+        project: rowToProject(row),
+        files,
+      };
+      res.json(reply);
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   });
 
   app.delete('/api/projects', (req, res) => {
@@ -835,14 +868,50 @@ function composePrompt(
   const sceneSnippet = formatSceneContextSnippet(ctx);
   const sceneBlock = sceneSnippet ? `\n${sceneSnippet}\n` : '';
 
+  // Per-project conventions — written by `bootstrapProject` and editable.
+  // Read every turn; if missing, fall back to OGF's built-in summary so even
+  // legacy projects without the doc get the contract reminder.
+  const conventionsPath = path.join(cwd, '.ogf', 'conventions.md');
+  const hasProjectConventions = fsExistsSync(conventionsPath);
+  let conventionsBlock = '';
+  if (hasProjectConventions) {
+    try {
+      const text = fsReadFileSync(conventionsPath, 'utf8');
+      conventionsBlock = `\n# Project conventions (.ogf/conventions.md)\n\n${text}\n`;
+    } catch {
+      // ignore — fall through to summary below
+    }
+  }
+  if (!conventionsBlock) {
+    conventionsBlock = `\n${summarizeConventions()}\n`;
+  }
+
   if (isResumed) {
-    // No need to repeat the system instructions — they're in the prior turn.
-    return `${sceneBlock}${refs}# User request\n\n${userPrompt}\n`;
+    // Resumed turns skip the long system instructions — they're in the prior
+    // turn. Still include scene snippet + a short conventions reminder.
+    const reminder = `\n${summarizeConventions()}\n`;
+    return `${reminder}${sceneBlock}${refs}# User request\n\n${userPrompt}\n`;
   }
 
   return `# Open Game Forge — agent run
 
-You are working inside an Open Game Forge project. The user is editing a 2D game in this directory. Edit files on disk in the cwd. When generating visible assets, use image_gen and place files under assets/. Report changed files at the end.
+You are working inside an Open Game Forge project. The user is editing a 2D game in this directory. Edit files on disk in the cwd. When generating visible assets, use \`image_gen\` and place files under \`assets/\`. Report changed files at the end.
+
+# Asset / map generation skills
+
+Use the project-installed Codex skills when generating visual content:
+
+- **\`generate2dsprite\`** — for character / enemy / item / FX sprites and
+  animation sheets. Decide asset_type / action / view / sheet layout from
+  the user's request; the skill handles image_gen + chroma key + frame
+  alignment + transparent export.
+- **\`generate2dmap\`** — for level backgrounds, prop packs, tilesets,
+  parallax layers. The skill picks the right pipeline (baked / layered /
+  tilemap / parallax) and emits engine-native files (.tscn for Godot,
+  JSON-based for Web).
+
+Reach for these BEFORE writing custom \`image_gen\` prompts. They produce
+output that OGF can parse and edit.
 
 # Live editor state
 
@@ -850,9 +919,7 @@ The user's in-app scene editor writes its current state to \`.ogf/scene-context.
 - the user refers to \"this\" / \"the selected\" / a node by visual position
 - you need a list of all props / colliders / zones / paths beyond what's already in the per-turn snippet
 - you want to verify a position or shape before/after editing
-
-The file is YOUR live source of truth for the editor's state. Each user turn includes a small snapshot of the most relevant bits inline; cat the file for everything else.
-${sceneBlock}${refs}
+${conventionsBlock}${sceneBlock}${refs}
 # User request
 
 ${userPrompt}

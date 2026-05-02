@@ -1716,6 +1716,44 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   font-weight: 600;
 }
 
+/* Engine radio (new project picker) */
+.engine-radio {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  cursor: pointer;
+  text-align: left;
+  color: var(--ink-1);
+}
+.engine-radio:hover:not(:disabled) {
+  background: var(--bg-3);
+  border-color: var(--line-strong);
+}
+.engine-radio.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.engine-radio.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.engine-radio-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+.engine-radio-sub {
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
 /* =============== TABLE EDITOR (generic JSON) =============== */
 .table-editor {
   display: flex;

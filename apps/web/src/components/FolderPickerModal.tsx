@@ -7,6 +7,9 @@ interface Props {
   initialPath?: string;
   onCancel: () => void;
   onSelect: (path: string) => void;
+  /** Optional: when supplied, a 'Create new project' button starts a flow that
+   *  scaffolds a folder under the current directory and opens it. */
+  onCreateProject?: (opts: { parentPath: string; name: string; engine: 'godot' | 'web' }) => void;
 }
 
 const LS_LAST_BROWSE = 'ogf:lastBrowsePath';
@@ -19,6 +22,9 @@ export function FolderPickerModal(props: Props) {
   const [error, setError] = useState<string | null>(null);
   const [manualEntry, setManualEntry] = useState(false);
   const [manualPath, setManualPath] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newEngine, setNewEngine] = useState<'godot' | 'web'>('godot');
 
   useEffect(() => {
     let cancelled = false;
@@ -178,6 +184,15 @@ export function FolderPickerModal(props: Props) {
             )}
           </span>
           <span className="grow" />
+          {props.onCreateProject && data?.cwd && (
+            <button
+              className="btn btn-sm"
+              onClick={() => setCreating(true)}
+              title="Scaffold a new project under the current folder"
+            >
+              + New project
+            </button>
+          )}
           <button className="btn btn-sm" onClick={props.onCancel}>Cancel</button>
           <button
             className="btn btn-sm btn-primary"
@@ -189,6 +204,122 @@ export function FolderPickerModal(props: Props) {
           </button>
         </div>
       </div>
+
+      {creating && data?.cwd && props.onCreateProject && (
+        <div className="modal-scrim" style={{ zIndex: 30 }} onClick={() => setCreating(false)}>
+          <div
+            className="modal"
+            style={{ height: 'auto', width: 'min(440px, 90vw)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-head">
+              <span className="title">Create new project</span>
+              <button className="close" onClick={() => setCreating(false)}>{I.close}</button>
+            </div>
+            <div style={{ padding: 18, display: 'grid', gap: 14 }}>
+              <div style={{ display: 'grid', gap: 4 }}>
+                <label className="muted" style={{ fontSize: 11 }}>Parent folder</label>
+                <code className="mono" style={{ fontSize: 11, color: 'var(--ink-1)' }}>
+                  {data.cwd}
+                </code>
+              </div>
+              <div style={{ display: 'grid', gap: 4 }}>
+                <label className="muted" style={{ fontSize: 11 }}>Project name</label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="my-game"
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: 'var(--radius)',
+                    border: '1px solid var(--line)',
+                    background: 'var(--bg-2)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 12,
+                    color: 'var(--ink-0)',
+                  }}
+                />
+              </div>
+              <div style={{ display: 'grid', gap: 6 }}>
+                <label className="muted" style={{ fontSize: 11 }}>Engine</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <EngineRadio
+                    value="godot"
+                    label="Godot 4"
+                    sub=".tscn / .gd / data JSON"
+                    checked={newEngine === 'godot'}
+                    onSelect={() => setNewEngine('godot')}
+                  />
+                  <EngineRadio
+                    value="web"
+                    label="Web (Canvas 2D)"
+                    sub="vanilla JS + JSON levels"
+                    checked={newEngine === 'web'}
+                    onSelect={() => setNewEngine('web')}
+                  />
+                  <EngineRadio
+                    value="unity"
+                    label="Unity"
+                    sub="not yet supported"
+                    checked={false}
+                    onSelect={() => undefined}
+                    disabled
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="modal-foot">
+              <span className="grow" />
+              <button className="btn btn-sm" onClick={() => setCreating(false)}>Cancel</button>
+              <button
+                className="btn btn-sm btn-primary"
+                disabled={!newName.trim()}
+                onClick={() => {
+                  if (!newName.trim() || !data.cwd) return;
+                  props.onCreateProject?.({
+                    parentPath: data.cwd,
+                    name: newName.trim(),
+                    engine: newEngine,
+                  });
+                }}
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function EngineRadio({
+  value,
+  label,
+  sub,
+  checked,
+  onSelect,
+  disabled,
+}: {
+  value: string;
+  label: string;
+  sub: string;
+  checked: boolean;
+  onSelect: () => void;
+  disabled?: boolean;
+}) {
+  void value;
+  return (
+    <button
+      type="button"
+      className={`engine-radio${checked ? ' selected' : ''}${disabled ? ' disabled' : ''}`}
+      disabled={disabled}
+      onClick={onSelect}
+    >
+      <span className="engine-radio-label">{label}</span>
+      <span className="engine-radio-sub">{sub}</span>
+    </button>
   );
 }

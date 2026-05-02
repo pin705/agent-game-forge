@@ -14,6 +14,7 @@ import {
   cancelRun,
   clearPendingSlices,
   createConversation,
+  createProject,
   createRun,
   deleteFile,
   fetchAgents,
@@ -584,11 +585,15 @@ export function App() {
             tree={fileTree}
             selectedFile={selectedFile}
             onSelectFile={(rel, fk) => {
-              // .tscn → scenes (canvas view); everything else → assets
-              // (which now hosts Monaco / FileEditor / TableEditor for any kind).
+              // .tscn → scenes (canvas view); web levels (data/*.json with
+              // mapSize) → also scenes; everything else → assets.
               const ext = rel.split('.').pop()?.toLowerCase() ?? '';
               const isScene = ext === 'tscn';
-              setTab(isScene ? 'scenes' : 'assets');
+              const isWebLevel =
+                project?.engine === 'web' &&
+                ext === 'json' &&
+                rel.startsWith('data/');
+              setTab(isScene || isWebLevel ? 'scenes' : 'assets');
               setSelectedFile({ relPath: rel, fileKind: fk });
             }}
             onCloseFile={() => setSelectedFile(null)}
@@ -675,6 +680,27 @@ export function App() {
           initialPath={project?.path}
           onCancel={() => setShowOpenModal(false)}
           onSelect={(p) => void handleOpenProject(p)}
+          onCreateProject={async ({ parentPath, name, engine }) => {
+            // Create the folder under parentPath / name and scaffold it.
+            const slug = name.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+            const sep = parentPath.includes('\\') ? '\\' : '/';
+            const fullPath = `${parentPath}${parentPath.endsWith(sep) ? '' : sep}${slug}`;
+            try {
+              const r = await createProject({ path: fullPath, engine, name });
+              setProjects((prev) => {
+                const without = prev.filter((p) => p.path !== r.project.path);
+                return [r.project, ...without];
+              });
+              setShowOpenModal(false);
+              await selectProject(r.project);
+            } catch (err) {
+              notify({
+                kind: 'error',
+                title: 'Could not create project',
+                body: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }}
         />
       )}
 
@@ -896,12 +922,19 @@ function EditorPane(props: {
             <ProjectWelcome project={props.project} />
           )
         )}
-        {props.tab === 'scenes' && (
-          props.selectedFile && props.selectedFile.relPath.toLowerCase().endsWith('.tscn') ? (
+        {props.tab === 'scenes' && (() => {
+          const file = props.selectedFile;
+          const ext = file?.relPath.split('.').pop()?.toLowerCase();
+          const isSceneFile =
+            ext === 'tscn' ||
+            (ext === 'json' &&
+              props.project.engine === 'web' &&
+              !!file?.relPath.startsWith('data/'));
+          return isSceneFile && file ? (
             <SceneEditor
-              key={props.selectedFile.relPath}
+              key={file.relPath}
               projectPath={props.project.path}
-              relPath={props.selectedFile.relPath}
+              relPath={file.relPath}
               reloadKey={props.sceneReloadKey}
               onAskCodex={props.onAskCodex}
               onClose={props.onCloseFile}
@@ -914,8 +947,8 @@ function EditorPane(props: {
               usedAssets={props.usedAssets}
               mainScene={props.mainScene}
             />
-          )
-        )}
+          );
+        })()}
         {props.tab === 'play' && (
           <PlayPane
             projectPath={props.project.path}
@@ -981,7 +1014,7 @@ function ScenePicker({
   }, [usedOnly]);
 
   const all: FileNode[] = [];
-  if (tree) collectScenes(tree, all);
+  if (tree) collectScenes(tree, all, project.engine);
 
   const items = all.map((s) => {
     const isMain = mainScene === s.relPath;
@@ -1046,12 +1079,25 @@ function ScenePicker({
   );
 }
 
-function collectScenes(node: FileNode, out: FileNode[]) {
+function isWebLevelCandidate(rel: string): boolean {
+  // Web projects: data/<level>.json files are level candidates. We don't
+  // probe the contents here (that would require reading every JSON); the
+  // Sengoku-style naming convention is enough for picker purposes.
+  if (!rel.toLowerCase().endsWith('.json')) return false;
+  if (!rel.startsWith('data/')) return false;
+  // Skip catalogs / index files we know aren't levels.
+  const base = rel.split('/').pop() ?? '';
+  if (/^(enemies|heroes|towers|items|waves|levels)\.json$/i.test(base)) return false;
+  return true;
+}
+
+function collectScenes(node: FileNode, out: FileNode[], engine?: string) {
   if (node.kind === 'file') {
     if (node.name.toLowerCase().endsWith('.tscn')) out.push(node);
+    else if (engine === 'web' && isWebLevelCandidate(node.relPath)) out.push(node);
     return;
   }
-  for (const c of node.children ?? []) collectScenes(c, out);
+  for (const c of node.children ?? []) collectScenes(c, out, engine);
 }
 
 function PlaceholderView({ title, hint }: { title: string; hint: string }) {
