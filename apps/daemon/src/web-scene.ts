@@ -144,25 +144,32 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
   }
 
   // ---- Props ----
+  // Sengoku-Era convention (and our Web standard): each prop's (x, y) is the
+  // BOTTOM-CENTER anchor — y is the ground line. w / h are fixed display
+  // pixel dimensions, independent of the texture's natural size.
   const rawProps = Array.isArray(data.props) ? (data.props as RectLike[]) : [];
   for (const p of rawProps) {
     const image = typeof p.image === 'string' ? p.image : null;
     if (!image) continue;
-    const center = entryCenterPosition(p);
+    const id = String(p.id ?? `prop_${counter++}`);
+    const x = Number(p.x ?? 0);
+    const y = Number(p.y ?? 0);
     const w = Number(p.w ?? 0);
     const h = Number(p.h ?? 0);
     referenced.add(image);
     props.push({
-      nodePath: `props/${String(p.id ?? `prop_${counter++}`)}`,
-      name: String(p.id ?? `prop_${counter}`),
-      position: center,
-      spriteOffset: { x: 0, y: 0 },
-      // Scale derived from w/h vs the image's natural size — fixed at 1 here
-      // because we don't know the natural size at JSON load time. The canvas
-      // will draw using w/h directly via the shape rect; scale stays at 1.
+      nodePath: `props/${id}`,
+      name: id,
+      // Drag handle = the JSON's (x, y) i.e. bottom-center / feet point.
+      position: { x, y },
+      // Visual center = (x, y - h/2). spriteOffset shifts up by h/2 so the
+      // bounding box renders correctly above the drag handle.
+      spriteOffset: { x: 0, y: -h / 2 },
       scale: { x: 1, y: 1 },
       texture: image,
-      metadata: { w: String(w), h: String(h) },
+      metadata: typeof p.sortY === 'number' ? { sortY: String(p.sortY) } : {},
+      displaySize: { x: w, y: h },
+      ref: { backend: 'json', relPath, section: 'props', id },
     });
   }
 

@@ -505,6 +505,14 @@ export function applyOps(opts: ApplyOpsOptions): ApplyOpsResult {
 
   for (const op of opts.ops) {
     if (op.kind === 'move-prop') {
+      // Web prop: ref points at a JSON entry. Patch x/y in the JSON file.
+      if (op.ref?.backend === 'json') {
+        applyJsonColliderEdit(opts.rootAbs, op.ref, {
+          x: op.position.x,
+          y: op.position.y,
+        });
+        continue;
+      }
       const section = nodes.byPath.get(op.nodePath);
       if (!section) throw new Error(`node not found: ${op.nodePath}`);
       const newLine = `position = ${formatVector2(op.position)}`;

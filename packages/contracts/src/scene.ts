@@ -25,7 +25,7 @@ export interface SceneProp {
   nodePath: string;
   /** Display label. */
   name: string;
-  /** Parent Node2D position — what the user drags. */
+  /** What the user drags — written back as the prop's position. */
   position: Vec2;
   /** Sprite2D child render offset. */
   spriteOffset: Vec2;
@@ -35,6 +35,12 @@ export interface SceneProp {
   texture: string | null;
   /** prop_type, encounter_zone_id, etc. — preserved verbatim. */
   metadata: Record<string, string>;
+  /** When set, render at this size (overrides naturalSize × scale). Used by
+   *  web props that store fixed w/h in JSON instead of a Godot-style scale. */
+  displaySize?: Vec2;
+  /** When set, write-back goes through this ref instead of the default
+   *  Godot .tscn nodePath path. Used for web JSON-backed props. */
+  ref?: ColliderRef;
 }
 
 export type ColliderShape =
@@ -165,6 +171,8 @@ export interface MovePropOp {
   kind: 'move-prop';
   nodePath: string;
   position: Vec2;
+  /** When set, write to the JSON-backed location instead of the .tscn node. */
+  ref?: ColliderRef;
 }
 
 /** Scale a prop's Sprite2D (independent X/Y scale). */
@@ -172,6 +180,10 @@ export interface ScalePropOp {
   kind: 'scale-prop';
   nodePath: string;
   scale: Vec2;
+  /** When set, write to the JSON-backed location (uses displaySize w/h fields). */
+  ref?: ColliderRef;
+  /** Web-only: the new display w/h for the JSON entry (when ref is set). */
+  displaySize?: Vec2;
 }
 
 export interface MoveColliderOp {

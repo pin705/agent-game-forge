@@ -976,9 +976,12 @@ export function SceneEditor(props: Props) {
         moved &&
         (moved.position.x !== ds.startProp.x || moved.position.y !== ds.startProp.y)
       ) {
+        // Web-backed props carry a ref so the daemon writes to JSON instead
+        // of trying to find a (non-existent) .tscn node.
+        const ref = moved.ref;
         commitOps(
-          [{ kind: 'move-prop', nodePath: ds.nodePath, position: moved.position }],
-          [{ kind: 'move-prop', nodePath: ds.nodePath, position: ds.startProp }],
+          [{ kind: 'move-prop', nodePath: ds.nodePath, position: moved.position, ref }],
+          [{ kind: 'move-prop', nodePath: ds.nodePath, position: ds.startProp, ref }],
           `move ${ds.nodePath.split('/').pop() ?? ds.nodePath}`,
         );
       }
@@ -3059,11 +3062,20 @@ function drawLabel(ctx: CanvasRenderingContext2D, x: number, y: number, text: st
 }
 
 function propBounds(p: SceneProp, bank: ImageBank) {
-  if (!p.texture) return null;
-  const size = bank.sizes.get(p.texture);
-  if (!size) return null;
-  const w = size.w * Math.abs(p.scale.x);
-  const h = size.h * Math.abs(p.scale.y);
+  // Web props carry an explicit displaySize from the JSON (their
+  // declared w/h). Godot props rely on naturalSize × scale.
+  const size = p.texture ? bank.sizes.get(p.texture) : null;
+  let w: number;
+  let h: number;
+  if (p.displaySize) {
+    w = p.displaySize.x;
+    h = p.displaySize.y;
+  } else if (size) {
+    w = size.w * Math.abs(p.scale.x);
+    h = size.h * Math.abs(p.scale.y);
+  } else {
+    return null;
+  }
   // Sprite2D draws centered at its origin by default. Origin = parent.position + sprite.offset.
   const cx = p.position.x + p.spriteOffset.x;
   const cy = p.position.y + p.spriteOffset.y;
