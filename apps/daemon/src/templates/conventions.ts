@@ -208,7 +208,9 @@ state machine, an entity's update loop).
 
 OGF uses \`data/levels.json\` to decide which JSON files are levels (open in
 the Scenes tab as a draggable canvas) versus which are catalogs (open as a
-table). If you add a new scene, add it to \`data/levels.json\` immediately:
+table). If you add a new scene, add it to \`data/levels.json\` immediately.
+
+Two equivalent shapes — both work, OGF parses either:
 
 \`\`\`json
 {
@@ -218,6 +220,16 @@ table). If you add a new scene, add it to \`data/levels.json\` immediately:
   ]
 }
 \`\`\`
+
+\`\`\`json
+[
+  { "id": "outdoor", "file": "data/outdoor-collision-map.json" },
+  { "id": "temple",  "file": "data/temple-collision-map.json"  }
+]
+\`\`\`
+
+Each entry MUST have at least \`id\` and \`file\`. Extra fields (display name,
+mapKey, etc.) are fine — OGF ignores them but your game can use them.
 
 Any \`data/*.json\` NOT listed here (enemies, items, audio-themes, assets) is
 treated as a catalog and won't be routed to the Scenes tab. Don't store

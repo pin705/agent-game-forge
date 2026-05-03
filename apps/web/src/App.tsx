@@ -288,18 +288,25 @@ export function App() {
         setWebLevelFiles(new Set());
         return;
       }
-      const parsed = JSON.parse(r.content) as {
-        levels?: Array<{ id?: string; file?: string }>;
-      };
+      const parsed = JSON.parse(r.content) as unknown;
+      // Accept either shape (both are conventional):
+      //   { "levels": [ { id, file }, ... ] }   ← bootstrap template
+      //   [ { id, file }, ... ]                 ← bare array (Codex sometimes
+      //                                           prefers this for catalogs)
+      let entries: Array<{ id?: string; file?: string }> = [];
+      if (Array.isArray(parsed)) {
+        entries = parsed as Array<{ id?: string; file?: string }>;
+      } else if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { levels?: unknown }).levels)) {
+        entries = (parsed as { levels: Array<{ id?: string; file?: string }> }).levels;
+      }
       const files = new Set<string>();
-      for (const lv of parsed.levels ?? []) {
+      for (const lv of entries) {
         if (typeof lv.file === 'string') files.add(lv.file.replace(/\\/g, '/'));
       }
       setWebLevelFiles(files);
     } catch {
-      // No levels.json (legacy / pre-conventions project). Fall back to a
-      // permissive heuristic in the routing branch (collision-map / level
-      // in the filename).
+      // No levels.json (legacy / pre-conventions project). Routing falls
+      // back to a name-based heuristic; badges just won't show.
       setWebLevelFiles(new Set());
     }
   }, []);
