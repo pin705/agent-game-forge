@@ -50,6 +50,17 @@ window/stretch/mode="canvas_items"
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
+
+[debug]
+
+; Codex-generated GDScript leans heavily on Dictionary / JSON access.
+; Treating Variant inference / untyped declarations as ERROR makes the
+; project unloadable after almost every iteration. Keep them as warnings.
+gdscript/warnings/treat_warnings_as_errors=false
+gdscript/warnings/inferred_declaration=1
+gdscript/warnings/untyped_declaration=1
+gdscript/warnings/unsafe_property_access=0
+gdscript/warnings/unsafe_method_access=0
 `;
 
 const GODOT_MAIN_TSCN = `[gd_scene load_steps=2 format=3]
