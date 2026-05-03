@@ -304,6 +304,15 @@ export function createServer() {
       fallthrough: false,
       etag: false,
       cacheControl: false,
+      // Force the browser to revalidate every request. Without this, no
+      // Cache-Control header is sent and the browser falls back to heuristic
+      // caching (LM-based) — so a freshly-saved JSON might not be re-fetched
+      // on the next iframe reload, and the user sees the OLD scene state.
+      // 'no-store' is the bluntest option but it's correct for a live editor.
+      setHeaders: (res) => {
+        res.setHeader('Cache-Control', 'no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+      },
     })(req, res, next);
   });
 
