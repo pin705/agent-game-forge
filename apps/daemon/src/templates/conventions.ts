@@ -162,25 +162,47 @@ config/features=PackedStringArray("4.5")
 
 const WEB = `## Web (Canvas 2D + vanilla JS) specifics
 
-### File layout
+### File layout — modular by responsibility
+
+The bootstrap scaffolds a minimal split that's the OGF contract: each module
+owns one job, stays under ~300 lines, and is independently understandable.
+Add new modules as the game grows — don't fold new responsibilities into an
+existing module to "save a file".
+
 \`\`\`
 index.html
 styles.css
 src/
-  game.js                   ← main entry; load data, run loop, render
-  level.js                  ← (optional) level loading helper
-  player.js / enemy.js      ← gameplay modules
+  game.js                   ← entry: boot + frame loop. STAYS SMALL (<60 lines).
+  scene.js                  ← level JSON loading, scene state, draw dispatch
+  render.js                 ← camera (sx/sy), background + props draw primitives
+  input.js                  ← keyboard/mouse → poll-able intent surface
+  assets.js                 ← loadJSON / loadImage helpers (no game state)
+  collision.js              ← ADD when checking blockers/walkBounds at runtime
+  battle.js                 ← ADD when introducing a combat scene / state machine
+  ui.js                     ← ADD for HUD, dialogs, menus
+  entities/
+    player.js               ← ADD when player has its own update logic
+    enemy.js                ← ADD when enemies have their own update logic
 data/
-  levels.json               ← list of level ids → file
-  <level-id>.json           ← one file per level (see schema below)
-  enemies.json              ← catalog
+  levels.json               ← list of { id, file } — one entry per scene
+  <level-id>.json           ← one file per scene (see schema below)
+  enemies.json              ← catalog (array-of-objects)
   heroes.json
   items.json
+  waves.json                ← (TD games) wave timeline
 assets/
   maps/<level-id>.png       ← background per level
-  sprites/<thing>/...
+  props/<id>/prop.png       ← single sprite props
+  sprites/<thing>/sheet.png ← multi-frame characters
   sounds/...
 \`\`\`
+
+**Why this split**: each module aligns with an OGF editor surface. \`scene.js\`
++ level JSON ↔ Scenes tab. Catalogs ↔ Table editor. \`waves.json\` ↔ Timeline
+editor. Code that grows past 300 lines is a sign to split — pick the smallest
+new module that lifts a single responsibility out (collision math, battle
+state machine, an entity's update loop).
 
 ### Per-level JSON schema
 
@@ -221,30 +243,44 @@ the JSON in place.
 
 ### Code patterns
 
-- **\`game.js\` MUST read level JSON at boot. Never hardcode coordinates,
+- **Level JSON is loaded from disk every boot. Never hardcode coordinates,
   prop lists, or catalogs in JS.** The whole point of the JSON layout is
   that OGF (or the user, or Codex) can edit data/\\*.json and the next
-  reload sees the change with zero code edits.
+  reload sees the change with zero code edits. If you find yourself writing
+  a literal array of \`{ x, y, image }\` in a .js file — STOP and put it in a
+  level/catalog JSON instead.
 
   \`\`\`js
-  const level = await fetch('data/temple.json').then(r => r.json());
-  ctx.drawImage(await loadImage(level.background), 0, 0);
+  // scene.js
+  const level = await loadJSON('data/temple.json');
   for (const p of level.props) {
     ctx.drawImage(images[p.image], p.x - p.w/2, p.y - p.h, p.w, p.h);
   }
-  for (const b of level.blockers) drawShape(b);
   \`\`\`
 
 - Pre-load every \`props[*].image\` into an \`images\` map keyed by the
   path string itself; look up via \`images[p.image]\` at draw time.
 - Catalogs (\`enemies.json\`, \`items.json\`) are array-of-objects; load once
   at boot, look up by id at runtime.
-- Keep \`game.js\` modular. If it grows past ~600 lines, split into
-  \`level.js\` / \`player.js\` / \`combat.js\` etc.
 
-The bootstrap \`src/game.js\` already wires this pipeline up (fitCanvas →
-loadPropImages → frame loop with z-sorted prop draw). Build on top of it;
-don't replace the data-loading skeleton.
+### Module split rules (when to break out a new file)
+
+The bootstrap ships with five files (\`game / scene / render / input /
+assets\`). Add another when ANY of these is true:
+
+- A module exceeds ~300 lines.
+- You're about to add a second responsibility to an existing module
+  (e.g. combat math creeping into scene.js → split into \`battle.js\`).
+- You're adding a poll-able state machine (battle, dialog, menu) — give
+  it its own module so the loop in game.js stays a one-line dispatch.
+- An entity has its own update loop / per-frame logic — promote it to
+  \`entities/<thing>.js\`.
+
+DON'T pre-create empty files for "future" modules. Add them when the
+threshold trips, not before.
+
+The bootstrap's \`src/game.js\` is intentionally tiny (boot + dispatch loop).
+Don't grow it. New work goes in scene.js or its own module.
 
 ### Image generation
 

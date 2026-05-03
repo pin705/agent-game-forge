@@ -109,6 +109,7 @@ export function analyzeProject(rootAbs: string, engine: EngineKind): AnalyzeResu
         ext !== '.ts' &&
         ext !== '.tsx' &&
         ext !== '.css' &&
+        ext !== '.json' &&
         !isLauncher
       ) {
         return;
@@ -135,13 +136,46 @@ export function analyzeProject(rootAbs: string, engine: EngineKind): AnalyzeResu
       }
     }
     if (engine === 'web') {
-      // Naive: catch import './foo.png' / from "./foo.svg" / src="./foo.gif"
-      const re = /["']\.{0,2}\/?([^"'\s]+\.(?:png|jpg|jpeg|gif|webp|bmp|svg|mp3|wav|ogg|webm|mp4))["']/gi;
+      // Quoted relative path with a known extension. Catches:
+      //   <link href="styles.css">  <script src="src/game.js">
+      //   import './scene.js'  fetch('data/level1.json')
+      //   "image": "assets/props/x.png"  (inside JSON catalogs)
+      //   "file": "data/level2.json"     (inside levels.json)
+      // Group 1 = leading prefix (./ or ../ or /), group 2 = the path itself.
+      const re =
+        /["'](\.{0,2}\/)?([^"'\s]+\.(?:png|jpg|jpeg|gif|webp|bmp|svg|mp3|wav|ogg|webm|mp4|json|js|jsx|ts|tsx|css|html|htm))["']/gi;
       let m: RegExpExecArray | null;
+      const fileDir = path
+        .relative(rootAbs, path.dirname(filePath))
+        .replace(/\\/g, '/');
       while ((m = re.exec(content)) !== null) {
-        used.add(m[1].replace(/\\/g, '/'));
+        const prefix = m[1] ?? '';
+        const captured = m[2].replace(/\\/g, '/');
+        // ./ or ../ → resolve relative to the file's directory.
+        // Bare relative (no prefix) is ambiguous: HTML attrs like src="src/game.js"
+        // are project-root-relative, but JS imports are file-relative. We add
+        // BOTH interpretations to the set; harmless if one doesn't exist.
+        if (prefix.startsWith('.')) {
+          used.add(normalizeRel(path.posix.join(fileDir, prefix + captured)));
+        } else if (prefix === '/') {
+          used.add(captured);
+        } else {
+          used.add(captured);
+          if (fileDir) used.add(normalizeRel(path.posix.join(fileDir, captured)));
+        }
       }
     }
+  }
+
+  function normalizeRel(p: string): string {
+    // collapse ../ segments, strip leading ./
+    const parts: string[] = [];
+    for (const seg of p.split('/')) {
+      if (seg === '' || seg === '.') continue;
+      if (seg === '..') parts.pop();
+      else parts.push(seg);
+    }
+    return parts.join('/');
   }
 
   walk(rootAbs);
