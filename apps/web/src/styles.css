@@ -303,6 +303,10 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
 
 .editor-body { display: grid; grid-template-columns: 248px 1fr; min-height: 0; }
 [data-density="compact"] .editor-body { grid-template-columns: 220px 1fr; }
+/* Grid items default to min-width: auto (= content size), so a wide table
+ * inside the 1fr track can grow the track past its declared size. Force
+ * each child to be allowed to shrink. */
+.editor-body > * { min-width: 0; }
 
 /* =============== FILE TREE =============== */
 .tree-pane {
@@ -1802,6 +1806,11 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   display: flex;
   flex-direction: column;
   flex: 1;
+  /* min-width: 0 is critical: without it, a flex child's default min size
+   * is its content size, so the wide inner table would push this container
+   * past its parent and the .table-editor-scroll's overflow-x can never
+   * trigger. Same reasoning as min-height: 0 for vertical scrolling. */
+  min-width: 0;
   min-height: 0;
   background: var(--bg-0);
 }

@@ -326,7 +326,7 @@ Show me the diff before applying.`;
       {truncated && <div className="msg-sys" style={{ margin: 12, alignSelf: 'flex-start' }}>{I.warn} File too large ({formatSize(size)})</div>}
 
       {kind === 'text' && content !== null && showAsTable && (
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <TableEditor
             content={content}
             projectPath={props.projectPath}
