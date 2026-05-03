@@ -20,7 +20,11 @@ export interface AgentsResponse {
   agents: AgentInfo[];
 }
 
-export type ReasoningEffort = 'low' | 'medium' | 'high' | 'extra_high';
+// Mirrors the values Codex CLI accepts for `model_reasoning_effort`. Don't
+// invent variants — the CLI's enum is `none / minimal / low / medium / high / xhigh`,
+// and OGF previously sent `extra_high` which the CLI rejects with
+// 'unknown variant'.
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 
 export interface CreateRunRequest {
   agentId: AgentId;
