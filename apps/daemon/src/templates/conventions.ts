@@ -69,10 +69,35 @@ For sprite / animation assets, USE the **\`generate2dsprite\`** Codex skill.
 It handles image_gen + chroma key + frame slicing. Don't roll your own.
 
 For maps and tiles / props, USE the **\`generate2dmap\`** skill. It picks the
-right pipeline (baked / layered / tilemap) and emits OGF-compatible JSON.
+right pipeline (baked / layered / tilemap) and writes sliced sprite files
+under \`assets/\` plus a metadata JSON under \`data/\`.
 
 When the user asks "make me a slime", reach for these skills before writing
 custom image_gen prompts.
+
+### Generating ≠ done — you MUST wire it into game data
+
+Both skills produce ASSETS only. The generated \`assets/\*\` files are
+invisible until something references them in the gameplay data the engine
+reads. This is the most common failure mode: Codex calls the skill, sprites
+land on disk, the user reloads the game and sees nothing.
+
+After the skill finishes, in the same turn you MUST:
+
+1. Decide where the new asset belongs (which level / which catalog).
+2. Edit the appropriate data file to add the reference:
+   - **prop sprites** → append to the active level's \`props[]\` (web) or
+     instance the sprite under the appropriate node (godot)
+   - **enemy / hero sprites** → add an entry to \`data/enemies.json\` /
+     \`data/heroes.json\` with the new \`sprite\` path
+   - **item / pickup sprites** → add an entry to \`data/items.json\`
+   - **map background** → set the level's \`background\` field
+
+The pack metadata file the skill writes (e.g. \`data/han-stage-prop-pack.json\`
+with an \`accepted\` array of label / crop boxes) is for the slicing tool ONLY.
+It is NOT the gameplay data; it never gets loaded by the game. If you stop
+after that file is written, the user sees nothing in OGF and nothing in
+their game.
 
 ## Read the live state before answering spatial questions
 
@@ -319,8 +344,37 @@ Same skills as Godot:
 - \`generate2dsprite\` for character / enemy / item sprites
 - \`generate2dmap\` for backgrounds + props
 
-The generated assets land under \`assets/\`; you wire them into the level
-JSONs by editing \`background\` / \`props[*].image\` etc.
+The generated assets land under \`assets/\`. The cross-engine "you MUST wire
+it into game data" rule applies — for web, that means editing the level JSON.
+
+#### Wiring \`generate2dmap\` prop pack → level JSON
+
+The skill writes one sprite per accepted entry to
+\`assets/props/<pack-name>/<label>/prop.png\` and a metadata pack at
+\`data/<pack-name>-prop-pack.json\` with an \`accepted\` array. For each
+accepted entry, append an entry to the active level's \`props[]\`:
+
+\`\`\`js
+// pack metadata entry  →  OGF level prop
+{
+  label: "stone-floor",       →   id:    "stone-floor",
+  // (image file lives at      →   image: "assets/props/<pack>/stone-floor/prop.png",
+  //  the path above)
+  // crop_bbox: [x0,y0,x1,y1]  →   w:     <x1-x0>,
+  //   gives natural size      →   h:     <y1-y0>,
+  //                           →   x:     <pick a sensible spot on the level>,
+  //                           →   y:     <ground line for that spot>,  // bottom-center anchor
+}
+\`\`\`
+
+Pick \`x\` / \`y\` based on what the prop IS — a stone-floor goes on the
+ground, a fortress-gate spans an entry, a bamboo-spike sits on a
+walkable surface. If you don't know where, place them in a row near
+the spawn so the user can see them and drag them to the right spots.
+
+After this edit, the level reload (in the Web Play tab) will show
+the new props immediately. If \`level.props\` is still empty after a
+\`generate2dmap\` turn, the work isn't done.
 
 ### What NOT to do
 
@@ -349,6 +403,9 @@ export function summarizeConventions(): string {
 - One level per JSON file.
 - For sprites use the \`generate2dsprite\` Codex skill; for maps use
   \`generate2dmap\`. They handle image_gen + post-processing.
+- Generating ≠ done. After the skill writes assets, you MUST edit the
+  level / catalog JSON to reference them, or the user sees nothing. The
+  \`*-prop-pack.json\` metadata file is NOT the gameplay data.
 - Live editor state is at .ogf/scene-context.json — cat it for spatial info.
 
 Engine-specific rules in .ogf/conventions.md (read it when starting fresh
