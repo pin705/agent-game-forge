@@ -204,6 +204,25 @@ editor. Code that grows past 300 lines is a sign to split — pick the smallest
 new module that lifts a single responsibility out (collision math, battle
 state machine, an entity's update loop).
 
+### \`data/levels.json\` is the level registry — keep it accurate
+
+OGF uses \`data/levels.json\` to decide which JSON files are levels (open in
+the Scenes tab as a draggable canvas) versus which are catalogs (open as a
+table). If you add a new scene, add it to \`data/levels.json\` immediately:
+
+\`\`\`json
+{
+  "levels": [
+    { "id": "outdoor", "file": "data/outdoor-collision-map.json" },
+    { "id": "temple",  "file": "data/temple-collision-map.json"  }
+  ]
+}
+\`\`\`
+
+Any \`data/*.json\` NOT listed here (enemies, items, audio-themes, assets) is
+treated as a catalog and won't be routed to the Scenes tab. Don't store
+gameplay numbers inside levels.json itself — it's a routing manifest only.
+
 ### Per-level JSON schema
 
 Each level file has this shape (extra fields are fine):

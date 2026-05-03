@@ -20,6 +20,7 @@ import {
   fetchAgents,
   fetchAnalyze,
   fetchConversations,
+  fetchFileContent,
   fetchFileTree,
   fetchMessages,
   fetchPendingSlices,
@@ -116,6 +117,11 @@ export function App() {
   const [showNewFile, setShowNewFile] = useState(false);
   const [usedAssets, setUsedAssets] = useState<Set<string>>(new Set());
   const [mainScene, setMainScene] = useState<string | null>(null);
+  // Web projects: data/*.json that data/levels.json lists. Used to route file
+  // clicks — only THESE go to the Scenes tab. Other JSONs (catalogs / wave
+  // files / arbitrary data) stay in the Assets tab so they don't fail the
+  // SceneEditor's mapSize check.
+  const [webLevelFiles, setWebLevelFiles] = useState<Set<string>>(new Set());
 
   // Navigation history (back/forward through tab + file selection)
   type NavState = { tab: Tab; selectedFile: { relPath: string; fileKind?: FileNode['fileKind'] } | null };
@@ -266,6 +272,38 @@ export function App() {
       });
   }, []);
 
+  // Web only: read data/levels.json and remember which file paths are levels.
+  // The Sengoku layout has data/<scene>-collision-map.json next to data/
+  // catalogs (enemies.json, items.json, ...). Only the level files should
+  // route to the Scenes tab; catalogs stay in Assets to avoid the
+  // 'JSON file is not a level (missing mapSize)' error from SceneEditor.
+  const loadWebLevelRegistry = useCallback(async (p: Project) => {
+    if (p.engine !== 'web') {
+      setWebLevelFiles(new Set());
+      return;
+    }
+    try {
+      const r = await fetchFileContent(p.path, 'data/levels.json');
+      if (!r.content) {
+        setWebLevelFiles(new Set());
+        return;
+      }
+      const parsed = JSON.parse(r.content) as {
+        levels?: Array<{ id?: string; file?: string }>;
+      };
+      const files = new Set<string>();
+      for (const lv of parsed.levels ?? []) {
+        if (typeof lv.file === 'string') files.add(lv.file.replace(/\\/g, '/'));
+      }
+      setWebLevelFiles(files);
+    } catch {
+      // No levels.json (legacy / pre-conventions project). Fall back to a
+      // permissive heuristic in the routing branch (collision-map / level
+      // in the filename).
+      setWebLevelFiles(new Set());
+    }
+  }, []);
+
   // Boot
   useEffect(() => {
     fetchAgents()
@@ -329,6 +367,7 @@ export function App() {
       fetchRefs(p.path)
         .then((r) => setRefs(r.refs))
         .catch(() => setRefs([]));
+      void loadWebLevelRegistry(p);
 
       // Default-load the main scene if we don't have a saved selection yet.
       // We wait for analyze to come back so mainScene is known.
@@ -585,14 +624,24 @@ export function App() {
             tree={fileTree}
             selectedFile={selectedFile}
             onSelectFile={(rel, fk) => {
-              // .tscn → scenes (canvas view); web levels (data/*.json with
-              // mapSize) → also scenes; everything else → assets.
-              const ext = rel.split('.').pop()?.toLowerCase() ?? '';
+              // .tscn → scenes (canvas view); web levels listed in
+              // data/levels.json → also scenes; everything else (including
+              // data/enemies.json and other catalogs) → assets.
+              const relPosix = rel.replace(/\\/g, '/');
+              const ext = relPosix.split('.').pop()?.toLowerCase() ?? '';
               const isScene = ext === 'tscn';
-              const isWebLevel =
-                project?.engine === 'web' &&
-                ext === 'json' &&
-                rel.startsWith('data/');
+              let isWebLevel = false;
+              if (project?.engine === 'web' && ext === 'json' && relPosix.startsWith('data/')) {
+                if (webLevelFiles.size > 0) {
+                  isWebLevel = webLevelFiles.has(relPosix);
+                } else {
+                  // No levels.json registry → permissive name-based heuristic.
+                  isWebLevel =
+                    /(?:^|\/)(?:[^/]*-)?(?:collision-map|level)(?:-[^/]+)?\.json$/i.test(
+                      relPosix,
+                    );
+                }
+              }
               setTab(isScene || isWebLevel ? 'scenes' : 'assets');
               setSelectedFile({ relPath: rel, fileKind: fk });
             }}
