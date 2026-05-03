@@ -9,6 +9,9 @@ import { TableEditor } from './TableEditor.js';
 interface Props {
   projectPath: string;
   relPath: string;
+  /** Engine kind from the daemon's analysis. Drives engine-specific Codex
+   *  prompts (e.g. 'apply slicing' wording differs for godot vs web). */
+  engine?: string;
   fileKind?: 'text' | 'image' | 'binary';
   recentlyChanged?: boolean;
   onClose?: () => void;
@@ -237,9 +240,19 @@ export function FileEditor(props: Props) {
         ? '\n\nThis sheet is referenced in:\n' +
           usages.map((u) => `- ${u.file}:${u.line}  ${u.snippet}`).join('\n')
         : '';
+    // Engine-aware update instruction. Each engine stores frame metadata
+    // differently and lives in different files — the wrong wording sends
+    // Codex looking for keys that don't exist (e.g. searching for
+    // 'frame_cols' in a vanilla JS web project).
+    const updateInstruction =
+      props.engine === 'godot'
+        ? 'Please update the relevant Godot config so the game uses these values. Look for `frame_cols`, `frame_rows`, and `animation_fps` keys (or equivalent) in the .tscn / .tres / .gd files wherever this sheet is loaded, and update them.'
+        : props.engine === 'web'
+          ? "Please update the web project so the game uses these values. The sheet is sliced in JS — look at the references below (typically a Sprite/Animation entry in `data/*.json` or a constant in `src/*.js`) and update fields like `cols` / `rows` / `fps` / `frameWidth` / `frameHeight` / `anchor` / `offset` (whatever names the project actually uses; preserve them — don't rename)."
+          : 'Please update the project so the game uses these values. Look at the references below to find where this sheet is loaded and update the slicing metadata (cols / rows / fps / anchor / offset).';
     const prompt = `The sprite sheet \`${props.relPath}\` should be sliced as **${m.cols}×${m.rows}** at ${m.fps} fps (anchor: ${m.anchor}, padding ${m.padding}, offset (${m.offsetX}, ${m.offsetY})).
 
-Please update the relevant Godot config so the game uses these values. Look for \`frame_cols\`, \`frame_rows\`, and \`animation_fps\` keys (or equivalent) wherever this sheet is loaded, and update them.${usagesText}
+${updateInstruction}${usagesText}
 
 Show me the diff before applying.`;
     props.onAskCodex(prompt);

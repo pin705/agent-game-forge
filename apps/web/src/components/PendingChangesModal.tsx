@@ -4,6 +4,9 @@ import { useDialog } from '../lib/dialog.js';
 
 interface Props {
   pending: PendingSliceEntry[];
+  /** Engine kind from the daemon's analysis. Drives engine-specific Codex
+   *  wording in the batch-apply prompt. */
+  engine?: string;
   onClose: () => void;
   onApplyAll: (prompt: string) => void;
   onClearAll: () => void;
@@ -113,7 +116,7 @@ export function PendingChangesModal(props: Props) {
           <button
             className="btn btn-sm btn-primary"
             disabled={props.pending.length === 0}
-            onClick={() => props.onApplyAll(buildBatchPrompt(props.pending))}
+            onClick={() => props.onApplyAll(buildBatchPrompt(props.pending, props.engine))}
           >
             {I.spark} Apply all via Codex
           </button>
@@ -123,13 +126,25 @@ export function PendingChangesModal(props: Props) {
   );
 }
 
-export function buildBatchPrompt(pending: PendingSliceEntry[]): string {
+export function buildBatchPrompt(
+  pending: PendingSliceEntry[],
+  engine?: string,
+): string {
+  // Per-engine update wording. Searching for `frame_cols` in a vanilla JS
+  // web project sends Codex on a wild goose chase; web sheets are usually
+  // sliced via fields named `cols` / `rows` / `fps` in a JSON catalog or
+  // a constant in src/.
+  const updateLine =
+    engine === 'godot'
+      ? 'For each, please update the relevant Godot config (typically `frame_cols` / `frame_rows` / `animation_fps` in scenes, scripts, or `.tres` files) so the game uses the new values.'
+      : engine === 'web'
+        ? 'For each, please update the web project so the game uses the new values. Sheets are typically sliced via fields like `cols` / `rows` / `fps` / `frameWidth` / `frameHeight` / `anchor` / `offset` in a `data/*.json` catalog or a constant in `src/*.js` (preserve existing field names — don\'t rename them).'
+        : 'For each, please update the project so the game uses the new values. Look at the per-sheet usages below to find the slicing config and update cols / rows / fps / anchor / offset to match.';
   const lines: string[] = [
     '# Apply pending sprite slicing changes',
     '',
     `I have ${pending.length} sprite sheet${pending.length === 1 ? '' : 's'} whose slicing config was edited locally in OGF.`,
-    'For each, please update the relevant Godot config (typically `frame_cols` / `frame_rows` / `animation_fps`',
-    'in scenes, scripts, or `.tres` files) so the game uses the new values.',
+    updateLine,
     '',
     'Plan first (list the exact edits you would make). After I confirm, apply them.',
     'Once applied successfully, delete the `.ogf-slice.json` sidecar for that sheet so OGF stops showing it as pending.',

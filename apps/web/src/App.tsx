@@ -833,6 +833,7 @@ export function App() {
       {showPending && project && (
         <PendingChangesModal
           pending={pending}
+          engine={project?.engine}
           onClose={() => setShowPending(false)}
           onApplyAll={(promptText) => {
             setPrompt(promptText);
@@ -1003,6 +1004,7 @@ function EditorPane(props: {
               key={props.selectedFile.relPath}
               projectPath={props.project.path}
               relPath={props.selectedFile.relPath}
+              engine={props.project.engine}
               fileKind={
                 props.selectedFile.fileKind === 'binary'
                   ? 'binary'
