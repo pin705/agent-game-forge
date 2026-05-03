@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { detectAgents, getAgentDef, resolveOnPath } from './agents.js';
 import { spawnCodex, createJsonlParser } from './codex.js';
+import { splitFormsFromText } from './question-form.js';
 import { RunManager } from './runs.js';
 import {
   appendMessage,
@@ -828,10 +829,20 @@ export function createServer() {
     let agentTextBuffer = '';
 
     const parser = createJsonlParser({
-      onEvent: (ev) => {
-        agentEvents.push(ev);
-        if (ev.type === 'text_delta') agentTextBuffer += ev.delta;
-        runs.emitAgent(run, ev);
+      onEvent: (rawEv) => {
+        // Split agent text into prose + structured form events. Codex emits
+        // <question-form id="..."> blocks in its plain text — we extract
+        // them here so the UI can render real form controls and the chat
+        // log doesn't show raw XML.
+        const expanded =
+          rawEv.type === 'text_delta'
+            ? splitFormsFromText(rawEv.delta).events
+            : [rawEv];
+        for (const ev of expanded) {
+          agentEvents.push(ev);
+          if (ev.type === 'text_delta') agentTextBuffer += ev.delta;
+          runs.emitAgent(run, ev);
+        }
       },
       onThreadId: (id) => {
         if (!conv!.codex_thread_id) {
@@ -978,6 +989,90 @@ function composePrompt(
   return `# Open Game Forge — agent run
 
 You are working inside an Open Game Forge project. The user is editing a 2D game in this directory. Edit files on disk in the cwd. When generating visible assets, use \`image_gen\` and place files under \`assets/\`. Report changed files at the end.
+
+# Asking the user structured questions (\`<question-form>\`)
+
+When you need disambiguation BEFORE doing significant work — greenfield game spec, picking between architectures, choosing tone — DO NOT write prose questions. Emit a single \`<question-form>\` block that OGF renders as an interactive UI:
+
+\`\`\`
+<question-form id="game-discovery">
+{
+  "title": "Let's spec this game",
+  "intro": "Pick a few things and I'll write a spec + start work. Each completeness tier has a different scope and token budget.",
+  "fields": [
+    {
+      "key": "genre",
+      "label": "Genre",
+      "type": "radio",
+      "required": true,
+      "options": [
+        { "value": "platformer", "label": "Side-scroll platformer", "detail": "Mega Man, Celeste-style" },
+        { "value": "topdown",    "label": "Top-down action",       "detail": "Zelda, Hyper Light Drifter" },
+        { "value": "td",         "label": "Tower defense",         "detail": "Kingdom Rush, BTD" },
+        { "value": "shmup",      "label": "Shoot-em-up",           "detail": "vertical/horizontal scroller" }
+      ]
+    },
+    {
+      "key": "completeness",
+      "label": "Game completeness target",
+      "type": "radio",
+      "required": true,
+      "options": [
+        { "value": "minimal",  "label": "Minimal — toy demo",        "detail": "1 character (1 anim), 1 enemy, 1 short level. ~10K tokens. Done in 1 turn." },
+        { "value": "core",     "label": "Core — playable loop",      "detail": "1 character (3 anims), 3 enemy types, 1 level + boss, basic juice. ~30K tokens. 2-3 turns." },
+        { "value": "polished", "label": "Polished — full vertical slice", "detail": "2 characters (5 anims each), 5 enemies, 3 levels, pickups + score + menu. ~80K tokens. 5-7 turns." },
+        { "value": "full",     "label": "Full — substantial game",   "detail": "3+ characters (6+ anims each), 8+ enemies, 5+ levels + bosses, save system, polish. ~200K+ tokens. 10+ turns." }
+      ]
+    },
+    {
+      "key": "art_style",
+      "label": "Art style",
+      "type": "radio",
+      "options": [
+        { "value": "pixel",     "label": "Pixel art",     "detail": "16-bit / SNES feel" },
+        { "value": "cartoon",   "label": "Cartoon flat",  "detail": "vector / hand-drawn" },
+        { "value": "neon",      "label": "Neon / cyber",  "detail": "high contrast, glow" },
+        { "value": "retro",     "label": "Retro 80s",     "detail": "synthwave palette" }
+      ]
+    },
+    {
+      "key": "premise",
+      "label": "1-line premise",
+      "type": "textarea",
+      "placeholder": "e.g. ronin samurai battles oni demons in the sengoku era"
+    },
+    {
+      "key": "features",
+      "label": "Optional features",
+      "type": "checkbox",
+      "options": [
+        { "value": "music",      "label": "Background music" },
+        { "value": "sfx",        "label": "Sound effects" },
+        { "value": "save",       "label": "Save / checkpoints" },
+        { "value": "story",      "label": "Story dialog cutscenes" },
+        { "value": "controller", "label": "Gamepad support" }
+      ]
+    }
+  ]
+}
+</question-form>
+\`\`\`
+
+After emitting a form, **STOP your turn immediately**. Don't add any prose after \`</question-form>\`. Don't begin work. The user will fill the form; their answers arrive on the NEXT turn as a \`## Form answers (id=...)\` block. Read that block, then proceed.
+
+The completeness value MAPS to scope:
+
+- \`minimal\` → 1 character × 1 anim, 1 enemy, 1 short level. Skip catalogs, hardcode acceptable for V1. STOP after first deliverable.
+- \`core\` → 1 character × idle/walk/jump anims, 3 enemy types in catalog, 1 level + 1 boss room. Catalog files for enemies / items.
+- \`polished\` → 2 characters × 5 anims each, 5 enemies (with behavior variety), 3 levels, pickups system, scoring, menu screens. Sound hooks even if no audio.
+- \`full\` → 3+ characters × 6+ anims, 8+ enemies (including 2 bosses), 5+ levels with progression, save system, polish loops (juice, particles, screen shake).
+
+When to use a question-form:
+- ✅ User says "make me a game" / "build the whole thing" / "from scratch" — emit discovery form
+- ✅ User asks for something with multiple reasonable architectures — emit a tech-choice form
+- ✅ Mid-project, user proposes major pivot — confirm scope via form before refactoring
+- ❌ Small / unambiguous edits ("fix this typo", "add a tooltip") — just do it
+- ❌ User already gave clear constraints ("3 levels, pixel art, gamepad") — don't re-ask
 
 # Asset / map generation skills
 

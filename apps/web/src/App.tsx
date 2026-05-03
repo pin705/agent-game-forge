@@ -9,7 +9,7 @@ import type {
   ReasoningEffort,
   RefImage,
 } from '@ogf/contracts';
-import type { PendingSliceEntry } from '@ogf/contracts';
+import type { PendingSliceEntry, QuestionFormAnswers } from '@ogf/contracts';
 import {
   cancelRun,
   clearPendingSlices,
@@ -112,6 +112,13 @@ export function App() {
   const [runId, setRunId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [lastRunAt, setLastRunAt] = useState<number | null>(null);
+  // Form ids the user has submitted in this conversation. Locks the form
+  // card so it stays visible in chat history but can't be re-submitted.
+  // Reset by the useEffect below whenever the active conversation changes.
+  const [submittedForms, setSubmittedForms] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    setSubmittedForms(new Set());
+  }, [conversationId]);
 
   // Files / editor
   const [tab, setTab] = useState<Tab>('assets');
@@ -524,10 +531,34 @@ export function App() {
     });
   }
 
-  async function send() {
-    if (!agent?.available || !prompt.trim() || running || !project) return;
+  // Question-form submit: format answers as a prose block, lock the form,
+  // and immediately send as the next turn. We don't pre-fill the composer
+  // and ask the user to click Send again — the form's Submit IS that click.
+  const onSubmitForm = useCallback(
+    (answers: QuestionFormAnswers) => {
+      const lines: string[] = [`## Form answers (id=${answers.formId})`, ''];
+      for (const [key, value] of Object.entries(answers.answers)) {
+        if (Array.isArray(value)) {
+          lines.push(`- **${key}**: ${value.join(', ') || '(none)'}`);
+        } else {
+          lines.push(`- **${key}**: ${value}`);
+        }
+      }
+      const text = lines.join('\n');
+      setSubmittedForms((prev) => new Set([...prev, answers.formId]));
+      void send(text);
+    },
+    // send() reads many state vars; React state-closure is fine here because
+    // we use a ref / latest value via the override path inside send.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
-    const userText = prompt.trim();
+  async function send(overridePrompt?: string) {
+    const text = overridePrompt ?? prompt;
+    if (!agent?.available || !text.trim() || running || !project) return;
+
+    const userText = text.trim();
     setPrompt('');
 
     const newTurn: UiTurn = {
@@ -761,6 +792,8 @@ export function App() {
           pendingCount={pending.length}
           onOpenPending={() => setShowPending(true)}
           onImportSession={() => setShowImportSession(true)}
+          submittedForms={submittedForms}
+          onSubmitForm={onSubmitForm}
         />
       </div>
 
@@ -1279,6 +1312,10 @@ function AgentPane(props: {
   pendingCount: number;
   onOpenPending: () => void;
   onImportSession: () => void;
+  /** Form ids the user has already submitted in this conversation. */
+  submittedForms: Set<string>;
+  /** Called when user submits a question-form rendered inline in chat. */
+  onSubmitForm: (answers: QuestionFormAnswers) => void;
 }) {
   const currentTitle =
     props.conversations.find((c) => c.id === props.conversationId)?.title || 'New conversation';
@@ -1400,6 +1437,8 @@ function AgentPane(props: {
             startedAt={t.startedAt}
             endedAt={t.endedAt}
             error={t.error}
+            submittedForms={props.submittedForms}
+            onSubmitForm={props.onSubmitForm}
           />
         ))}
       </div>

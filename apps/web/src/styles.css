@@ -800,6 +800,152 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   font-size: 12px;
   overflow: hidden;
 }
+
+/* Question-form: agent-emitted structured questions. Lives inline in the
+ * chat log. Looks distinct from tool cards so users notice they need to
+ * answer something rather than just observe. */
+.qform {
+  border: 1px solid var(--accent-line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg-1);
+  padding: 12px 14px 14px;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.qform.locked {
+  border-color: var(--line);
+  border-left-color: var(--ink-3);
+  opacity: 0.85;
+}
+.qform-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 8px;
+}
+.qform-title {
+  font-weight: 600;
+  color: var(--ink-0);
+}
+.qform-locked-tag {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-2);
+  color: var(--ink-3);
+  margin-left: auto;
+}
+.qform-intro {
+  color: var(--ink-2);
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+.qform-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.qform-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.qform-label {
+  font-weight: 500;
+  color: var(--ink-1);
+  font-size: 12.5px;
+}
+.qform-hint {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  line-height: 1.4;
+  margin-top: -2px;
+  margin-bottom: 4px;
+}
+.qform-input,
+.qform-textarea,
+.qform-select {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--ink-0);
+  outline: none;
+}
+.qform-input:focus,
+.qform-textarea:focus,
+.qform-select:focus {
+  border-color: var(--accent);
+}
+.qform-textarea {
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
+}
+.qform-radio-group,
+.qform-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.qform-radio-row,
+.qform-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--bg-2);
+}
+.qform-radio-row:hover,
+.qform-checkbox-row:hover {
+  background: var(--bg-3);
+}
+.qform-radio-row.active,
+.qform-checkbox-row.active {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.qform-radio-row.locked,
+.qform-checkbox-row.locked {
+  cursor: default;
+}
+.qform-radio-row.locked:hover,
+.qform-checkbox-row.locked:hover {
+  background: var(--bg-2);
+}
+.qform-radio-row input,
+.qform-checkbox-row input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.qform-radio-text,
+.qform-checkbox-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.qform-radio-label {
+  font-weight: 500;
+  color: var(--ink-0);
+}
+.qform-radio-detail {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+.qform-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
 .tool-head {
   display: flex; align-items: center; gap: 8px;
   padding: 7px 10px;
