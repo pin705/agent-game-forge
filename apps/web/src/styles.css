@@ -1379,6 +1379,48 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
 .proj-dropdown-item.action { color: var(--accent); font-weight: 500; }
 .proj-dropdown-divider { height: 1px; background: var(--line); margin: 4px 0; }
 
+/* Project row: text on left, delete button on right. The button only
+ * shows on row hover (or always when in confirm state) so the dropdown
+ * stays clean. Two-click confirm: first click → red 'remove?', second
+ * → fires onDelete. */
+.proj-dropdown-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.proj-dropdown-text {
+  flex: 1;
+  min-width: 0;
+}
+.proj-dropdown-delete {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s, background 0.1s, border-color 0.1s;
+}
+.proj-dropdown-item:hover .proj-dropdown-delete { opacity: 1; }
+.proj-dropdown-delete:hover {
+  color: var(--red);
+  background: rgba(248, 113, 113, 0.08);
+}
+.proj-dropdown-delete.confirming {
+  opacity: 1;
+  color: var(--red);
+  background: rgba(248, 113, 113, 0.16);
+  border-color: oklch(0.7 0.18 25 / 0.45);
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+}
+
 /* Tree row depth indent (designer used --depth css var) — already in main CSS */
 
 /* msg-agent text paragraphs */

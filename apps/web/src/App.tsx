@@ -28,6 +28,7 @@ import {
   fetchRefs,
   openProject,
   removeConversation,
+  removeProject,
   subscribeRun,
   writeFileContent,
 } from './lib/api.js';
@@ -441,6 +442,41 @@ export function App() {
     [conversationId, askConfirm],
   );
 
+  const deleteProjectFromList = useCallback(
+    async (p: Project) => {
+      try {
+        await removeProject(p.path);
+        // Update the dropdown list immediately, then clean up local state if
+        // the active project was the one removed.
+        const remaining = projects.filter((x) => x.path !== p.path);
+        setProjects(remaining);
+        if (project?.path === p.path) {
+          // Active project was removed. Switch to the next remaining project,
+          // or fall back to the open-folder modal if the list is now empty.
+          const next = remaining[0] ?? null;
+          if (next) {
+            await selectProject(next);
+          } else {
+            setProject(null);
+            setSelectedFile(null);
+            setTurns([]);
+            setConversations([]);
+            setConversationId(null);
+            localStorage.removeItem(LS_PROJECT);
+            setShowOpenModal(true);
+          }
+        }
+      } catch (err) {
+        notify({
+          kind: 'error',
+          title: 'Could not remove project',
+          body: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+    [project, projects, selectProject, notify],
+  );
+
   const handleOpenProject = useCallback(
     async (rawPath: string) => {
       const trimmed = rawPath.trim();
@@ -610,6 +646,7 @@ export function App() {
         projects={projects}
         onSelectProject={(p) => void selectProject(p)}
         onOpenProject={() => setShowOpenModal(true)}
+        onDeleteProject={(p) => void deleteProjectFromList(p)}
         theme={theme}
         onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
         density={density}

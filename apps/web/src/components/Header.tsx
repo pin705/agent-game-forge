@@ -12,6 +12,8 @@ interface Props {
   projects: Project[];
   onSelectProject: (p: Project) => void;
   onOpenProject: () => void;
+  /** Remove a project from OGF's recent list. Files on disk are NOT touched. */
+  onDeleteProject?: (p: Project) => void;
   theme: Theme;
   onToggleTheme: () => void;
   density: Density;
@@ -43,6 +45,7 @@ export function Header(props: Props) {
           projects={props.projects}
           onSelect={props.onSelectProject}
           onOpen={props.onOpenProject}
+          onDelete={props.onDeleteProject}
         />
       </div>
 
@@ -95,8 +98,13 @@ function ProjectSwitcher(props: {
   projects: Project[];
   onSelect: (p: Project) => void;
   onOpen: () => void;
+  onDelete?: (p: Project) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // Two-click confirm: first × click sets this to the project's path; second
+  // click on the SAME × executes. Clicking anywhere else (or another row)
+  // clears it. Avoids native confirm() per OGF UX rules.
+  const [confirmingPath, setConfirmingPath] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -106,6 +114,12 @@ function ProjectSwitcher(props: {
     };
     window.addEventListener('mousedown', close);
     return () => window.removeEventListener('mousedown', close);
+  }, [open]);
+
+  // Reset the confirm state whenever the dropdown closes — a stale red
+  // 'remove?' button shouldn't be there next time the user opens it.
+  useEffect(() => {
+    if (!open) setConfirmingPath(null);
   }, [open]);
 
   return (
@@ -124,22 +138,53 @@ function ProjectSwitcher(props: {
           {props.projects.length === 0 && (
             <div className="proj-dropdown-empty">No recent projects</div>
           )}
-          {props.projects.map((p) => (
-            <div
-              key={p.path}
-              className={`proj-dropdown-item ${props.project?.path === p.path ? 'active' : ''}`}
-              onClick={() => {
-                props.onSelect(p);
-                setOpen(false);
-              }}
-              title={p.path}
-            >
-              <div className="proj-dropdown-name">{p.name}</div>
-              <div className="proj-dropdown-sub">
-                {p.engine} · {p.path}
+          {props.projects.map((p) => {
+            const confirming = confirmingPath === p.path;
+            return (
+              <div
+                key={p.path}
+                className={`proj-dropdown-item ${props.project?.path === p.path ? 'active' : ''}`}
+                onClick={() => {
+                  // Selecting a row also cancels any pending delete confirm.
+                  setConfirmingPath(null);
+                  props.onSelect(p);
+                  setOpen(false);
+                }}
+                title={p.path}
+              >
+                <div className="proj-dropdown-row">
+                  <div className="proj-dropdown-text">
+                    <div className="proj-dropdown-name">{p.name}</div>
+                    <div className="proj-dropdown-sub">
+                      {p.engine} · {p.path}
+                    </div>
+                  </div>
+                  {props.onDelete && (
+                    <button
+                      type="button"
+                      className={`proj-dropdown-delete ${confirming ? 'confirming' : ''}`}
+                      title={
+                        confirming
+                          ? 'Click again to confirm. Files on disk are NOT deleted.'
+                          : 'Remove from OGF (files on disk are kept)'
+                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirming) {
+                          props.onDelete!(p);
+                          setConfirmingPath(null);
+                        } else {
+                          setConfirmingPath(p.path);
+                        }
+                      }}
+                    >
+                      {confirming ? 'remove?' : '×'}
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           <div className="proj-dropdown-divider" />
           <div
             className="proj-dropdown-item action"
