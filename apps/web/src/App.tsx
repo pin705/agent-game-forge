@@ -532,27 +532,25 @@ export function App() {
   }
 
   // Question-form submit: format answers as a prose block, lock the form,
-  // and immediately send as the next turn. We don't pre-fill the composer
-  // and ask the user to click Send again — the form's Submit IS that click.
-  const onSubmitForm = useCallback(
-    (answers: QuestionFormAnswers) => {
-      const lines: string[] = [`## Form answers (id=${answers.formId})`, ''];
-      for (const [key, value] of Object.entries(answers.answers)) {
-        if (Array.isArray(value)) {
-          lines.push(`- **${key}**: ${value.join(', ') || '(none)'}`);
-        } else {
-          lines.push(`- **${key}**: ${value}`);
-        }
+  // and immediately send as the next turn. The form's Submit IS the user's
+  // confirmation — making them click 'Send' next would be redundant.
+  //
+  // NOT useCallback'd: send() reads agent / running / project / etc. via
+  // closure, which a memoized handler would freeze to first-render values.
+  // Recreating this each render is cheap; the stale-closure bug is not.
+  function onSubmitForm(answers: QuestionFormAnswers): void {
+    const lines: string[] = [`## Form answers (id=${answers.formId})`, ''];
+    for (const [key, value] of Object.entries(answers.answers)) {
+      if (Array.isArray(value)) {
+        lines.push(`- **${key}**: ${value.join(', ') || '(none)'}`);
+      } else {
+        lines.push(`- **${key}**: ${value}`);
       }
-      const text = lines.join('\n');
-      setSubmittedForms((prev) => new Set([...prev, answers.formId]));
-      void send(text);
-    },
-    // send() reads many state vars; React state-closure is fine here because
-    // we use a ref / latest value via the override path inside send.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+    }
+    const text = lines.join('\n');
+    setSubmittedForms((prev) => new Set([...prev, answers.formId]));
+    void send(text);
+  }
 
   async function send(overridePrompt?: string) {
     const text = overridePrompt ?? prompt;
