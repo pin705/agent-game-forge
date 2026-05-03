@@ -1883,7 +1883,11 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
 .table-editor-table {
   border-collapse: separate;
   border-spacing: 0;
-  width: 100%;
+  /* Don't force width: 100%. With many columns we want the table to grow
+   * past the container so .table-editor-scroll's overflow-x produces a
+   * horizontal scrollbar. table-layout: fixed lets per-col min/max widths
+   * actually constrain instead of being suggestions. */
+  table-layout: fixed;
   font-family: var(--font-mono);
   font-size: 12px;
 }
@@ -1891,7 +1895,7 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   position: sticky;
   top: 0;
   background: var(--bg-1);
-  z-index: 1;
+  z-index: 2;
 }
 .table-editor-table th {
   text-align: left;
@@ -1901,10 +1905,38 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   font-size: 11px;
   font-weight: 500;
   color: var(--ink-1);
+  white-space: nowrap;
 }
+/* Per-type column widths. Fixed layout means these are honored exactly. */
+.table-editor-table th.col-string,
+.table-editor-table td.col-string  { width: 180px; }
+.table-editor-table th.col-number,
+.table-editor-table td.col-number  { width: 100px; }
+.table-editor-table th.col-boolean,
+.table-editor-table td.col-boolean { width: 70px; text-align: center; }
+.table-editor-table th.col-point,
+.table-editor-table td.col-point   { width: 160px; }
+.table-editor-table th.col-image,
+.table-editor-table td.col-image   { width: 220px; }
+.table-editor-table th.col-json,
+.table-editor-table td.col-json    { width: 140px; }
+
+/* Sticky # column on the left so users can keep their bearings while
+ * scrolling horizontally through wide rows. */
 .table-editor-table th.row-num,
-.table-editor-table th.row-actions {
-  width: 1%;
+.table-editor-table td.row-num {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 36px;
+  white-space: nowrap;
+  background: var(--bg-1);
+  text-align: center;
+}
+.table-editor-table thead th.row-num { z-index: 3; }
+.table-editor-table th.row-actions,
+.table-editor-table td.row-actions {
+  width: 100px;
   white-space: nowrap;
 }
 .table-editor-table th .col-name { color: var(--ink-0); margin-right: 6px; }
@@ -1919,22 +1951,40 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   border-bottom: 1px solid var(--line);
   border-right: 1px solid var(--line);
   vertical-align: middle;
+  /* Truncate any overflow inside a cell so a long string can't push the
+   * column wider than its declared width. The full value is still editable
+   * — the input itself can scroll horizontally and a tooltip shows on json
+   * cells. */
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .table-editor-table td.row-num,
 .table-editor-table td.row-actions {
-  white-space: nowrap;
   background: var(--bg-1);
   color: var(--ink-3);
   font-size: 10.5px;
   text-align: center;
   padding: 4px 8px;
+  overflow: visible;
 }
 .table-editor-table tr.selected td { background: var(--accent-soft); }
+.table-editor-table tr.selected td.row-num,
+.table-editor-table tr.selected td.row-actions { background: var(--accent-soft); }
 .table-editor-table tr:hover td:not(.row-num):not(.row-actions) { background: var(--bg-2); }
 
 .table-editor-table td.col-number .cell-input,
 .table-editor-table td.col-point .cell-input {
   text-align: right;
+}
+/* json cells: show a compact summary, full value tooltip via title= */
+.table-editor-table td.col-json .cell-json {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+  cursor: help;
 }
 
 .cell-input {
