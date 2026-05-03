@@ -173,6 +173,62 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
     });
   }
 
+  // ---- Auto-detected visual entities in OTHER top-level arrays ----
+  // platforms / pickups / hazards / decorations / etc. — anything Codex
+  // chose to model as its own array (gameplay reasons) that ALSO carries
+  // an `image` field. Without this loop, OGF would only see `props[]` and
+  // a platformer's level would look almost empty in the Scenes tab.
+  //
+  // Anchor convention here is TOP-LEFT (matches collision-rect convention),
+  // not bottom-center. Rationale: gameplay rects (platforms / hazards /
+  // pickups) are authored from their collision corner; only handcrafted
+  // 'props' get the bottom-center treatment because those are sprite-feet
+  // anchored. The position field carries top-left raw; spriteOffset shifts
+  // by (w/2, h/2) so the bbox center sits where propBounds expects.
+  const HANDLED_ARRAYS = new Set([
+    'props',
+    'blockers',
+    'walkBounds',
+    'spawn_points',
+  ]);
+  for (const [section, value] of Object.entries(data)) {
+    if (HANDLED_ARRAYS.has(section)) continue;
+    if (!Array.isArray(value)) continue;
+    const arr = value as RectLike[];
+    if (arr.length === 0) continue;
+    // Only treat the array as visual if a clear majority of entries are
+    // drawable (image + position). Avoids false positives on arrays like
+    // checkpoints or doors that may have x/y but not necessarily image.
+    const drawable = arr.filter(
+      (e) =>
+        typeof e?.image === 'string' &&
+        typeof e?.x === 'number' &&
+        typeof e?.y === 'number',
+    );
+    if (drawable.length === 0) continue;
+    if (drawable.length * 2 < arr.length) continue;
+
+    drawable.forEach((p, idx) => {
+      const image = p.image as string;
+      const w = Number(p.w ?? 0);
+      const h = Number(p.h ?? 0);
+      if (w <= 0 || h <= 0) return; // need a renderable size
+      const id = String(p.id ?? `${section}_${idx}`);
+      referenced.add(image);
+      props.push({
+        nodePath: `${section}/${id}`,
+        name: id,
+        position: { x: Number(p.x), y: Number(p.y) },
+        spriteOffset: { x: w / 2, y: h / 2 },
+        scale: { x: 1, y: 1 },
+        texture: image,
+        metadata: typeof p.sortY === 'number' ? { sortY: String(p.sortY) } : {},
+        displaySize: { x: w, y: h },
+        ref: { backend: 'json', relPath, section, id },
+      });
+    });
+  }
+
   // ---- Blockers (collision) ----
   const rawBlockers = Array.isArray(data.blockers) ? (data.blockers as RectLike[]) : [];
   rawBlockers.forEach((b, idx) => {

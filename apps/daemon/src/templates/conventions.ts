@@ -289,13 +289,34 @@ the JSON in place.
   feet / ground line). Renders as
   \`ctx.drawImage(img, p.x - p.w/2, p.y - p.h, p.w, p.h)\`. This matches how
   characters stand on the ground and how OGF drags them.
-- **Rects / blockers / walkBounds** use **top-left** anchor: \`(x, y)\` = upper-left
-  corner, plus \`w\`, \`h\`.
+- **Rects / blockers / walkBounds / platforms / hazards / pickups** use
+  **top-left** anchor: \`(x, y)\` = upper-left corner, plus \`w\`, \`h\`.
 - **Points** (spawn, exits, goals) are just \`{ x, y }\` with no anchor concept.
 - \`sortY\` (optional) is the y used for back-to-front draw order; defaults
   to \`y\`. Use it when the visual feet sit above the collision feet (e.g.
   a shrine whose roof should sort behind a tree even though its base is in
   front).
+
+### Visual entities can live in any top-level array
+
+Domain-specific arrays are FINE — model your game the way it actually works.
+A platformer naturally has \`platforms[]\`, \`hazards[]\`, \`pickups[]\`,
+\`checkpoints[]\`, \`doors[]\`. A TD game has \`towers[]\`, \`waves[]\`,
+\`buildSpots[]\`. Don't fold everything into \`props[]\` just because OGF
+historically only knew that one.
+
+OGF auto-renders any entry in any top-level array that has:
+- \`image\`: a path to a sprite under \`assets/\`
+- \`x\`, \`y\`: position numbers
+- \`w\`, \`h\`: size numbers (must be > 0)
+
+Such entries are draggable in the Scenes tab and writes go back to their
+source array (no migration to \`props[]\` needed). They're tinted by section
+so the user can tell platforms apart from pickups at a glance.
+
+Gameplay metadata (\`solid\`, \`damage\`, \`value\`, \`kind\`, …) lives on the
+SAME entry alongside the visual fields — don't split visual and gameplay
+data across two arrays. ONE source of truth.
 
 ### Code patterns
 

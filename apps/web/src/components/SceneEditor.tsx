@@ -3082,6 +3082,32 @@ function propBounds(p: SceneProp, bank: ImageBank) {
   return { x: cx - w / 2, y: cy - h / 2, w, h };
 }
 
+/** Color for the border of a non-default-props section. Lets the user tell
+ *  platforms vs pickups vs hazards apart at a glance without clicking. The
+ *  default 'props' section gets no tint (returns null) — it's the neutral
+ *  decoration layer and a border on every prop would be visual noise. */
+function sectionTint(section: string | undefined): string | null {
+  if (!section || section === 'props') return null;
+  // Stable color palette by section name. Common platformer / metroidvania
+  // entity types get explicit colors; anything else hashes into a fallback.
+  const FIXED: Record<string, string> = {
+    platforms: 'rgba(96, 165, 250, 0.95)',     // blue
+    pickups: 'rgba(110, 231, 142, 0.95)',      // green
+    hazards: 'rgba(248, 113, 113, 0.95)',      // red
+    enemies: 'rgba(232, 125, 232, 0.95)',      // magenta
+    enemySpawns: 'rgba(232, 125, 232, 0.95)',  // magenta (alias)
+    doors: 'rgba(251, 191, 36, 0.95)',         // amber
+    checkpoints: 'rgba(165, 180, 252, 0.95)',  // indigo
+    decorations: 'rgba(180, 180, 180, 0.85)',  // gray
+  };
+  if (FIXED[section]) return FIXED[section];
+  // Fallback: deterministic hue from name hash so the same section always
+  // gets the same color across reloads.
+  let h = 0;
+  for (let i = 0; i < section.length; i++) h = (h * 31 + section.charCodeAt(i)) >>> 0;
+  return `hsl(${h % 360}, 65%, 65%)`;
+}
+
 function drawProp(
   ctx: CanvasRenderingContext2D,
   p: SceneProp,
@@ -3097,6 +3123,35 @@ function drawProp(
   } else {
     ctx.fillStyle = 'rgba(255, 80, 80, 0.3)';
     ctx.fillRect(r.x, r.y, r.w, r.h);
+  }
+
+  // Section tint: thin colored border + tiny label tab in the top-left so the
+  // user can tell which array the entry came from (platforms / pickups / ...).
+  // Only drawn for non-default sections. Hidden when the prop is selected so
+  // the bright yellow selection outline remains the visual focus.
+  const sectionName =
+    p.ref && p.ref.backend === 'json' ? p.ref.section : undefined;
+  const tint = sectionTint(sectionName);
+  if (tint && !selected) {
+    ctx.lineWidth = 1.5 / scale;
+    ctx.strokeStyle = tint;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    // Section label tab — small, only readable when zoomed in. Doesn't
+    // distract at low zoom but is there when needed.
+    if (scale >= 0.6 && sectionName) {
+      const label = sectionName;
+      ctx.font = `${10 / scale}px ui-monospace, Menlo, monospace`;
+      const metrics = ctx.measureText(label);
+      const padX = 4 / scale;
+      const padY = 2 / scale;
+      const tabW = metrics.width + padX * 2;
+      const tabH = 14 / scale;
+      ctx.fillStyle = tint;
+      ctx.fillRect(r.x, r.y - tabH, tabW, tabH);
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      ctx.textBaseline = 'top';
+      ctx.fillText(label, r.x + padX, r.y - tabH + padY);
+    }
   }
 
   // Origin marker (small cross at the parent Node2D position)
