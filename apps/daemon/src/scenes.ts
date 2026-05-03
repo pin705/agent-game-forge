@@ -646,18 +646,24 @@ function applyOpsToJsonScene(opts: ApplyOpsOptions): ApplyOpsResult {
       });
     } else if (op.kind === 'scale-prop') {
       requireJsonRef(op, 'scale-prop');
-      // Web props store size as (w, h), not a unit scale. Translate the unit
-      // scale into a pixel size using the prop's current displaySize. The
-      // model stores displaySize implicitly via the JSON, so we re-read.
+      // Web entries store size as (w, h), not a unit scale. Translate the
+      // unit scale to a pixel size using the entry's CURRENT w/h. The entry
+      // can live in any top-level array (props / platforms / pickups / ...);
+      // op.ref.section tells us which.
       const map = JSON.parse(
         readFileSync(safeJoin(opts.rootAbs, op.ref.relPath), 'utf8'),
-      ) as { props?: Array<{ id?: string; w?: number; h?: number }> };
-      const cur = (map.props ?? []).find((p) => p.id === op.ref!.id);
-      if (cur && typeof cur.w === 'number' && typeof cur.h === 'number') {
-        applyJsonColliderEdit(opts.rootAbs, op.ref, {
-          w: cur.w * op.scale.x,
-          h: cur.h * op.scale.y,
-        });
+      ) as Record<string, unknown>;
+      const arr = map[op.ref.section];
+      if (Array.isArray(arr)) {
+        const cur = (arr as Array<{ id?: string; w?: number; h?: number }>).find(
+          (p) => p?.id === op.ref!.id,
+        );
+        if (cur && typeof cur.w === 'number' && typeof cur.h === 'number') {
+          applyJsonColliderEdit(opts.rootAbs, op.ref, {
+            w: cur.w * op.scale.x,
+            h: cur.h * op.scale.y,
+          });
+        }
       }
     } else if (op.kind === 'move-collider') {
       if (op.ref.backend !== 'json') {

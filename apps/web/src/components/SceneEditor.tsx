@@ -993,9 +993,14 @@ export function SceneEditor(props: Props) {
         cur &&
         (cur.scale.x !== ds.startScale.x || cur.scale.y !== ds.startScale.y)
       ) {
+        // Web props are JSON-backed and need ref so the daemon writes back
+        // to the right array (props / platforms / pickups / hazards / ...).
+        // Without ref, applyOpsToJsonScene rejects with 'needs a json-backed
+        // ref' and the user sees a save failure.
+        const ref = cur.ref;
         commitOps(
-          [{ kind: 'scale-prop', nodePath: ds.nodePath, scale: cur.scale }],
-          [{ kind: 'scale-prop', nodePath: ds.nodePath, scale: ds.startScale }],
+          [{ kind: 'scale-prop', nodePath: ds.nodePath, scale: cur.scale, ref }],
+          [{ kind: 'scale-prop', nodePath: ds.nodePath, scale: ds.startScale, ref }],
           `scale ${ds.nodePath.split('/').pop() ?? ds.nodePath}`,
         );
       }
@@ -3062,14 +3067,18 @@ function drawLabel(ctx: CanvasRenderingContext2D, x: number, y: number, text: st
 }
 
 function propBounds(p: SceneProp, bank: ImageBank) {
-  // Web props carry an explicit displaySize from the JSON (their
-  // declared w/h). Godot props rely on naturalSize × scale.
+  // Web props carry an explicit displaySize from the JSON (their declared
+  // w/h). Godot props rely on naturalSize × scale.
+  // For BOTH backends, we still multiply by scale so a live resize drag
+  // (which mutates p.scale in React state until commit) produces visible
+  // growth. After commit the daemon writes the new w/h back, the loader
+  // re-emits with scale = 1, so the visual stays put.
   const size = p.texture ? bank.sizes.get(p.texture) : null;
   let w: number;
   let h: number;
   if (p.displaySize) {
-    w = p.displaySize.x;
-    h = p.displaySize.y;
+    w = p.displaySize.x * Math.abs(p.scale.x);
+    h = p.displaySize.y * Math.abs(p.scale.y);
   } else if (size) {
     w = size.w * Math.abs(p.scale.x);
     h = size.h * Math.abs(p.scale.y);
