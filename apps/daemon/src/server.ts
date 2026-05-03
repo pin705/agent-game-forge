@@ -979,6 +979,21 @@ function composePrompt(
     }
   }
 
+  // Per-project spec — written by Codex after the discovery form on first
+  // turn. Captures user intent + the phase plan with checkboxes. Injected
+  // after conventions so Codex sees BOTH the structural rules (how) and
+  // this project's specific WHAT. Spec drives every subsequent turn.
+  const specPath = path.join(cwd, '.ogf', 'spec.md');
+  let specBlock = '';
+  if (fsExistsSync(specPath)) {
+    try {
+      const text = fsReadFileSync(specPath, 'utf8');
+      specBlock = `\n# Project spec (.ogf/spec.md)\n\nThis is the contract for what THIS specific project is. Update the Phase plan checkboxes (- [ ] → - [x]) as you finish each phase. Reflect any scope changes back into the spec.\n\n${text}\n`;
+    } catch {
+      // unreadable — proceed without spec
+    }
+  }
+
   if (isResumed) {
     // Resumed turns skip the long system instructions — they're in the prior
     // turn. Still include scene snippet + a short conventions reminder.
@@ -1060,6 +1075,65 @@ When you need disambiguation BEFORE doing significant work — greenfield game s
 
 After emitting a form, **STOP your turn immediately**. Don't add any prose after \`</question-form>\`. Don't begin work. The user will fill the form; their answers arrive on the NEXT turn as a \`## Form answers (id=...)\` block. Read that block, then proceed.
 
+## What to do when \`game-discovery\` answers arrive
+
+The very next turn after the user submits the discovery form, you do TWO things in this order:
+
+**Step 1 — Write \`.ogf/spec.md\`** (one Write call). Use this exact 8-section template, fill every section based on the form answers + the user's original prompt. The spec is the contract for the rest of the project — every later turn injects it into your context, so be precise:
+
+\`\`\`markdown
+# Game Spec — <project name>
+
+## 1. Identity
+- Genre: <from form>
+- Engine: <web | godot, from form OR detected>
+- Art style: <from form>
+- Premise: <from form>
+- Target session length: <derived from completeness>
+- Completeness tier: <minimal | core | polished | full>
+
+## 2. Player
+- Sprite layout: <NxM at K fps; specific to genre + completeness>
+- Animations: <list — minimum: idle. Add walk/jump/attack/death by tier>
+- HP / lives / damage model: <concrete numbers>
+- Moveset: <list verbs the player can perform>
+
+## 3. World
+- Levels: <count from completeness, list ids>
+- Camera: <locked / scroll / follow / parallax>
+- Per-level structure: <what arrays each level JSON has — props, platforms, hazards, etc>
+
+## 4. Catalogs
+- Enemies: <count from completeness; list ids + 1-line each>
+- Pickups: <ids + effect>
+- Hazards: <ids + damage>
+- Items: <if any>
+- (each lives in data/<plural>.json — array of objects)
+
+## 5. Progression
+- Score / lives / checkpoints / save: <yes/no per item, mechanism if yes>
+
+## 6. OGF Layout
+- File paths Codex will create: <list>
+- Per the engine conventions doc above — no need to re-spell rules here.
+
+## 7. Phase plan
+- [ ] Phase 1: <name> — <concrete deliverable + how to verify>
+- [ ] Phase 2: <name> — <deliverable + verify>
+- [ ] Phase 3: <name> — <deliverable + verify>
+(...3-7 phases total. Sum should equal the completeness tier's scope.)
+
+## 8. Out of scope (V1)
+- <thing 1 NOT in this version>
+- <thing 2>
+\`\`\`
+
+**Step 2 — Execute all phases autonomously in this same turn.** No more forms, no more confirmations. After EACH phase completes, edit \`.ogf/spec.md\` to flip that phase's \`- [ ]\` to \`- [x]\`. The OGF UI watches the file and shows live progress to the user.
+
+End the turn with a one-paragraph summary: what was built, what to verify in OGF (Play tab, Scenes tab, etc.), and any TODOs the user should follow up on.
+
+The user picked a completeness tier in the form. Honor it — don't under-deliver (skip planned phases) or over-deliver (add features not in the spec). If you discover the tier is wrong mid-execution (e.g. \`polished\` would take 200K+ tokens not 80K), STOP, edit the spec to flag the issue, and end the turn explaining the situation. Don't silently expand scope.
+
 The completeness value MAPS to scope:
 
 - \`minimal\` → 1 character × 1 anim, 1 enemy, 1 short level. Skip catalogs, hardcode acceptable for V1. STOP after first deliverable.
@@ -1096,7 +1170,7 @@ The user's in-app scene editor writes its current state to \`.ogf/scene-context.
 - the user refers to \"this\" / \"the selected\" / a node by visual position
 - you need a list of all props / colliders / zones / paths beyond what's already in the per-turn snippet
 - you want to verify a position or shape before/after editing
-${conventionsBlock}${sceneBlock}${refs}
+${conventionsBlock}${specBlock}${sceneBlock}${refs}
 # User request
 
 ${userPrompt}

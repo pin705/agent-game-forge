@@ -33,6 +33,7 @@ import {
   writeFileContent,
 } from './lib/api.js';
 import { Turn, type TurnStatus } from './components/Turn.js';
+import { SpecProgressCard } from './components/SpecProgressCard.js';
 import { FileTree } from './components/FileTree.js';
 import { FileEditor } from './components/FileEditor.js';
 import { SceneEditor } from './components/SceneEditor.js';
@@ -1423,6 +1424,11 @@ function AgentPane(props: {
       </div>
 
       <div className="convo" ref={props.convoRef}>
+        <SpecProgressCard
+          projectPath={props.project?.path ?? null}
+          conversationId={props.conversationId}
+          streaming={props.running}
+        />
         {props.turns.length === 0 && (
           <div className="msg-sys">{I.spark} {props.project ? 'Ready. Ask Codex something.' : 'Open a project to start.'}</div>
         )}
