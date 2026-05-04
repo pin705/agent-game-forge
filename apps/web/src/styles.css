@@ -1,105 +1,107 @@
 /* ============================================================
-   Open Game Forge — warm dark creator tool
+   Open Game Forge v2 — minimal / light by default
+   Direction: Claude · Linear · Vercel
    ============================================================ */
 
 :root {
-  /* base palette — warm slate, not pure neutral (DARK default) */
-  --bg-0: oklch(0.18 0.012 60);    /* deepest, app bg */
-  --bg-1: oklch(0.215 0.012 60);   /* pane */
-  --bg-2: oklch(0.245 0.013 60);   /* card / row */
-  --bg-3: oklch(0.285 0.014 60);   /* hover */
-  --bg-4: oklch(0.33 0.015 60);    /* selected */
-  --line: oklch(0.305 0.012 60);   /* divider */
-  --line-strong: oklch(0.36 0.013 60);
-  --check-1: var(--check-1); /* checkerboard cell */
+  /* surfaces — paper-white, near-pure neutrals (LIGHT default) */
+  --bg-0: #fafaf9;       /* page */
+  --bg-1: #ffffff;       /* card / pane */
+  --bg-2: #f5f5f4;       /* inset / row hover */
+  --bg-3: #ebeae8;       /* selected */
+  --bg-4: #e0dfdc;
+  --line: #ebeae8;       /* hairline */
+  --line-strong: #d6d3cf;
+  --check-1: var(--bg-2);
+  --bg-deep: var(--bg-0); /* used in outline / shadow stacks; kept v1-compat */
 
-  --ink-0: oklch(0.96 0.008 80);   /* primary text */
-  --ink-1: oklch(0.78 0.012 70);   /* secondary */
-  --ink-2: oklch(0.6 0.014 65);    /* tertiary */
-  --ink-3: oklch(0.45 0.014 60);   /* hint */
+  /* ink */
+  --ink-0: #1a1a17;      /* primary */
+  --ink-1: #44423d;      /* secondary */
+  --ink-2: #78756f;      /* tertiary */
+  --ink-3: #a8a59f;      /* hint */
 
-  /* accent — warm amber */
-  --accent-h: 65;
-  --accent: oklch(0.78 0.16 var(--accent-h));
-  --accent-soft: oklch(0.78 0.16 var(--accent-h) / 0.16);
-  --accent-line: oklch(0.78 0.16 var(--accent-h) / 0.32);
-  --accent-ink: oklch(0.18 0.012 60);
+  /* single restrained accent — Claude's terracotta */
+  --accent-h: 18;
+  --accent: #d97757;
+  --accent-hover: #c8674a;
+  --accent-soft: rgba(217, 119, 87, 0.10);
+  --accent-line: rgba(217, 119, 87, 0.35);
+  --accent-ink: #ffffff;
 
-  /* signal colors */
-  --green: oklch(0.78 0.15 150);
-  --red: oklch(0.7 0.18 25);
-  --blue: oklch(0.75 0.13 240);
-  --purple: oklch(0.72 0.15 305);
+  /* signal colors — restrained, slightly desaturated for the warm palette */
+  --green: #4f8a52;
+  --red: #b54848;
+  --blue: #4a6fa5;
+  --purple: #8268a8;
 
   /* density */
-  --row-h: 26px;
-  --pad: 12px;
-  --pad-sm: 8px;
-  --radius: 6px;
-  --radius-lg: 10px;
+  --row-h: 30px;
+  --pad: 20px;
+  --pad-sm: 12px;
+  --pad-xs: 8px;
+  --radius: 8px;
+  --radius-lg: 12px;
 
   /* fonts */
-  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-  --font-pixel: 'VT323', ui-monospace, monospace;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-pixel: 'Press Start 2P', ui-monospace, monospace;
 
-  --shadow-pop: 0 12px 32px -8px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.3);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+  --shadow-pop: 0 12px 32px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.05);
 }
 
 [data-density="compact"] {
-  --row-h: 22px;
-  --pad: 8px;
-  --pad-sm: 6px;
+  --row-h: 26px;
+  --pad: 14px;
+  --pad-sm: 8px;
 }
 [data-density="comfy"] {
-  --row-h: 30px;
-  --pad: 16px;
-  --pad-sm: 10px;
+  --row-h: 34px;
+  --pad: 24px;
+  --pad-sm: 14px;
 }
 
-/* ============ LIGHT MODE ============ */
-[data-theme="light"] {
-  --bg-0: oklch(0.985 0.004 80);    /* page */
-  --bg-1: oklch(0.965 0.005 80);    /* pane */
-  --bg-2: oklch(0.94 0.006 80);     /* card / row */
-  --bg-3: oklch(0.905 0.008 75);    /* hover */
-  --bg-4: oklch(0.86 0.012 70);     /* selected */
-  --line: oklch(0.89 0.008 75);
-  --line-strong: oklch(0.82 0.01 70);
-  --check-1: oklch(0.92 0.006 75);
-  --bg-deep: oklch(0.985 0.004 80);
+/* ============ DARK MODE (toggle, not default) ============ */
+[data-theme="dark"] {
+  --bg-0: #1a1a17;
+  --bg-1: #211f1c;
+  --bg-2: #2a2824;
+  --bg-3: #34322d;
+  --bg-4: #3f3d37;
+  --line: #2e2c28;
+  --line-strong: #3a3833;
+  --check-1: #2a2824;
+  --bg-deep: #1a1a17;
 
-  --ink-0: oklch(0.22 0.012 60);
-  --ink-1: oklch(0.38 0.014 60);
-  --ink-2: oklch(0.52 0.014 60);
-  --ink-3: oklch(0.66 0.012 60);
+  --ink-0: #f5f3ee;
+  --ink-1: #c4c0b8;
+  --ink-2: #908b81;
+  --ink-3: #62605a;
 
-  --accent: oklch(0.62 0.16 var(--accent-h));
-  --accent-soft: oklch(0.62 0.16 var(--accent-h) / 0.14);
-  --accent-line: oklch(0.62 0.16 var(--accent-h) / 0.4);
-  --accent-ink: oklch(0.99 0 0);
+  --accent: #d97757;
+  --accent-hover: #e08868;
+  --accent-soft: rgba(217, 119, 87, 0.16);
+  --accent-line: rgba(217, 119, 87, 0.4);
+  --accent-ink: #1a1a17;
 
-  --green: oklch(0.58 0.14 150);
-  --red: oklch(0.55 0.18 25);
-  --blue: oklch(0.55 0.14 240);
-  --purple: oklch(0.55 0.16 305);
+  --green: #6fb074;
+  --red: #d97070;
+  --blue: #7a98c8;
+  --purple: #a890c8;
 
-  --shadow-pop: 0 8px 24px -6px oklch(0.4 0.02 60 / 0.15), 0 1px 4px oklch(0.4 0.02 60 / 0.08);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-pop: 0 12px 32px -8px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.3);
 }
 
-[data-theme="light"] *::-webkit-scrollbar-thumb {
-  background: oklch(0.78 0.008 70);
+[data-theme="dark"] *::-webkit-scrollbar-thumb {
+  background: #3a3833;
   border: 2px solid var(--bg-1);
 }
-[data-theme="light"] *::-webkit-scrollbar-thumb:hover { background: oklch(0.68 0.01 70); }
-
-[data-theme="light"] .err-banner {
-  background: oklch(0.55 0.18 25 / 0.08);
-  border-bottom-color: oklch(0.55 0.18 25 / 0.25);
-}
-[data-theme="light"] .modal-scrim { background: oklch(0.4 0.02 60 / 0.35); }
-[data-theme="light"] .agent-pill[data-state="ok"] .dot { box-shadow: 0 0 0 3px oklch(0.58 0.14 150 / 0.18); }
-[data-theme="light"] .stale-dot { box-shadow: 0 0 6px var(--accent); }
+[data-theme="dark"] *::-webkit-scrollbar-thumb:hover { background: #494640; }
 
 * { box-sizing: border-box; }
 html, body, #root {
@@ -107,25 +109,31 @@ html, body, #root {
   background: var(--bg-0);
   color: var(--ink-0);
   font-family: var(--font-sans);
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 14px;
+  line-height: 1.55;
+  letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
 }
 
-button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
-input, textarea { font: inherit; color: inherit; background: none; border: 0; outline: 0; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; text-align: left; }
+input, textarea, select { font: inherit; color: inherit; background: none; border: 0; outline: 0; }
 ::selection { background: var(--accent-soft); color: var(--ink-0); }
 
-/* scrollbars */
+/* scrollbars — invisible until hover (Claude / Linear style) */
 *::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
-  background: oklch(0.3 0.012 60);
+  background: transparent;
   border-radius: 8px;
-  border: 2px solid var(--bg-1);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
-*::-webkit-scrollbar-thumb:hover { background: oklch(0.38 0.012 60); }
+*:hover::-webkit-scrollbar-thumb {
+  background: var(--bg-3);
+  background-clip: padding-box;
+}
 
 /* =============== APP SHELL =============== */
 .app {

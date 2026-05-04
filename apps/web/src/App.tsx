@@ -72,8 +72,9 @@ type Density = 'compact' | 'regular' | 'comfy';
 export function App() {
   const { confirm: askConfirm, notify } = useDialog();
 
-  // Theme
-  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem(LS_THEME) as Theme) ?? 'dark');
+  // Theme — v2 default is LIGHT (Claude / Linear / Vercel direction).
+  // Existing users who explicitly chose 'dark' keep their preference via localStorage.
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem(LS_THEME) as Theme) ?? 'light');
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem(LS_THEME, theme);
