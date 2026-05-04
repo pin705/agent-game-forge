@@ -258,6 +258,13 @@ export function App() {
   useEffect(() => {
     localStorage.setItem(LS_AGENT_COLLAPSED, agentCollapsed ? '1' : '0');
   }, [agentCollapsed]);
+  // Safety: if a turn starts while the panel is collapsed, auto-expand so
+  // the Stop button is reachable. Otherwise the agent runs invisibly and
+  // there's no way to cancel without restoring the panel manually — easy
+  // way to lose track of an active run.
+  useEffect(() => {
+    if (running && agentCollapsed) setAgentCollapsed(false);
+  }, [running, agentCollapsed]);
 
   const [treeWidth, setTreeWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem(LS_TREE_W));
@@ -672,11 +679,30 @@ export function App() {
     } catch (err) {
       finalizeLastTurn('failed', err instanceof Error ? err.message : String(err));
       setRunning(false);
+      setRunId(null);
     }
   }
 
   async function stop() {
-    if (runId) await cancelRun(runId);
+    // Capture runId by value so a Stop click during an in-flight createRun
+    // (when running===true but runId is still null for the brief moment
+    // before the daemon responds with a runId) doesn't silently no-op
+    // forever — we still optimistically reset UI state so the button is
+    // never stuck.
+    const id = runId;
+    if (id) {
+      try {
+        await cancelRun(id);
+      } catch {
+        /* daemon already gone or run already ended — fall through */
+      }
+    }
+    // Force-clear UI state regardless. The SSE 'end' will fire too once
+    // codex closes, but that may take a moment if the process tree is
+    // killing helpers (Python, image_gen workers); we don't want the
+    // Stop button to look unresponsive while we wait for that.
+    setRunning(false);
+    setRunId(null);
   }
 
   function onKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
