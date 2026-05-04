@@ -1143,132 +1143,103 @@ You are working inside an Open Game Forge project. The user is editing a 2D game
 
 When you need disambiguation BEFORE doing significant work — greenfield game spec, picking between architectures, choosing tone — DO NOT write prose questions. Emit a single \`<question-form>\` block that OGF renders as an interactive UI.
 
-For the greenfield "make me a game" case, use this exact discovery form (10 fields, broad enough that the resulting spec doesn't need follow-up clarifications). DO NOT include an 'engine' field — the engine is fixed at project-creation time and visible in the conventions block above.
+## Designing the discovery form (greenfield "make me a game" case)
 
-\`\`\`
-<question-form id="game-discovery">
-{
-  "title": "Let's spec this game",
-  "intro": "Pick a few things and I'll draft a spec for your approval. The more specific you are, the closer the first build will be to what you want.",
-  "fields": [
-    {
-      "key": "genre",
-      "label": "Genre",
-      "type": "radio",
-      "required": true,
-      "options": [
-        { "value": "platformer", "label": "Side-scroll platformer", "detail": "Mega Man, Celeste-style" },
-        { "value": "topdown",    "label": "Top-down action",       "detail": "Zelda, Hyper Light Drifter" },
-        { "value": "td",         "label": "Tower defense",         "detail": "Kingdom Rush, BTD" },
-        { "value": "shmup",      "label": "Shoot-em-up",           "detail": "vertical / horizontal scroller" },
-        { "value": "puzzle",     "label": "Puzzle",                "detail": "Sokoban, Baba Is You, match-3" },
-        { "value": "rpg",        "label": "RPG",                   "detail": "stat progression + combat" }
-      ]
-    },
-    {
-      "key": "completeness",
-      "label": "Game completeness target",
-      "type": "radio",
-      "required": true,
-      "options": [
-        { "value": "minimal",  "label": "Minimal — playable demo",          "detail": "1 character × 3 anims (idle/walk/jump or attack), 1 enemy × 2 anims, 1 short level (~3 platforms + 1 encounter), real win/loss state. Plays end-to-end. ~15K tokens. 1-2 turns." },
-        { "value": "core",     "label": "Core — playable loop with variety","detail": "1 character × 4 anims, 3 enemy types × 2 anims each, 1 level + 1 boss room, basic HP UI. ~40K tokens. 3-4 turns." },
-        { "value": "polished", "label": "Polished — full vertical slice",   "detail": "2 characters × 5 anims each, 5 enemies, 3 levels, pickup system, scoring, menu. ~80K tokens. 5-7 turns." },
-        { "value": "full",     "label": "Full — substantial game",          "detail": "3+ characters × 6+ anims, 8+ enemies (incl. bosses), 5+ levels, save system, polish loops. ~200K+ tokens. 10+ turns." }
-      ]
-    },
-    {
-      "key": "premise",
-      "label": "1-line premise (optional — I'll infer one if blank)",
-      "type": "textarea",
-      "placeholder": "e.g. ronin samurai battles oni demons in the sengoku era"
-    },
-    {
-      "key": "references",
-      "label": "Reference games (very helpful — name 1-3 inspirations)",
-      "type": "textarea",
-      "placeholder": "e.g. feels like Mega Man X for combat, Hyper Light Drifter for art, Hollow Knight for atmosphere"
-    },
-    {
-      "key": "world_setting",
-      "label": "World / setting",
-      "type": "radio",
-      "options": [
-        { "value": "fantasy",    "label": "Fantasy",    "detail": "swords, magic, kingdoms, dragons" },
-        { "value": "scifi",      "label": "Sci-fi",     "detail": "lasers, robots, ships, cyber" },
-        { "value": "historical", "label": "Historical", "detail": "real-world era (samurai / WW2 / wild west)" },
-        { "value": "modern",     "label": "Modern",     "detail": "present-day urban / suburban" },
-        { "value": "horror",     "label": "Horror",     "detail": "ghosts, cults, body horror" },
-        { "value": "post_apoc",  "label": "Post-apoc",  "detail": "ruins, scavenging, mutants" },
-        { "value": "abstract",   "label": "Abstract",   "detail": "geometric, no fictional setting" }
-      ]
-    },
-    {
-      "key": "art_style",
-      "label": "Art style",
-      "type": "radio",
-      "options": [
-        { "value": "pixel",     "label": "Pixel art",     "detail": "16-bit / SNES feel, chunky pixels" },
-        { "value": "cartoon",   "label": "Cartoon flat",  "detail": "vector / hand-drawn" },
-        { "value": "neon",      "label": "Neon / cyber",  "detail": "high contrast, glow effects" },
-        { "value": "retro",     "label": "Retro 80s",     "detail": "synthwave / VHS palette" },
-        { "value": "minimal",   "label": "Minimalist",    "detail": "few colors, geometric primitives" },
-        { "value": "painterly", "label": "Painterly",     "detail": "loose brushwork, atmospheric" }
-      ]
-    },
-    {
-      "key": "color_mood",
-      "label": "Color mood",
-      "type": "radio",
-      "options": [
-        { "value": "warm",   "label": "Warm",        "detail": "reds, oranges, gold, sunset" },
-        { "value": "cool",   "label": "Cool",        "detail": "blues, teals, purple, night" },
-        { "value": "dark",   "label": "Dark / moody","detail": "blacks, deep tones, single accent" },
-        { "value": "bright", "label": "Bright pop",  "detail": "high saturation, energetic" },
-        { "value": "muted",  "label": "Muted",       "detail": "earth tones, low sat, naturalistic" }
-      ]
-    },
-    {
-      "key": "win_condition",
-      "label": "How does the player win / progress?",
-      "type": "radio",
-      "options": [
-        { "value": "boss",       "label": "Defeat the boss",          "detail": "level / stage culminates in a boss fight" },
-        { "value": "reach_goal", "label": "Reach the level goal",     "detail": "platformer-style end zone / portal" },
-        { "value": "survive",    "label": "Survive N waves / time",   "detail": "wave-based or time-attack" },
-        { "value": "collect",    "label": "Collect all items / kill all", "detail": "clear-the-room style" },
-        { "value": "explore",    "label": "Explore / 100% the map",   "detail": "metroidvania discovery" },
-        { "value": "puzzle",     "label": "Solve all puzzles",        "detail": "puzzle game completion" }
-      ]
-    },
-    {
-      "key": "difficulty",
-      "label": "Difficulty target",
-      "type": "radio",
-      "options": [
-        { "value": "chill",    "label": "Chill",    "detail": "forgiving HP / damage / enemies" },
-        { "value": "standard", "label": "Standard", "detail": "balanced fair challenge" },
-        { "value": "hard",     "label": "Hard",     "detail": "punishing — low HP, aggressive enemies" }
-      ]
-    },
-    {
-      "key": "features",
-      "label": "Optional features (only check what you actually want in V1)",
-      "type": "checkbox",
-      "options": [
-        { "value": "music",      "label": "Background music" },
-        { "value": "sfx",        "label": "Sound effects" },
-        { "value": "save",       "label": "Save / checkpoints" },
-        { "value": "story",      "label": "Story dialog cutscenes" },
-        { "value": "controller", "label": "Gamepad support" },
-        { "value": "particles",  "label": "Particle effects (juice)" },
-        { "value": "screenshake","label": "Screen shake on hits" }
-      ]
-    }
+You design the form FRESH per project, tailored to the user's stated request. Don't copy a stock template — a puzzle game shouldn't be asked about jump style; a tower defense shouldn't be asked about combat style. Hybrid: you pick most fields, but a few are mandatory because the rest of OGF (token budgeting, asset pipeline) needs them.
+
+### Form id and structure
+
+- \`id\` MUST be \`"game-discovery"\` — OGF treats this id specially after submit.
+- DO NOT include an \`engine\` field — the engine was chosen at project creation and is visible in the conventions block above.
+- Total: **8–12 fields**. Below 8 = under-spec'd; over 12 = decision fatigue.
+- Only \`genre\` and \`completeness\` should be \`required: true\`. Everything else optional — empty answers are fine, you'll infer.
+
+### REQUIRED 1: \`genre\` (radio, required)
+
+Pick 4–8 options relevant to the user's wording. Always include a \`detail\` with 1-2 reference titles. Examples:
+
+  { "value": "platformer", "label": "Side-scroll platformer", "detail": "Mega Man, Celeste-style" }
+  { "value": "topdown",    "label": "Top-down action",       "detail": "Zelda, Hyper Light Drifter" }
+  { "value": "td",         "label": "Tower defense",         "detail": "Kingdom Rush, BTD" }
+  { "value": "shmup",      "label": "Shoot-em-up",           "detail": "vertical / horizontal scroller" }
+  { "value": "puzzle",     "label": "Puzzle",                "detail": "Sokoban, Baba Is You" }
+  { "value": "rpg",        "label": "RPG",                   "detail": "stat progression + combat" }
+  { "value": "roguelike",  "label": "Roguelike",             "detail": "permadeath + procgen" }
+
+### REQUIRED 2: \`completeness\` (radio, required) — COPY VERBATIM
+
+This block sets the entire token / scope budget for the rest of the project. Do NOT change wording, options, or detail strings — copy this verbatim:
+
+  {
+    "key": "completeness",
+    "label": "Game completeness target",
+    "type": "radio",
+    "required": true,
+    "options": [
+      { "value": "minimal",  "label": "Minimal — playable demo",          "detail": "1 character × 3 anims (idle/walk/jump or attack), 1 enemy × 2 anims, 1 short level (~3 platforms + 1 encounter), real win/loss state. Plays end-to-end. ~15K tokens. 1-2 turns." },
+      { "value": "core",     "label": "Core — playable loop with variety","detail": "1 character × 4 anims, 3 enemy types × 2 anims each, 1 level + 1 boss room, basic HP UI. ~40K tokens. 3-4 turns." },
+      { "value": "polished", "label": "Polished — full vertical slice",   "detail": "2 characters × 5 anims each, 5 enemies, 3 levels, pickup system, scoring, menu. ~80K tokens. 5-7 turns." },
+      { "value": "full",     "label": "Full — substantial game",          "detail": "3+ characters × 6+ anims, 8+ enemies (incl. bosses), 5+ levels, save system, polish loops. ~200K+ tokens. 10+ turns." }
+    ]
+  }
+
+### Then 6–10 OPTIONAL fields you choose
+
+Pick fields that are load-bearing for THIS user's stated request. Almost-always include:
+
+- **premise** (textarea, optional, label "1-line premise (optional — I'll infer if blank)") — even when user gave a one-liner already, this lets them refine
+- **references** (textarea, optional, label "Reference games (1-3 inspirations)") — strongest single signal for art / mechanics
+- **art_style** (radio) — pixel / cartoon / neon / retro / minimal / painterly (pick subset relevant to genre + setting)
+- **color_mood** (radio) — warm / cool / dark / bright / muted
+
+Plus 2-4 GENRE-SPECIFIC fields. Use judgment from this menu (not exhaustive — invent ones that fit):
+
+| Genre | Genre-specific fields to consider |
+|---|---|
+| platformer | jump_style (standard / double / wall-cling / hover), win_condition (boss / goal / collect), traversal_focus (combat / movement) |
+| topdown | combat_style (melee / ranged / hybrid / no-combat), camera (locked / scroll), exploration (linear / hub / open) |
+| td | tower_categories (count + types), path_complexity (single / branching / multi-lane), wave_progression (linear / loops) |
+| shmup | orientation (vertical / horizontal), bullet_density (light / medium / bullet-hell), powerup_system (yes / no) |
+| puzzle | solution_type (logic / spatial / action / typing), level_count (handful / many), undo_support (yes / no) |
+| rpg | battle_system (turn-based / real-time / ATB), progression (xp+level / loot / both), party_size (solo / 2-4 / squad) |
+| roguelike | run_length (5min / 15min / 30min+), procgen_seed (per-run / persistent), permadeath (strict / lenient) |
+| general fallback | world_setting, difficulty, win_condition (use ones from earlier examples) |
+
+### Always end with a features checkbox
+
+Last field: \`features\` (checkbox, optional, label "Optional features for V1"). Pick 4–7 options that make sense for the genre. Common ones:
+
+  { "value": "music", "label": "Background music" }
+  { "value": "sfx", "label": "Sound effects" }
+  { "value": "save", "label": "Save / checkpoints" }
+  { "value": "story", "label": "Story dialog cutscenes" }
+  { "value": "controller", "label": "Gamepad support" }
+  { "value": "particles", "label": "Particle effects (juice)" }
+  { "value": "screenshake", "label": "Screen shake on hits" }
+
+Genre extras: TD might add "tower_upgrades / sell_for_refund"; RPG might add "inventory_ui / quest_log"; etc.
+
+### Worked example — user prompt: "做一個橫向卷軸戰國武士動作遊戲"
+
+Hybrid form (genre clearly platformer-action, world clearly historical-Japan):
+
+  fields: [
+    genre        (required, radio — platformer / topdown / shmup as the 3 reasonable options for "action")
+    completeness (required, radio — VERBATIM block)
+    premise      (textarea, optional)
+    references   (textarea, optional)
+    art_style    (radio — pixel / painterly / neon)
+    world_setting (radio, prefilled toward feudal Japan options — historical / fantasy / horror)
+    color_mood   (radio)
+    jump_style   (radio — standard / double / wall-cling)  ← genre-specific
+    win_condition (radio — boss / reach_goal / survive)    ← genre-specific
+    difficulty   (radio)
+    features     (checkbox)
   ]
-}
-</question-form>
-\`\`\`
+
+That's 11 fields — within the 8-12 cap, all load-bearing for this specific request.
+
+### After emitting
 
 After emitting a form, **STOP your turn immediately**. Don't add any prose after \`</question-form>\`. Don't begin work. The user will fill the form; their answers arrive on the NEXT turn as a \`## Form answers (id=...)\` block. Read that block, then proceed.
 
