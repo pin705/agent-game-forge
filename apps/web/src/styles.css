@@ -332,6 +332,48 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
 }
 .proj-trigger-caret { color: var(--ink-3); display: inline-flex; }
 
+/* Engine badge inside the project switcher trigger.
+ * Shows whether the open project is godot / unity / web / unknown so the
+ * user can confirm at a glance which target the file tree, scene editor,
+ * and Codex prompt presets are configured for. Subtle background tint
+ * per engine — kept low-contrast so the project name stays the row's
+ * primary anchor. */
+.proj-trigger-engine {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--ink-2);
+  line-height: 1;
+}
+.proj-trigger-engine[data-engine="godot"] {
+  color: oklch(0.62 0.13 240);
+  background: oklch(0.75 0.13 240 / 0.12);
+  border-color: oklch(0.7 0.12 240 / 0.35);
+}
+.proj-trigger-engine[data-engine="unity"] {
+  color: oklch(0.55 0.18 305);
+  background: oklch(0.72 0.15 305 / 0.12);
+  border-color: oklch(0.65 0.14 305 / 0.35);
+}
+.proj-trigger-engine[data-engine="web"] {
+  color: oklch(0.55 0.16 150);
+  background: oklch(0.78 0.15 150 / 0.14);
+  border-color: oklch(0.7 0.13 150 / 0.35);
+}
+.proj-trigger-engine[data-engine="unknown"] {
+  color: var(--ink-3);
+}
+[data-theme="dark"] .proj-trigger-engine[data-engine="godot"] { color: oklch(0.78 0.13 240); }
+[data-theme="dark"] .proj-trigger-engine[data-engine="unity"] { color: oklch(0.78 0.15 305); }
+[data-theme="dark"] .proj-trigger-engine[data-engine="web"]   { color: oklch(0.82 0.16 150); }
+
 .side-foot {
   border-top: 1px solid var(--line);
   padding: 10px 12px;

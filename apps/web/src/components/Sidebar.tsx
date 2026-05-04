@@ -234,13 +234,22 @@ function ProjectSwitcher(props: {
         type="button"
         className="nav-item proj-trigger"
         onClick={() => setOpen((v) => !v)}
-        title={props.project?.path}
+        title={props.project ? `${props.project.path}\nEngine: ${props.project.engine}` : undefined}
       >
         <svg className="ico" width="14" height="14" viewBox="0 0 14 14" fill="none">
           <rect x="2" y="2" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.4" />
           <circle cx="7" cy="7" r="2" fill="currentColor" />
         </svg>
         <span className="proj-trigger-name">{props.project?.name ?? 'No project'}</span>
+        {props.project && (
+          <span
+            className="proj-trigger-engine"
+            data-engine={props.project.engine}
+            aria-label={`Engine: ${props.project.engine}`}
+          >
+            {props.project.engine}
+          </span>
+        )}
         <span className="proj-trigger-caret">{I.caret}</span>
       </button>
       {open && (
