@@ -207,24 +207,43 @@ export function summarizeGroup(group: { family: ToolFamily; items: ToolItem[] })
   return `${group.items[0].name} ×${total} · ${stateLabel}`;
 }
 
-/** Extract candidate file paths the daemon embedded in an image_gen
- *  tool_result payload. Falls back to scanning the raw text for any
- *  *.png / *.jpg / *.webp tokens in case the structured payload
- *  schema differs across Codex versions. */
-export function extractImagePaths(item: ToolItem): string[] {
-  if (item.output === undefined) return [];
+/** Result payload extracted from an image_gen tool_result. The daemon
+ *  serializes a structured object so we have direct access to inline
+ *  base64 (when Codex CLI streamed the bytes) AND any saved file
+ *  paths. */
+export interface ImageGenResult {
+  /** Project-relative or absolute file paths the skill saved. */
+  paths: string[];
+  /** Raw PNG/JPEG bytes as a base64 string when available — Codex CLI
+   *  v0.128+ streams the result inline on image_generation_call's
+   *  'result' field, so we can render without a disk roundtrip. */
+  inlineBase64?: string;
+}
+
+export function extractImageResult(item: ToolItem): ImageGenResult {
+  if (item.output === undefined) return { paths: [] };
   const out = item.output;
   try {
     const parsed = JSON.parse(out) as {
       paths?: unknown;
-      url?: unknown;
+      inlineBase64?: unknown;
     };
-    if (Array.isArray(parsed.paths)) {
-      return parsed.paths.filter((p): p is string => typeof p === 'string');
-    }
+    const paths = Array.isArray(parsed.paths)
+      ? parsed.paths.filter((p): p is string => typeof p === 'string')
+      : [];
+    const inlineBase64 =
+      typeof parsed.inlineBase64 === 'string' && parsed.inlineBase64.length > 100
+        ? parsed.inlineBase64
+        : undefined;
+    return { paths, inlineBase64 };
   } catch {
     /* fall through to regex scan */
   }
   const matches = out.match(/[\w./\\-]+\.(?:png|jpg|jpeg|webp|gif)/gi);
-  return matches ? Array.from(new Set(matches)) : [];
+  return { paths: matches ? Array.from(new Set(matches)) : [] };
+}
+
+/** Compatibility wrapper kept for callers that only need paths. */
+export function extractImagePaths(item: ToolItem): string[] {
+  return extractImageResult(item).paths;
 }

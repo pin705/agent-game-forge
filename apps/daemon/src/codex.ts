@@ -86,6 +86,21 @@ interface CodexJsonEvent {
     changes?: { path?: string; kind?: string }[];
     [k: string]: unknown;
   };
+  /** Codex CLI v0.128+ wraps image_generation_call / image_generation_end and
+   *  similar internal events under a 'response_item' or 'event_msg' outer
+   *  type with the real shape inside .payload. */
+  payload?: {
+    type?: string;
+    id?: string;
+    call_id?: string;
+    status?: string;
+    revised_prompt?: string;
+    prompt?: string;
+    result?: string;
+    image_paths?: string[];
+    output_path?: string;
+    [k: string]: unknown;
+  };
   thread_id?: string;
   usage?: {
     input_tokens?: number;
@@ -246,6 +261,61 @@ export function mapCodexEvent(raw: CodexJsonEvent): AgentEvent | null {
         cachedRead: raw.usage.cached_input_tokens,
       },
     };
+  }
+
+  // ----- image_generation events (Codex CLI v0.128+) -----
+  // The CLI streams image_gen lifecycle as either:
+  //   { type: 'response_item', payload: { type: 'image_generation_call', status, revised_prompt, result?: <base64> } }
+  //   { type: 'event_msg',     payload: { type: 'image_generation_end',  call_id, status, revised_prompt } }
+  // We surface 'generating' as a tool_use start, 'completed'/end as a
+  // tool_result with the inline base64 (when present) so the chat can
+  // render the preview without a roundtrip to disk.
+  if ((t === 'response_item' || t === 'event_msg') && raw.payload) {
+    const p = raw.payload;
+    const innerType = p.type ?? '';
+    const isImage =
+      innerType === 'image_generation_call' ||
+      innerType === 'image_generation_end' ||
+      innerType === 'image_generation' ||
+      innerType === 'image_gen';
+    if (isImage) {
+      const id = String(p.id ?? p.call_id ?? Math.random());
+      const prompt = String(p.revised_prompt ?? p.prompt ?? '');
+      const status = String(p.status ?? '');
+      const isStart =
+        innerType === 'image_generation_call' &&
+        status !== 'completed' &&
+        status !== 'failed' &&
+        typeof p.result !== 'string';
+      const isEnd =
+        innerType === 'image_generation_end' ||
+        status === 'completed' ||
+        status === 'failed' ||
+        typeof p.result === 'string';
+
+      if (isStart) {
+        return {
+          type: 'tool_use',
+          id,
+          name: 'image_gen',
+          input: { prompt, raw: p },
+        };
+      }
+      if (isEnd) {
+        const paths: string[] = [];
+        if (Array.isArray(p.image_paths)) paths.push(...p.image_paths);
+        if (typeof p.output_path === 'string') paths.push(p.output_path);
+        const inlineBase64 =
+          typeof p.result === 'string' && p.result.length > 100 ? p.result : undefined;
+        const out = { paths, inlineBase64, prompt, raw: p };
+        return {
+          type: 'tool_result',
+          toolUseId: id,
+          content: JSON.stringify(out),
+          isError: status === 'failed',
+        };
+      }
+    }
   }
 
   if (t === 'turn.failed' || t === 'error') {

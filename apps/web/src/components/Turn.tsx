@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Block, ToolFamily, ToolItem } from '../lib/blocks.js';
-import { buildTurn, extractFileChanges, extractImagePaths, summarizeGroup } from '../lib/blocks.js';
+import { buildTurn, extractFileChanges, extractImageResult, summarizeGroup } from '../lib/blocks.js';
 import type { AgentEvent, QuestionFormAnswers } from '@ogf/contracts';
 import { I } from './icons.js';
 import { QuestionFormCard } from './QuestionFormCard.js';
@@ -188,8 +188,9 @@ function ToolGroup({
 function ImageGenDetail({ item, projectPath }: { item: ToolItem; projectPath?: string }) {
   const prompt = String((item.input as { prompt?: unknown })?.prompt ?? '');
   const size = String((item.input as { size?: unknown })?.size ?? '');
-  const paths = extractImagePaths(item);
+  const result = extractImageResult(item);
   const isRunning = item.output === undefined;
+  const hasAnyResult = !!result.inlineBase64 || result.paths.length > 0;
 
   return (
     <div>
@@ -210,17 +211,28 @@ function ImageGenDetail({ item, projectPath }: { item: ToolItem; projectPath?: s
           <span className="dot-pulse" /> generating…
         </div>
       )}
-      {!isRunning && paths.length === 0 && item.output && (
+      {!isRunning && !hasAnyResult && item.output && (
         <>
           <span className="label">Output</span>
-          <pre>{item.output}</pre>
+          <pre>{item.output.length > 500 ? item.output.slice(0, 500) + '…' : item.output}</pre>
         </>
       )}
-      {paths.length > 0 && (
+      {hasAnyResult && (
         <>
-          <span className="label">Result{paths.length > 1 ? 's' : ''}</span>
+          <span className="label">
+            Result{(result.paths.length || 0) + (result.inlineBase64 ? 1 : 0) > 1 ? 's' : ''}
+          </span>
           <div className="image-gen-grid">
-            {paths.map((p, i) => (
+            {result.inlineBase64 && (
+              <figure className="image-gen-card">
+                <img
+                  src={`data:image/png;base64,${result.inlineBase64}`}
+                  alt="generated"
+                />
+                <figcaption title="Inline base64 from Codex CLI">inline</figcaption>
+              </figure>
+            )}
+            {result.paths.map((p, i) => (
               <ImagePreview key={p + i} path={p} projectPath={projectPath} />
             ))}
           </div>
