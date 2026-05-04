@@ -929,6 +929,21 @@ function killProcessTree(
   }
 }
 
+/** The post-form-answers workflow, extracted so we can inject it on the
+ *  resumed turn that delivers the answers (where the long system preamble
+ *  is otherwise skipped). The fresh-turn preamble below also includes this
+ *  text inline, so Codex sees it during the discovery turn for context. */
+const RESUMED_FORM_WORKFLOW = `# You just received form answers — execute the spec workflow now
+
+Treat the user's '## Form answers' block above as the discovery answers for this project. Do NOT just start coding. Follow this workflow:
+
+1. **Write \`.ogf/spec.md\`** using the 8-section template (Identity / Player / World / Catalogs / Progression / OGF Layout / Phase plan / Out of scope). Phase plan MUST be a markdown checklist (\`- [ ] Phase N: <name> — <deliverable>\`). Make 3–7 phases, sized to the user's completeness tier.
+2. **Execute every phase autonomously in this same turn.** After each phase, edit spec.md to flip that row's \`- [ ]\` → \`- [x]\`. The OGF UI watches the file and shows the user live progress.
+3. **Don't emit more forms.** The user already picked the tier. No per-phase confirmations.
+4. **End** with a one-paragraph summary of what was built + how to verify (Play tab, Scenes tab, etc).
+
+If you discover the picked completeness tier is wrong mid-execution (e.g. \`polished\` would actually take 200K tokens not 80K), STOP, edit the spec to flag the issue, and end the turn explaining the situation. Don't silently expand scope.`;
+
 function composePrompt(
   userPrompt: string,
   refImagePaths: string[] | undefined,
@@ -996,9 +1011,20 @@ function composePrompt(
 
   if (isResumed) {
     // Resumed turns skip the long system instructions — they're in the prior
-    // turn. Still include scene snippet + a short conventions reminder.
+    // turn. Still include:
+    //   - scene snippet  (per-turn, always small)
+    //   - conventions reminder
+    //   - .ogf/spec.md if present  (per-project contract that drives every
+    //     turn — too important to drop, costs ~1 KB)
+    //   - the post-form workflow block IFF this prompt is a form-answer
+    //     reply, since the workflow lives in the long preamble that
+    //     resumed turns skip
     const reminder = `\n${summarizeConventions()}\n`;
-    return `${reminder}${sceneBlock}${refs}# User request\n\n${userPrompt}\n`;
+    const isFormAnswers = /^##\s+Form answers\b/m.test(userPrompt);
+    const formWorkflowBlock = isFormAnswers
+      ? `\n${RESUMED_FORM_WORKFLOW}\n`
+      : '';
+    return `${reminder}${specBlock}${formWorkflowBlock}${sceneBlock}${refs}# User request\n\n${userPrompt}\n`;
   }
 
   return `# Open Game Forge — agent run
