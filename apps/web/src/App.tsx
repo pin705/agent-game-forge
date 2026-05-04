@@ -1390,6 +1390,7 @@ function AgentPane(props: {
         </div>
       )}
       <div className="agent-head">
+        <span className="title">Codex</span>
         <span
           className="agent-head-dot"
           data-state={
@@ -1411,8 +1412,7 @@ function AgentPane(props: {
                 : 'Codex offline'
           }
         />
-        <span className="title">Codex</span>
-        <span className="sub">· {props.agent?.version?.replace(/^codex-cli\s*/, '') || 'detecting'}</span>
+        <span className="sub">{props.agent?.version?.replace(/^codex-cli\s*/, '') || 'detecting'}</span>
         <span style={{ flex: 1 }} />
         {props.pendingCount > 0 && (
           <button
