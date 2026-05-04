@@ -38,8 +38,10 @@ import { FileTree } from './components/FileTree.js';
 import { FileEditor } from './components/FileEditor.js';
 import { SceneEditor } from './components/SceneEditor.js';
 import { PlayPane } from './components/PlayPane.js';
-import { Header, type Theme } from './components/Header.js';
-import { StatusBar } from './components/StatusBar.js';
+import { Sidebar, type Theme } from './components/Sidebar.js';
+// v2: StatusBar removed from the layout. Component file kept for now in
+// case we want to revive it as a tooltip / overlay later.
+// import { StatusBar } from './components/StatusBar.js';
 import { Dropzone, type DropzoneHandle } from './components/Dropzone.js';
 import { FolderPickerModal } from './components/FolderPickerModal.js';
 import { PendingChangesModal } from './components/PendingChangesModal.js';
@@ -673,7 +675,7 @@ export function App() {
 
   return (
     <div className="app">
-      <Header
+      <Sidebar
         agent={agent}
         agentLoading={agentLoading}
         project={project}
@@ -687,7 +689,8 @@ export function App() {
         onCycleDensity={() =>
           setDensity((d) => (d === 'compact' ? 'regular' : d === 'regular' ? 'comfy' : 'compact'))
         }
-        onPlay={() => setTab('play')}
+        tab={tab}
+        onTabChange={setTab}
       />
 
       <div
@@ -797,13 +800,8 @@ export function App() {
         />
       </div>
 
-      <StatusBar
-        agent={agent}
-        project={project}
-        filesChanged={filesChangedCount}
-        isStreaming={running}
-        lastRunLabel={lastRunLabel}
-      />
+      {/* v2: status bar removed (no chrome at the bottom of the app — agent
+       *  state lives in the sidebar foot, save state shows on save badges). */}
 
       {showOpenModal && (
         <FolderPickerModal
@@ -968,16 +966,19 @@ function EditorPane(props: {
 
   return (
     <div className="editor-pane">
-      <div className="tabs" role="tablist">
+      {/* v2: tabs moved to Sidebar; this is now a thin topbar with crumbs +
+          back/forward + tree-toggle. File-specific actions (rename, slicing,
+          etc.) still live inside the body components. */}
+      <div className="topbar">
         <button
-          className="tab nav-btn"
+          className="btn btn-sm btn-ghost btn-icon"
           onClick={props.onToggleTree}
           title={props.treeCollapsed ? 'Show file tree' : 'Hide file tree'}
         >
           {props.treeCollapsed ? '▸' : '◂'}
         </button>
         <button
-          className="tab nav-btn"
+          className="btn btn-sm btn-ghost btn-icon"
           onClick={props.onBack}
           disabled={!props.canBack}
           title="Back"
@@ -985,23 +986,17 @@ function EditorPane(props: {
           ‹
         </button>
         <button
-          className="tab nav-btn"
+          className="btn btn-sm btn-ghost btn-icon"
           onClick={props.onForward}
           disabled={!props.canForward}
           title="Forward"
         >
           ›
         </button>
-        <button className="tab" role="tab" aria-selected={props.tab === 'assets'} onClick={() => props.setTab('assets')}>
-          {I.image} Assets {props.usedAssets.size > 0 && <span className="badge">{props.usedAssets.size}</span>}
-        </button>
-        <button className="tab" role="tab" aria-selected={props.tab === 'scenes'} onClick={() => props.setTab('scenes')}>
-          {I.tscn} Scenes
-        </button>
-        <button className="tab" role="tab" aria-selected={props.tab === 'play'} onClick={() => props.setTab('play')}>
-          {I.play} Play
-        </button>
-        <span style={{ flex: 1 }} />
+        <span className="topbar-tab">
+          {props.tab === 'assets' ? 'Assets' : props.tab === 'scenes' ? 'Scenes' : 'Play'}
+        </span>
+        <span className="grow" />
       </div>
 
       <div
