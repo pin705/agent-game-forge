@@ -1252,11 +1252,14 @@ function EmptyEditor({ onOpen }: { onOpen: () => void }) {
   return (
     <div className="empty-state">
       <div className="empty-card">
-        <div className="pix">
-          {Array.from({ length: 64 }).map((_, i) => (
-            <div key={i} style={{ background: emptyPixColor(i) }} />
-          ))}
-        </div>
+        <img
+          className="empty-logo"
+          src="/ogf-logo-256.png"
+          srcSet="/ogf-logo-128.png 1x, /ogf-logo-256.png 2x, /ogf-logo-512.png 4x"
+          alt="Open Game Forge"
+          width={128}
+          height={128}
+        />
         <h2>Open a project to begin</h2>
         <p>Pick a Godot, Unity, or web game folder. Codex will run with that folder as its workspace.</p>
         <button className="btn btn-primary" onClick={onOpen}>
@@ -1265,21 +1268,6 @@ function EmptyEditor({ onOpen }: { onOpen: () => void }) {
       </div>
     </div>
   );
-}
-
-function emptyPixColor(i: number): string {
-  // build a tiny "F" pixel-art mark
-  const F: number[] = [
-    0,0,0,0,0,0,0,0,
-    0,1,1,1,1,1,1,0,
-    0,1,1,0,0,0,0,0,
-    0,1,1,1,1,0,0,0,
-    0,1,1,0,0,0,0,0,
-    0,1,1,0,0,0,0,0,
-    0,1,1,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-  ];
-  return F[i] === 1 ? 'var(--accent)' : 'var(--bg-2)';
 }
 
 // ===================== Agent Pane =====================

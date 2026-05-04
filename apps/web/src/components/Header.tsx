@@ -34,7 +34,14 @@ export function Header(props: Props) {
     <header className="hdr">
       <div className="hdr-left">
         <div className="logo">
-          <div className="logo-mark">F</div>
+          <img
+            className="logo-mark"
+            src="/ogf-logo-64.png"
+            srcSet="/ogf-logo-32.png 1x, /ogf-logo-64.png 2x, /ogf-logo-128.png 4x"
+            alt="Open Game Forge"
+            width={22}
+            height={22}
+          />
           <div className="logo-name">
             Forge<span>.</span>
           </div>

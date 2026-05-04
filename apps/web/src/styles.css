@@ -153,17 +153,14 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   padding: 4px 8px; border-radius: var(--radius);
 }
 .logo-mark {
-  width: 22px; height: 22px;
-  display: grid; place-items: center;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-family: var(--font-pixel);
-  font-size: 22px;
-  line-height: 1;
+  width: 22px;
+  height: 22px;
   border-radius: 3px;
-  letter-spacing: -1px;
-  text-shadow: 0 0 0 currentColor;
+  /* Pixel-art logo — keep crisp at integer scales rather than smooth bicubic. */
   image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  flex-shrink: 0;
+  display: block;
 }
 .logo-name {
   font-weight: 600;
@@ -1475,17 +1472,14 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   text-align: center;
   max-width: 420px;
 }
-.empty-card .pix {
-  width: 96px; height: 96px;
+.empty-card .empty-logo {
+  width: 128px;
+  height: 128px;
   margin: 0 auto 18px;
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  grid-template-rows: repeat(8, 1fr);
-  gap: 1px;
-}
-.empty-card .pix div {
-  background: var(--bg-2);
-  border-radius: 1px;
+  display: block;
+  /* Pixel-art — keep crisp at integer scales. */
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
 }
 .empty-card h2 {
   margin: 0 0 6px;
@@ -1800,9 +1794,12 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
 /* main grid — designer used `var(--split-left/right)`; we set inline */
 .main { grid-template-columns: 64fr 1px 36fr; }
 
-/* Empty editor state — refine the F mark size */
-.empty-state .empty-card .pix {
-  width: 80px; height: 80px;
+/* Empty editor state — narrower viewports get a slightly smaller logo */
+@media (max-width: 1100px) {
+  .empty-state .empty-card .empty-logo {
+    width: 96px;
+    height: 96px;
+  }
 }
 
 /* Stream cursor inline (designer had it in msg-agent .stream-cursor — works) */
