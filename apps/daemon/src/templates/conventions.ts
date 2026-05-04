@@ -78,26 +78,70 @@ custom image_gen prompts.
 ### These skills are MANDATORY for visual assets — no shortcuts
 
 You MUST NOT generate game-visible art with raw \`image_gen\` and bypass the
-skill, even when "you just need one frame quickly". Specifically:
+skill, even when "you just need one frame quickly", even when you think
+batching is more efficient. Specifically:
 
-- ❌ DON'T call \`image_gen\` directly for character / enemy / item / FX sprites
-- ❌ DON'T inline-generate a single PNG and use it as a sprite
+- ❌ DON'T call \`image_gen\` directly for character / enemy / item / FX /
+  tower / prop sprites — EVER. Even one. Even "just for testing".
+- ❌ DON'T inline-generate a single PNG and use it as a sprite.
 - ❌ DON'T fake an animation sheet by tiling one pose N× and calling each cell
-  a "frame" — the result looks like the character froze. (We've shipped this
-  bug. The skill exists to prevent it.)
-- ✅ Call \`generate2dsprite\` and request one row per animation, with each
-  cell a DISTINCT pose progression — actual motion frames, not duplicates.
-- ✅ Request the SAME number of frames for each animation row in the sheet
-  (so the slicer can grid-cut). The exact count is your judgement call —
-  pick what suits the genre / style / completeness tier (a chunky NES-style
-  walk reads at 2 frames; a fluid Hollow-Knight-style walk wants 6+).
+  a "frame" — the result looks like the character froze.
+- ❌ **DON'T pack multiple distinct assets into a single mega-sheet.**
+  This is the most common bypass and it's WRONG. Examples of what NOT to do:
+    - "EXACT GRID: 4 rows × 5 columns. Row 1: archer, spear, stone, strategist,
+      banner. Row 2: their level-2 versions. Row 3: their level-3 versions.
+      Row 4: build_pad, arrow, projectile, flame_fx, coin_icon"
+    - "Generate one atlas containing all 4 enemies, each in a different row"
+    - "Pack hero and 3 NPCs into one sheet for memory efficiency"
+  The skill is designed for **ONE asset per call**, with multiple animation
+  rows for THAT one asset (idle / walk / attack / death of the same character).
+  Different assets MUST go through separate \`generate2dsprite\` calls.
+  5 towers × 3 levels = **15 separate \`generate2dsprite\` calls**, not 1
+  image_gen with a 4×5 grid. Yes, really. The cost is real but the alternative
+  is broken sprites the slicer can't parse and the user can't use.
+- ❌ If you're about to write "Row 1: …, Row 2: …" or "EXACT GRID" or
+  "atlas containing X, Y, and Z" in an image_gen prompt, STOP. That's the
+  forbidden pattern. Use \`generate2dsprite\` per-asset instead.
+
+- ✅ Call \`generate2dsprite\` ONCE per asset. The skill's \`sheet\` parameter
+  (1x4 / 2x2 / 4x4 / etc.) controls the animation-row layout for that ONE
+  asset, not a multi-asset packing.
+- ✅ Each row in a generate2dsprite sheet is one ANIMATION of the same
+  character (idle row, walk row, attack row), with each cell a DISTINCT
+  pose progression — actual motion frames, not duplicates.
+- ✅ Request the SAME number of frames for each animation row (so the slicer
+  can grid-cut). The exact count is your judgement call — pick what suits
+  the genre / style / completeness tier (a chunky NES-style walk reads at
+  2 frames; a fluid Hollow-Knight-style walk wants 6+).
 - ✅ Backgrounds + props go through \`generate2dmap\` regardless of whether
   you "could just" \`image_gen\` a single image.
+
+#### Cost vs. correctness
+
+If the spec lists 5 towers × 3 upgrade levels + 4 enemies + 1 hero, the
+correct plan is **23 separate skill invocations** (15 + 4 + 1 + N for hero
+animation rows the skill handles internally), not "let me batch this into
+2 mega-atlases to save image_gen calls". Yes, you'll spend more turns and
+more API budget on visual generation. That is the explicit trade-off OGF
+makes. Bypassing it produces unusable assets and wastes more time when
+the user has to ask you to redo it.
 
 The non-negotiable rule is **motion variation**: every cell in a row must
 show actual progression. The frame COUNT is your call, but the count must
 mean what it claims (a 4-frame walk row must show 4 distinct walk poses,
 not 1 pose × 4).
+
+#### When may I call image_gen directly?
+
+The narrow exceptions, in order of frequency:
+1. **Never for game-visible sprites.** Use \`generate2dsprite\`.
+2. **Never for backgrounds / maps / tiles.** Use \`generate2dmap\`.
+3. The skill itself uses \`image_gen\` internally — that's the skill's job,
+   not yours. If you find yourself writing \`image_gen\` calls "the way the
+   skill would", you are bypassing the skill. Stop and call the skill.
+4. The only legitimate direct \`image_gen\` is something neither skill
+   covers (e.g. a one-off explanation diagram for the user, never going
+   into the game). If you're tempted to use it for game art, you are wrong.
 
 ### Honor the spec's Style directive in every gen call
 

@@ -1149,7 +1149,7 @@ function composePrompt(
 
   return `# Open Game Forge — agent run
 
-You are working inside an Open Game Forge project. The user is editing a 2D game in this directory. Edit files on disk in the cwd. When generating visible assets, use \`image_gen\` and place files under \`assets/\`. Report changed files at the end.
+You are working inside an Open Game Forge project. The user is editing a 2D game in this directory. Edit files on disk in the cwd. **For game-visible art (sprites, characters, enemies, towers, props, FX): you MUST call the \`generate2dsprite\` skill — never raw \`image_gen\`. For backgrounds / maps / tilesets: call \`generate2dmap\`.** One asset = one skill call; never pack multiple distinct assets into a single mega-atlas. See "Asset / map generation skills" below for the strict rules. Place generated files under \`assets/\`. Report changed files at the end.
 
 # Asking the user structured questions (\`<question-form>\`)
 
@@ -1328,21 +1328,60 @@ When to use a question-form:
 - ❌ Small / unambiguous edits ("fix this typo", "add a tooltip") — just do it
 - ❌ User already gave clear constraints ("3 levels, pixel art, gamepad") — don't re-ask
 
-# Asset / map generation skills
+# Asset / map generation skills (MANDATORY)
 
-Use the project-installed Codex skills when generating visual content:
+Use the project-installed Codex skills when generating visual content.
+These are not "preferred" — they are **required** for any game-visible art:
 
-- **\`generate2dsprite\`** — for character / enemy / item / FX sprites and
-  animation sheets. Decide asset_type / action / view / sheet layout from
-  the user's request; the skill handles image_gen + chroma key + frame
-  alignment + transparent export.
+- **\`generate2dsprite\`** — for character / enemy / item / FX / tower /
+  prop sprites and animation sheets. Decide asset_type / action / view /
+  sheet layout from the user's request; the skill handles image_gen +
+  chroma key + frame alignment + transparent export.
 - **\`generate2dmap\`** — for level backgrounds, prop packs, tilesets,
   parallax layers. The skill picks the right pipeline (baked / layered /
-  tilemap / parallax) and emits engine-native files (.tscn for Godot,
-  JSON-based for Web).
+  tilemap / parallax) and emits engine-native files.
 
-Reach for these BEFORE writing custom \`image_gen\` prompts. They produce
-output that OGF can parse and edit.
+## Hard rules
+
+- ❌ **Never call \`image_gen\` directly for game art.** Even one frame.
+  Even "for testing". Even when batching feels efficient.
+- ❌ **One asset = one skill call.** Do not combine multiple different
+  assets (e.g. 5 different towers, or 4 different enemies, or all 3
+  upgrade levels of one tower) into a single \`image_gen\` mega-atlas.
+- ❌ If you find yourself typing "EXACT GRID: N rows × M cols" or
+  "Row 1: archer_roost, Row 2: spear_barricade…" or "atlas containing
+  X, Y, and Z" in an image_gen prompt, **STOP**. That is the forbidden
+  pattern. Use \`generate2dsprite\` once per asset instead.
+- ❌ Don't try to "save image_gen calls" by packing. The skills exist
+  precisely to make per-asset generation the cheap default. Bypassing
+  them produces unusable sheets the slicer can't parse.
+
+## Cost is the explicit trade-off
+
+A spec listing 5 towers × 3 levels + 4 enemies + 1 hero is **~23
+separate skill calls**, not 2 mega-atlases. Yes that's more turns and
+more API budget. That is the correct cost. Skipping it produces broken
+art that the user has to ask you to redo, which costs more.
+
+## What the skill does, and why you can't replicate it
+
+The skill internally:
+1. Builds a strict prompt (chroma-key magenta background, exact cell
+   grid for ONE asset's animation rows, safe-area padding rules).
+2. Calls \`image_gen\` with that prompt.
+3. Removes the magenta background → transparent PNG.
+4. Slices into evenly-aligned frames.
+5. Exports a sliced sprite sheet OGF and the engine can both read.
+
+If you write your own image_gen prompt, you skip steps 3–5 and produce
+an unusable image. Even if your prompt is "good", OGF cannot align /
+slice / clean it without the skill's metadata.
+
+## See also
+
+For the full sprite/map rules (motion variation, frame counts, Style
+directive, wiring assets back into game data) read the engine-specific
+conventions section that follows.
 
 # Live editor state
 
