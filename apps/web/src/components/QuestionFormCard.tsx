@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { QuestionForm, QuestionFormAnswers } from '@ogf/contracts';
 import { fetchFileContent } from '../lib/api.js';
 
@@ -13,6 +15,11 @@ interface Props {
   /** Project path — only used by spec-approval forms to fetch .ogf/spec.md
    *  for inline review. Other form ids ignore it. */
   projectPath?: string;
+  /** When set + form is unlocked + no required fields are missing, the
+   *  card auto-submits after this many seconds of inactivity. Any user
+   *  interaction with the form cancels the timer. Demo-friendly default
+   *  of 30s makes sense for spec-approval and discovery forms. */
+  autoSubmitSeconds?: number;
 }
 
 function defaultValueFor(field: QuestionForm['fields'][number]): string | string[] {
@@ -34,8 +41,21 @@ export function QuestionFormCard(props: Props) {
 
   const [values, setValues] = useState<Record<string, string | string[]>>(initial);
 
+  // Collapsible state for locked (post-submit) cards. Once a form is submitted
+  // the card sticks around so the user can see what they answered, but in a
+  // long chat that's a lot of vertical real estate — let them collapse it.
+  const [collapsed, setCollapsed] = useState(false);
+  // First time the form transitions from unlocked → locked, collapse it
+  // automatically (the user just submitted, they don't need it expanded).
+  const lockedRef = useRef(props.locked);
+  useEffect(() => {
+    if (!lockedRef.current && props.locked) setCollapsed(true);
+    lockedRef.current = props.locked;
+  }, [props.locked]);
+
   function setField(key: string, v: string | string[]) {
     setValues((prev) => ({ ...prev, [key]: v }));
+    cancelAutoSubmit();
   }
 
   function missingRequired(): string[] {
@@ -55,46 +75,105 @@ export function QuestionFormCard(props: Props) {
     props.onSubmit({ formId: props.form.id, answers: values });
   }
 
+  // Auto-submit countdown. Pauses on any user interaction (field change,
+  // focus, click anywhere on the card). Skips entirely when the form has
+  // missing required fields — we don't auto-submit junk data.
+  const autoEnabled = !!props.autoSubmitSeconds && !props.locked;
+  const [secondsLeft, setSecondsLeft] = useState(props.autoSubmitSeconds ?? 0);
+  const [autoActive, setAutoActive] = useState(autoEnabled);
+  const submitRef = useRef(submit);
+  const missingRef = useRef(missingRequired);
+  submitRef.current = submit;
+  missingRef.current = missingRequired;
+
+  useEffect(() => {
+    if (!autoActive) return;
+    const id = window.setInterval(() => {
+      setSecondsLeft((s) => {
+        if (s <= 1) {
+          window.clearInterval(id);
+          // Defer to next tick so refs are settled.
+          window.setTimeout(() => {
+            if (missingRef.current().length === 0) submitRef.current();
+            setAutoActive(false);
+          }, 0);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [autoActive]);
+
+  function cancelAutoSubmit() {
+    if (autoActive) setAutoActive(false);
+  }
+
+  const isCollapsed = props.locked && collapsed;
+
   return (
-    <div className={`qform ${props.locked ? 'locked' : ''}`}>
-      <div className="qform-head">
+    <div
+      className={`qform ${props.locked ? 'locked' : ''} ${isCollapsed ? 'collapsed' : ''}`}
+      onClickCapture={cancelAutoSubmit}
+      onFocusCapture={cancelAutoSubmit}
+    >
+      <div
+        className={`qform-head ${props.locked ? 'qform-head-clickable' : ''}`}
+        onClick={() => {
+          if (props.locked) setCollapsed((v) => !v);
+        }}
+      >
+        {props.locked && (
+          <span className="qform-collapse-chev" aria-hidden>
+            {collapsed ? '▸' : '▾'}
+          </span>
+        )}
         <span className="qform-title">{props.form.title}</span>
         {props.locked && <span className="qform-locked-tag">submitted</span>}
+        {autoActive && !props.locked && (
+          <span className="qform-auto-hint" title="Auto-submits if you don't respond">
+            auto-submit in {secondsLeft}s · click to cancel
+          </span>
+        )}
       </div>
-      {props.form.intro && <div className="qform-intro">{props.form.intro}</div>}
-      {props.form.id === 'spec-approval' && props.projectPath && (
-        <SpecViewer projectPath={props.projectPath} />
-      )}
-      <div className="qform-fields">
-        {props.form.fields.map((f) => (
-          <FormFieldRow
-            key={f.key}
-            field={f}
-            value={values[f.key]}
-            locked={!!props.locked}
-            onChange={(v) => setField(f.key, v)}
-          />
-        ))}
-      </div>
-      {!props.locked && (() => {
-        const missing = missingRequired();
-        return (
-          <div className="qform-actions">
-            {missing.length > 0 && (
-              <span className="qform-missing-hint">
-                Need: {missing.join(', ')}
-              </span>
-            )}
-            <button
-              className="btn btn-sm btn-primary"
-              onClick={submit}
-              disabled={missing.length > 0}
-            >
-              {props.form.submitLabel ?? 'Submit'}
-            </button>
+      {!isCollapsed && (
+        <>
+          {props.form.intro && <div className="qform-intro">{props.form.intro}</div>}
+          {props.form.id === 'spec-approval' && props.projectPath && (
+            <SpecViewer projectPath={props.projectPath} />
+          )}
+          <div className="qform-fields">
+            {props.form.fields.map((f) => (
+              <FormFieldRow
+                key={f.key}
+                field={f}
+                value={values[f.key]}
+                locked={!!props.locked}
+                onChange={(v) => setField(f.key, v)}
+              />
+            ))}
           </div>
-        );
-      })()}
+          {!props.locked && (() => {
+            const missing = missingRequired();
+            return (
+              <div className="qform-actions">
+                {missing.length > 0 && (
+                  <span className="qform-missing-hint">
+                    Need: {missing.join(', ')}
+                  </span>
+                )}
+                <button
+                  className="btn btn-sm btn-primary"
+                  onClick={submit}
+                  disabled={missing.length > 0}
+                >
+                  {props.form.submitLabel ?? 'Submit'}
+                </button>
+              </div>
+            );
+          })()}
+        </>
+      )}
     </div>
   );
 }
@@ -265,7 +344,31 @@ function SpecViewer({ projectPath }: { projectPath: string }) {
         {open ? '▾' : '▸'} {title} · {phaseCount} phase{phaseCount === 1 ? '' : 's'}
       </button>
       {open && (
-        <pre className="qform-spec-body">{content}</pre>
+        <div className="qform-spec-body md-block">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              a: ({ href, children }) => (
+                <a href={href} target="_blank" rel="noreferrer">{children}</a>
+              ),
+              code: ({ className, children, ...rest }) => {
+                const isBlock = !!className;
+                if (isBlock) {
+                  return (
+                    <pre className="md-pre">
+                      <code className={className} {...rest}>
+                        {children}
+                      </code>
+                    </pre>
+                  );
+                }
+                return <code {...rest}>{children}</code>;
+              },
+            }}
+          >
+            {content}
+          </ReactMarkdown>
+        </div>
       )}
     </div>
   );

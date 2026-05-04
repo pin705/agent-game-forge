@@ -1333,9 +1333,37 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
   border-left-color: var(--ink-3);
   opacity: 0.85;
 }
+.qform.locked.collapsed {
+  padding: 8px 12px;
+  margin: 6px 0;
+}
+.qform.locked.collapsed .qform-head { margin-bottom: 0; }
 .qform-head {
   display: flex; align-items: center; gap: 8px;
   margin-bottom: 8px;
+}
+.qform-head-clickable { cursor: pointer; user-select: none; }
+.qform-head-clickable:hover .qform-title { color: var(--accent); }
+.qform-collapse-chev {
+  color: var(--ink-3);
+  font-size: 11px;
+  width: 12px;
+  display: inline-flex;
+  justify-content: center;
+}
+
+/* Auto-submit countdown hint — sits in the form head, ghost styling so
+ * it reads as advisory not a button. Click anywhere on the form
+ * (capture-phase) cancels the timer. */
+.qform-auto-hint {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-2);
 }
 .qform-title {
   font-weight: 600;
@@ -1494,15 +1522,14 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
   margin: 0;
   padding: 12px 14px;
   border-top: 1px solid var(--line);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  color: var(--ink-1);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  color: var(--ink-0);
   background: var(--bg-1);
-  white-space: pre-wrap;
   word-wrap: break-word;
   max-height: 480px;
   overflow-y: auto;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 .qform-spec-loading,
 .qform-spec-error {
@@ -2341,6 +2368,87 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
 
 /* err pre in tool-body */
 .tool-body pre.err { color: var(--red); }
+
+/* Form-submit user message — shown in place of the raw '## Form answers'
+ * markdown wall when a user submits a question-form. Compact pill
+ * aligned to the right (where user messages live), expandable to show
+ * the answered fields. The actual prompt sent to Codex is unchanged;
+ * this only affects in-chat presentation. */
+.form-submit-pill {
+  align-self: flex-end;
+  max-width: 80%;
+  margin-left: auto;
+  margin-bottom: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-2);
+  font-size: 12px;
+  overflow: hidden;
+}
+.form-submit-head {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--ink-1);
+}
+.form-submit-head:hover { background: var(--bg-3); color: var(--ink-0); }
+.form-submit-chev { color: var(--ink-3); width: 10px; }
+.form-submit-icon { color: var(--accent); font-size: 13px; }
+.form-submit-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.form-submit-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-0);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.form-submit-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+.form-submit-body {
+  margin: 0;
+  padding: 6px 12px 10px 30px;
+  list-style: none;
+  border-top: 1px solid var(--line);
+  background: var(--bg-1);
+  display: grid;
+  gap: 4px;
+}
+.form-submit-body li {
+  display: grid;
+  grid-template-columns: minmax(80px, 30%) 1fr;
+  gap: 10px;
+  font-size: 11.5px;
+  align-items: baseline;
+}
+.form-submit-key {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.form-submit-value {
+  color: var(--ink-0);
+  word-break: break-word;
+}
 
 /* image_gen preview cards — shown inside an expanded image_gen tool
  * card. Multiple results lay out in a responsive grid. */

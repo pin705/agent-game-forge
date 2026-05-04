@@ -98,6 +98,12 @@ export function SpecProgressCard(props: Props) {
   const done = phases.filter((p) => p.done).length;
   const pct = Math.round((done / phases.length) * 100);
 
+  // Once every phase is done, the card has nothing useful left to say —
+  // it's just visual debt pinned at the bottom of the chat. Hide it.
+  // The next streaming run that adds new phases will re-show automatically
+  // (state already polls / refetches on conversation change).
+  if (done === phases.length) return null;
+
   // While streaming, the FIRST not-yet-done phase is the "active" one — flag
   // it visually so the user can see what's currently being worked on.
   const activeIdx = props.streaming

@@ -32,9 +32,19 @@ export function Turn(props: TurnProps) {
     Math.max(0, (props.endedAt ?? Date.now()) - props.startedAt),
   );
 
+  // Form-submit user messages are ugly walls of '## Form answers (id=...)'
+  // markdown when rendered raw. Detect them and render as a compact tool-
+  // style pill — the actual prompt sent to Codex is unchanged, just the
+  // chat presentation collapses.
+  const formSubmit = parseFormSubmitMessage(props.userText);
+
   return (
     <>
-      <div className="msg-user">{props.userText}</div>
+      {formSubmit ? (
+        <FormSubmitPill formId={formSubmit.formId} entries={formSubmit.entries} />
+      ) : (
+        <div className="msg-user">{props.userText}</div>
+      )}
 
       <div className="msg-agent">
         {built.blocks.length === 0 && props.status === 'streaming' && (
@@ -96,6 +106,11 @@ function BlockView({
         locked={locked}
         onSubmit={onSubmitForm}
         projectPath={projectPath}
+        // Demo-friendly fallback: if the user doesn't engage within 30s,
+        // auto-submit with the defaults so the agent isn't stuck waiting.
+        // QuestionFormCard cancels the timer on any interaction and skips
+        // when required fields would still be empty.
+        autoSubmitSeconds={locked ? undefined : 30}
       />
     );
   }
@@ -428,6 +443,69 @@ function shortPath(p: string): string {
   const parts = p.replace(/\\/g, '/').split('/').filter(Boolean);
   if (parts.length <= 3) return parts.join('/');
   return '…/' + parts.slice(-2).join('/');
+}
+
+/** Parse a form-submit user message back into structured fields.
+ *  App.tsx#onSubmitForm formats every form submit as:
+ *    ## Form answers (id=<formId>)
+ *
+ *    - **<key>**: <value>
+ *    - ...
+ *  We reverse that here so the chat renders a compact pill instead of
+ *  showing the raw markdown wall to the user. Codex still sees the
+ *  original markdown — only the in-chat presentation changes. */
+function parseFormSubmitMessage(
+  userText: string,
+): { formId: string; entries: { key: string; value: string }[] } | null {
+  const m = /^## Form answers \(id=([^)]+)\)\s*\n\n([\s\S]+)$/.exec(userText);
+  if (!m) return null;
+  const [, formId, body] = m;
+  const entries: { key: string; value: string }[] = [];
+  for (const line of body.split('\n')) {
+    const lm = /^- \*\*([^*]+)\*\*:\s*(.*)$/.exec(line.trim());
+    if (lm) entries.push({ key: lm[1].trim(), value: lm[2].trim() });
+  }
+  return { formId, entries };
+}
+
+function FormSubmitPill({
+  formId,
+  entries,
+}: {
+  formId: string;
+  entries: { key: string; value: string }[];
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="form-submit-pill" data-open={open}>
+      <button
+        type="button"
+        className="form-submit-head"
+        onClick={() => setOpen((v) => !v)}
+        title="Toggle answers"
+      >
+        <span className="form-submit-chev" aria-hidden>
+          {open ? '▾' : '▸'}
+        </span>
+        <span className="form-submit-icon" aria-hidden>↩</span>
+        <span className="form-submit-label">submitted</span>
+        <code className="form-submit-id">{formId}</code>
+        <span className="form-submit-count">
+          {entries.length} field{entries.length === 1 ? '' : 's'}
+        </span>
+      </button>
+      {open && (
+        <ul className="form-submit-body">
+          {entries.map((e, i) => (
+            <li key={i}>
+              <span className="form-submit-key">{e.key}</span>
+              <span className="form-submit-value">{e.value || '—'}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function formatElapsed(ms: number): string {
