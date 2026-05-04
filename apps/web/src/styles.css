@@ -1838,6 +1838,12 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
 /* Inline menu button — used inside the composer for model + reasoning
  * pickers. Flat, ghost-style, compact. The native <select> sits inside
  * with transparent chrome so the visible button = the entire row. */
+/* Composer-actions menu picker (model / reasoning).
+ * Native <select> dropdown UI is unstyleable cross-browser, so the
+ * composer uses a real button + a popover (.menu-pop) we draw
+ * ourselves. Trigger styling is shared between this picker and any
+ * inline label/select chip elsewhere. */
+.menu-picker { position: relative; flex-shrink: 0; }
 .menu-btn {
   display: inline-flex;
   align-items: center;
@@ -1846,32 +1852,87 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
   padding: 0 8px;
   border-radius: 6px;
   font-size: 12px;
+  font-family: inherit;
   color: var(--ink-1);
   cursor: pointer;
   flex-shrink: 0;
   position: relative;
+  background: transparent;
+  border: 1px solid transparent;
 }
 .menu-btn:hover { background: var(--bg-2); color: var(--ink-0); }
+.menu-picker .menu-btn[aria-expanded="true"] {
+  background: var(--bg-2);
+  border-color: var(--line);
+  color: var(--ink-0);
+}
 .menu-btn .lbl {
   color: var(--ink-3);
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.02em;
 }
-.menu-btn select {
-  appearance: none;
-  -webkit-appearance: none;
-  background: transparent;
-  border: 0;
+.menu-btn .val {
   color: var(--ink-0);
-  font-size: 12px;
   font-weight: 500;
-  font-family: inherit;
-  cursor: pointer;
-  padding: 0 2px 0 0;
-  outline: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 .menu-btn .caret { color: var(--ink-3); display: inline-flex; flex-shrink: 0; }
+
+/* Popover. Composer sits at the bottom of the agent pane, so we open
+ * UPWARD (bottom: 100%) — opening downward would clip. min-width
+ * matches the trigger; max-height keeps long model lists scrollable. */
+.menu-pop {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  min-width: max(180px, 100%);
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--bg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  box-shadow: var(--shadow-pop);
+  padding: 4px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.menu-pop-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: var(--ink-1);
+  white-space: nowrap;
+}
+.menu-pop-row:hover { background: var(--bg-2); }
+.menu-pop-row.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.menu-pop-row .primary {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-0);
+}
+.menu-pop-row.active .primary { color: var(--accent); }
+.menu-pop-row .hint {
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-family: var(--font-sans);
+}
+.menu-pop-row.active .hint { color: oklch(from var(--accent) l c h / 0.75); }
 
 .icon-btn {
   background: transparent;

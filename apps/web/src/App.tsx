@@ -1529,34 +1529,34 @@ function AgentPane(props: {
             }
           />
           <div className="composer-actions">
-            <label className="menu-btn" title="Model">
-              <span className="lbl">model</span>
-              <select
-                value={props.model}
-                onChange={(e) => props.setModel(e.target.value)}
-              >
-                {(props.agent?.models ?? [{ id: 'default', label: 'Default' }]).map((m) => (
-                  <option key={m.id} value={m.id} style={{ background: 'var(--bg-1)' }}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-              <span className="caret">{I.caret}</span>
-            </label>
-            <label className="menu-btn" title="Reasoning effort">
-              <span className="lbl">reasoning</span>
-              <select
-                value={props.reasoning}
-                onChange={(e) => props.setReasoning(e.target.value as ReasoningEffort)}
-              >
-                <option value="minimal" style={{ background: 'var(--bg-1)' }}>minimal</option>
-                <option value="low" style={{ background: 'var(--bg-1)' }}>low</option>
-                <option value="medium" style={{ background: 'var(--bg-1)' }}>medium</option>
-                <option value="high" style={{ background: 'var(--bg-1)' }}>high</option>
-                <option value="xhigh" style={{ background: 'var(--bg-1)' }}>xhigh</option>
-              </select>
-              <span className="caret">{I.caret}</span>
-            </label>
+            <MenuPicker
+              label="model"
+              value={props.model}
+              onChange={props.setModel}
+              options={(props.agent?.models ?? [{ id: 'default', label: 'Default' }]).map(
+                (m) => ({
+                  // The agent feeds labels like 'gpt-5.5 · frontier coding'.
+                  // The trigger only shows the model id (everything before
+                  // ' · '); the popover row keeps both as primary + hint.
+                  id: m.id,
+                  triggerLabel: m.id,
+                  primary: m.id,
+                  hint: stripModelHint(m.label, m.id),
+                }),
+              )}
+            />
+            <MenuPicker
+              label="reasoning"
+              value={props.reasoning}
+              onChange={(v) => props.setReasoning(v as ReasoningEffort)}
+              options={[
+                { id: 'minimal', triggerLabel: 'minimal', primary: 'minimal', hint: 'fastest, no plan' },
+                { id: 'low',     triggerLabel: 'low',     primary: 'low',     hint: 'short reasoning' },
+                { id: 'medium',  triggerLabel: 'medium',  primary: 'medium',  hint: 'balanced' },
+                { id: 'high',    triggerLabel: 'high',    primary: 'high',    hint: 'deep reasoning' },
+                { id: 'xhigh',   triggerLabel: 'xhigh',   primary: 'xhigh',   hint: 'maximum' },
+              ]}
+            />
             <button
               className="icon-btn composer-attach"
               onClick={() => dropzoneRef.current?.openFilePicker()}
@@ -1858,5 +1858,95 @@ function timeAgo(ts: number): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   return `${d}d ago`;
+}
+
+/** Pull the descriptive tail off labels like 'gpt-5.5 · frontier coding'.
+ *  If the label is just the id with no separator, returns ''. */
+function stripModelHint(label: string, id: string): string {
+  if (!label) return '';
+  const cleaned = label.trim();
+  if (cleaned === id) return '';
+  // labels are 'id · description' or 'description'.
+  const sep = cleaned.indexOf(' · ');
+  if (sep >= 0) return cleaned.slice(sep + 3).trim();
+  // label has no separator and isn't the id — treat the whole thing as hint.
+  return cleaned;
+}
+
+interface MenuOption {
+  id: string;
+  triggerLabel: string;
+  primary: string;
+  hint?: string;
+}
+
+/** Custom dropdown to replace native <select> in the composer.
+ *  The native dropdown popup is unstyleable across browsers, so we
+ *  render our own button + popover that opens UPWARD (composer sits
+ *  at the bottom of the agent pane — a downward popover would clip). */
+function MenuPicker(props: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: MenuOption[];
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    window.addEventListener('mousedown', onDoc);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onDoc);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const current = props.options.find((o) => o.id === props.value);
+  const triggerText = current?.triggerLabel ?? props.value;
+
+  return (
+    <div ref={wrapRef} className="menu-picker">
+      <button
+        type="button"
+        className="menu-btn"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title={`${props.label}: ${current?.primary ?? props.value}${current?.hint ? ' · ' + current.hint : ''}`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="lbl">{props.label}</span>
+        <span className="val">{triggerText}</span>
+        <span className="caret">{I.caret}</span>
+      </button>
+      {open && (
+        <div className="menu-pop" role="listbox" aria-label={props.label}>
+          {props.options.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              role="option"
+              aria-selected={opt.id === props.value}
+              className={`menu-pop-row${opt.id === props.value ? ' active' : ''}`}
+              onClick={() => {
+                props.onChange(opt.id);
+                setOpen(false);
+              }}
+            >
+              <span className="primary">{opt.primary}</span>
+              {opt.hint && <span className="hint">{opt.hint}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
