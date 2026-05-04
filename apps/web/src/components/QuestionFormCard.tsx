@@ -34,18 +34,20 @@ export function QuestionFormCard(props: Props) {
     setValues((prev) => ({ ...prev, [key]: v }));
   }
 
-  function isComplete(): boolean {
+  function missingRequired(): string[] {
+    const out: string[] = [];
     for (const f of props.form.fields) {
       if (!f.required) continue;
       const v = values[f.key];
-      if (Array.isArray(v) ? v.length === 0 : !v) return false;
+      const empty = Array.isArray(v) ? v.length === 0 : !v;
+      if (empty) out.push(f.label);
     }
-    return true;
+    return out;
   }
 
   function submit() {
     if (!props.onSubmit) return;
-    if (!isComplete()) return;
+    if (missingRequired().length > 0) return;
     props.onSubmit({ formId: props.form.id, answers: values });
   }
 
@@ -67,17 +69,25 @@ export function QuestionFormCard(props: Props) {
           />
         ))}
       </div>
-      {!props.locked && (
-        <div className="qform-actions">
-          <button
-            className="btn btn-sm btn-primary"
-            onClick={submit}
-            disabled={!isComplete()}
-          >
-            {props.form.submitLabel ?? 'Submit'}
-          </button>
-        </div>
-      )}
+      {!props.locked && (() => {
+        const missing = missingRequired();
+        return (
+          <div className="qform-actions">
+            {missing.length > 0 && (
+              <span className="qform-missing-hint">
+                Need: {missing.join(', ')}
+              </span>
+            )}
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={submit}
+              disabled={missing.length > 0}
+            >
+              {props.form.submitLabel ?? 'Submit'}
+            </button>
+          </div>
+        );
+      })()}
     </div>
   );
 }

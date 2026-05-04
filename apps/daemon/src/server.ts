@@ -1179,9 +1179,8 @@ For the greenfield "make me a game" case, use this exact discovery form (10 fiel
     },
     {
       "key": "premise",
-      "label": "1-line premise",
+      "label": "1-line premise (optional — I'll infer one if blank)",
       "type": "textarea",
-      "required": true,
       "placeholder": "e.g. ronin samurai battles oni demons in the sengoku era"
     },
     {
