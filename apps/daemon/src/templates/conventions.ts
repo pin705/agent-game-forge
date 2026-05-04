@@ -147,6 +147,40 @@ assets/
 | Spawn point | **Marker2D** | Empty Node2D |
 | Single sprite prop | **Sprite2D** as a direct child of a grouping Node2D | Node2D wrapper around a Sprite2D when there's no extra logic |
 
+### Sprite anchoring — match what the user sees in OGF Scenes tab to runtime
+
+Godot's \`Sprite2D\` defaults to \`centered = true\`, so the texture's CENTER
+sits at the parent's position. That looks fine in-game (because the player
+is centered against centered collision and a moving camera frames the
+result), but the OGF Scenes tab shows raw world coords and the visual
+"feet" land halfway off the platform. Author with the runtime experience
+in mind:
+
+| Node kind | Sprite2D setting | Result |
+|---|---|---|
+| **Actor** (Player / Enemy / NPC) | \`offset = Vector2(0, -h/2)\` (h = texture height) | Parent's position is the FEET point — aligns with collision bottom and OGF's bottom-center anchor convention |
+| **Platform / static prop** | \`centered = false\` | position = top-left corner — aligns trivially with rectangle collision |
+
+Then **CollisionShape2D position should match the sprite anchor exactly** —
+don't offset the collision down by half the sprite height to "fix" the
+visual. If the sprite's top half is decoration the player can pass through,
+either crop the sprite OR put the decoration in a separate Sprite2D
+sibling. The collider and the sprite must agree on what 'origin' means.
+
+### Initial positions in .tscn must already be correct — don't reposition in \`_ready\`
+
+The .tscn file IS the authoritative initial layout. If \`_ready()\` does
+\`player.global_position = player_spawn.global_position\`, the OGF Scenes
+tab shows the player at the .tscn position (whatever Codex left there),
+but the user clicks Play and the player appears somewhere else. The two
+views diverge.
+
+Rule: **author the .tscn so initial positions are already runtime-correct**.
+Markers like PlayerSpawn / EnemySpawn can still exist for RESPAWN logic
+(after death, after entering a checkpoint), but the initial spawn shouldn't
+need a \`_ready\` shuffle — set the actor at the right spot in the .tscn
+and that becomes both the OGF view AND the game's starting state.
+
 ### Don't build the visible world from code — author it in .tscn
 
 The .tscn IS the world. \`Main.tscn\` MUST contain the visible structure as

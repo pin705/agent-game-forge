@@ -935,14 +935,120 @@ function killProcessTree(
  *  text inline, so Codex sees it during the discovery turn for context. */
 const RESUMED_FORM_WORKFLOW = `# You just received form answers — execute the spec workflow now
 
-Treat the user's '## Form answers' block above as the discovery answers for this project. Do NOT just start coding. Follow this workflow:
+Treat the user's '## Form answers' block above as the discovery answers for this project.
 
-1. **Write \`.ogf/spec.md\`** using the 8-section template (Identity / Player / World / Catalogs / Progression / OGF Layout / Phase plan / Out of scope). Phase plan MUST be a markdown checklist (\`- [ ] Phase N: <name> — <deliverable>\`). Make 3–7 phases, sized to the user's completeness tier.
-2. **Execute every phase autonomously in this same turn.** After each phase, edit spec.md to flip that row's \`- [ ]\` → \`- [x]\`. The OGF UI watches the file and shows the user live progress.
-3. **Don't emit more forms.** The user already picked the tier. No per-phase confirmations.
-4. **End** with a one-paragraph summary of what was built + how to verify (Play tab, Scenes tab, etc).
+If the form id is \`game-discovery\`: write the spec, then ask for approval.
+If the form id is \`spec-approval\` and the user said yes: execute every phase.
+If the form id is \`spec-approval\` and the user requested changes: revise the spec, then ask again.
 
-If you discover the picked completeness tier is wrong mid-execution (e.g. \`polished\` would actually take 200K tokens not 80K), STOP, edit the spec to flag the issue, and end the turn explaining the situation. Don't silently expand scope.`;
+## Step 1 (only after id=game-discovery) — write \`.ogf/spec.md\`
+
+Use this exact 8-section structure:
+
+\`\`\`markdown
+# Game Spec — <project name>
+
+## 1. Identity
+- Genre / Engine / Art style / Premise / Target session length / Completeness tier
+
+## 2. Player config
+- Sprite layout (NxM at K fps + sprite size)
+- Animations (list — see RULES below for minimums per genre)
+- HP / lives / damage model
+- Moveset (verbs the player can perform)
+
+## 3. World
+- Levels (count + ids)
+- Camera behavior
+- Per-level structure (which arrays each level file holds)
+
+## 4. Catalogs
+(arrays of objects ONLY: enemies, items, hazards, pickups. Player config does NOT belong here — it's in §2.)
+- enemies.json: <count> enemies — list ids + 1-line each
+- items.json / pickups.json / etc. as needed
+
+## 5. Progression
+- Score / lives / checkpoints / save: yes/no per item, mechanism if yes
+
+## 6. OGF Layout
+- File paths Codex will create
+
+## 7. Phase plan
+- [ ] Phase 1: <real deliverable> — VERIFY: <user-visible action in OGF>
+- [ ] Phase 2: ...
+(3–7 phases, tier-sized)
+
+## 8. Out of scope (V1)
+- <explicit list of features deliberately deferred>
+- For each feature the user PICKED in the form but won't actually be in V1, add a row: "<feature> — DEFERRED to V2 because <reason>"
+\`\`\`
+
+## RULES for spec quality (failures Codex made before)
+
+These rules came from real specs that produced broken games:
+
+1. **Phase 1 must be a real deliverable, not 'write the spec'.** Spec writing is the prelude, not Phase 1. Phase 1 is the first thing the user can run/see.
+2. **Each phase's verification MUST be user-visible in OGF.** Examples: 'open Play tab, see the player walk', 'open Scenes tab, see 5 platforms laid out', 'press jump key, player rises'. NOT 'verify file parses' or 'verify Godot resource files exist' — those are syntactic checks the user gets nothing from.
+3. **Even \`minimal\` tier MUST be a playable game, not a static demo.** That means real animations for visible verbs (idle + walk minimum for any character that moves; idle + attack for any character that attacks; idle + walk + jump for platformers). A platformer with idle-only animation is broken — character freezes during movement and the user can't tell anything works.
+4. **Catalogs section (§4) is for arrays only.** Player / hero is singular config — put it in §2 (Player config), not §4. Same for any other named singular entity.
+5. **Features the user picked but won't be in V1** must be listed in §8 with explicit '(DEFERRED to V2)' tags + reason. Don't pretend with phrases like 'audio hooks' — either it works or it's deferred.
+6. **For Godot projects**: phase verification must mention 'open Play tab' / 'press F5' / 'Scenes tab shows X', not 'verify .gd parses'. The user's measurement is 'can I see / play it', not 'does the file load'.
+7. **For Godot projects**: \`.tscn\` is the spatial source of truth. Per-level JSON (if any) holds metadata only — music, story text, win-condition flags. NOT positions / platform layouts / spawn coords; those go in the .tscn.
+8. **Per-tier minimums** (revise the spec if the picked tier can't fit):
+   - **minimal**: 1 character × 3 anims (idle/walk/jump or idle/walk/attack), 1 enemy × 2 anims (idle/walk or idle/attack), 1 short level with at least 3 platforms + 1 enemy encounter, win/loss state.
+   - **core**: 1 character × 4 anims, 3 enemy types × 2 anims each, 1 level + 1 boss room, basic UI (HP bar).
+   - **polished**: 2 characters × 5 anims each, 5 enemies, 3 levels, pickup system, scoring, menu screens.
+   - **full**: 3+ characters × 6+ anims, 8+ enemies, 5+ levels, save system, polish loops.
+
+## Step 2 (after writing spec) — emit a spec-approval form
+
+After writing spec.md, immediately emit this form (don't start work):
+
+\`\`\`
+<question-form id="spec-approval">
+{
+  "id": "spec-approval",
+  "title": "Plan looks good?",
+  "intro": "I drafted .ogf/spec.md with the phase plan above. Confirm before I start, or ask for changes.",
+  "fields": [
+    {
+      "key": "decision",
+      "label": "Ready to execute?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        { "value": "yes",       "label": "Yes — execute all phases now" },
+        { "value": "split",     "label": "Looks too coarse — split phases finer" },
+        { "value": "fewer",     "label": "Too many phases — merge / drop some" },
+        { "value": "rescope",   "label": "Wrong scope — change tier / catalog / animations" }
+      ]
+    },
+    {
+      "key": "notes",
+      "label": "If not 'yes' — what to change?",
+      "type": "textarea",
+      "placeholder": "e.g. split Phase 3 into movement / collision / damage; or drop save feature; or add walk animation to enemy"
+    }
+  ]
+}
+</question-form>
+\`\`\`
+
+Then STOP. Don't add prose after \`</question-form>\`.
+
+## Step 3 (after id=spec-approval with decision=yes) — execute autonomously
+
+Now execute every phase from spec.md in order. After each phase, edit \`.ogf/spec.md\` to flip the row's \`- [ ]\` → \`- [x]\`. The OGF UI watches the file and shows live progress to the user.
+
+End the turn with a one-paragraph summary: what was built, what to verify in OGF (Play tab, Scenes tab, etc), and any TODOs.
+
+Don't emit more forms. The approval IS the green light.
+
+If you discover mid-execution that the picked completeness tier is wrong (e.g. \`polished\` would actually take 200K tokens not 80K), STOP, edit the spec to flag the issue, and end the turn explaining. Don't silently expand scope.
+
+## Step 4 (after id=spec-approval with decision != yes) — revise + re-ask
+
+Edit spec.md per the user's notes. Emit \`<question-form id="spec-approval">\` again. STOP.`;
 
 function composePrompt(
   userPrompt: string,
@@ -1059,10 +1165,10 @@ When you need disambiguation BEFORE doing significant work — greenfield game s
       "type": "radio",
       "required": true,
       "options": [
-        { "value": "minimal",  "label": "Minimal — toy demo",        "detail": "1 character (1 anim), 1 enemy, 1 short level. ~10K tokens. Done in 1 turn." },
-        { "value": "core",     "label": "Core — playable loop",      "detail": "1 character (3 anims), 3 enemy types, 1 level + boss, basic juice. ~30K tokens. 2-3 turns." },
-        { "value": "polished", "label": "Polished — full vertical slice", "detail": "2 characters (5 anims each), 5 enemies, 3 levels, pickups + score + menu. ~80K tokens. 5-7 turns." },
-        { "value": "full",     "label": "Full — substantial game",   "detail": "3+ characters (6+ anims each), 8+ enemies, 5+ levels + bosses, save system, polish. ~200K+ tokens. 10+ turns." }
+        { "value": "minimal",  "label": "Minimal — playable demo",         "detail": "1 character × 3 anims (idle/walk/jump or attack), 1 enemy × 2 anims, 1 short level (~3 platforms + 1 encounter), real win/loss state. Plays end-to-end. ~15K tokens. 1-2 turns." },
+        { "value": "core",     "label": "Core — playable loop with variety","detail": "1 character × 4 anims, 3 enemy types × 2 anims each, 1 level + 1 boss room, basic HP UI. ~40K tokens. 3-4 turns." },
+        { "value": "polished", "label": "Polished — full vertical slice",  "detail": "2 characters × 5 anims each, 5 enemies, 3 levels, pickup system, scoring, menu. ~80K tokens. 5-7 turns." },
+        { "value": "full",     "label": "Full — substantial game",         "detail": "3+ characters × 6+ anims, 8+ enemies (incl. bosses), 5+ levels, save system, polish loops. ~200K+ tokens. 10+ turns." }
       ]
     },
     {
@@ -1160,12 +1266,12 @@ End the turn with a one-paragraph summary: what was built, what to verify in OGF
 
 The user picked a completeness tier in the form. Honor it — don't under-deliver (skip planned phases) or over-deliver (add features not in the spec). If you discover the tier is wrong mid-execution (e.g. \`polished\` would take 200K+ tokens not 80K), STOP, edit the spec to flag the issue, and end the turn explaining the situation. Don't silently expand scope.
 
-The completeness value MAPS to scope:
+The completeness value MAPS to scope. **Even \`minimal\` MUST be a playable end-to-end game, not a static demo.** Idle-only characters that freeze when moving are broken — the user can't tell anything works.
 
-- \`minimal\` → 1 character × 1 anim, 1 enemy, 1 short level. Skip catalogs, hardcode acceptable for V1. STOP after first deliverable.
-- \`core\` → 1 character × idle/walk/jump anims, 3 enemy types in catalog, 1 level + 1 boss room. Catalog files for enemies / items.
-- \`polished\` → 2 characters × 5 anims each, 5 enemies (with behavior variety), 3 levels, pickups system, scoring, menu screens. Sound hooks even if no audio.
-- \`full\` → 3+ characters × 6+ anims, 8+ enemies (including 2 bosses), 5+ levels with progression, save system, polish loops (juice, particles, screen shake).
+- \`minimal\` → 1 character × 3 anims (idle + walk + jump-or-attack), 1 enemy × 2 anims (idle + walk-or-attack), 1 short level (≥3 platforms + 1 encounter), real win/loss state. Catalogs allowed but kept tiny.
+- \`core\` → 1 character × 4 anims, 3 enemy types × 2 anims each, 1 level + 1 boss room, HP UI.
+- \`polished\` → 2 characters × 5 anims each, 5 enemies (behavior variety), 3 levels, pickups system, scoring, menu screens.
+- \`full\` → 3+ characters × 6+ anims, 8+ enemies (incl. 2 bosses), 5+ levels with progression, save system, polish loops (juice / particles / screen shake).
 
 When to use a question-form:
 - ✅ User says "make me a game" / "build the whole thing" / "from scratch" — emit discovery form
