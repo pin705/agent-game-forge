@@ -20,9 +20,7 @@ interface Props {
   onToggleTheme: () => void;
   density: Density;
   onCycleDensity: () => void;
-  tab: SidebarTab;
-  onTabChange: (t: SidebarTab) => void;
-  /** Project file tree — rendered as a "Files" section in the sidebar. */
+  /** Project file tree — fills the bulk of the sidebar. */
   tree: FileNode | null;
   selectedFile?: { relPath: string; fileKind?: FileNode['fileKind'] } | null;
   onSelectFile: (relPath: string, fileKind: FileNode['fileKind']) => void;
@@ -68,9 +66,10 @@ export function Sidebar(props: Props) {
         </div>
       </div>
 
-      {/* Project switcher + tab nav + (later) file groups live here */}
-      <div className="side-nav">
-        <div className="nav-section">Project</div>
+      {/* Project switcher up top — compact button that drops the recent-projects
+          list. Workspace tab nav lives in the editor topbar (not here) so the
+          sidebar stays focused on its primary job: the file tree. */}
+      <div className="side-top">
         <ProjectSwitcher
           project={props.project}
           projects={props.projects}
@@ -78,68 +77,29 @@ export function Sidebar(props: Props) {
           onOpen={props.onOpenProject}
           onDelete={props.onDeleteProject}
         />
-
-        <div className="nav-section">Workspace</div>
-        <button
-          type="button"
-          className={`nav-item ${props.tab === 'assets' ? 'active' : ''}`}
-          onClick={() => props.onTabChange('assets')}
-        >
-          <span className="ico">{I.folder}</span>
-          <span>Assets</span>
-        </button>
-        <button
-          type="button"
-          className={`nav-item ${props.tab === 'scenes' ? 'active' : ''}`}
-          onClick={() => props.onTabChange('scenes')}
-        >
-          <span className="ico">{I.image}</span>
-          <span>Scenes</span>
-        </button>
-        <button
-          type="button"
-          className={`nav-item ${props.tab === 'play' ? 'active' : ''}`}
-          onClick={() => props.onTabChange('play')}
-        >
-          <span className="ico">{I.play}</span>
-          <span>Play</span>
-        </button>
-
-        {/* Files section — shows the project's file tree as a nested list,
-            consistent with v2 reference (Linear-style nav with file leaves). */}
-        {props.project && (
-          <>
-            <div className="nav-section side-files-head">
-              <span>Files</span>
-              {props.onRefreshTree && (
-                <button
-                  className="icon-btn side-files-refresh"
-                  title="Refresh tree"
-                  onClick={props.onRefreshTree}
-                >
-                  {I.refresh}
-                </button>
-              )}
-            </div>
-            <div className="side-files">
-              <FileTree
-                tree={props.tree}
-                selected={props.selectedFile?.relPath ?? null}
-                onSelect={props.onSelectFile}
-                onNewFile={props.onNewFile}
-                onRefresh={props.onRefreshTree}
-                recentlyChanged={props.recentlyChanged}
-                usedAssets={props.usedAssets}
-                mainScene={props.mainScene}
-                sceneFiles={props.sceneFiles}
-                filter="all"
-                engine={props.project.engine}
-                scopeKey={props.project.path}
-              />
-            </div>
-          </>
-        )}
       </div>
+
+      {/* The full file tree fills the rest of the sidebar with its v1 chrome
+          intact — head row (file count + 'show only used' toggle + refresh)
+          on top, scrolling list below. */}
+      {props.project && (
+        <div className="side-files">
+          <FileTree
+            tree={props.tree}
+            selected={props.selectedFile?.relPath ?? null}
+            onSelect={props.onSelectFile}
+            onNewFile={props.onNewFile}
+            onRefresh={props.onRefreshTree}
+            recentlyChanged={props.recentlyChanged}
+            usedAssets={props.usedAssets}
+            mainScene={props.mainScene}
+            sceneFiles={props.sceneFiles}
+            filter="all"
+            engine={props.project.engine}
+            scopeKey={props.project.path}
+          />
+        </div>
+      )}
 
       {/* Foot: agent status + theme + density toggles */}
       <div className="side-foot">

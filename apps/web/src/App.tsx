@@ -689,8 +689,6 @@ export function App() {
         onCycleDensity={() =>
           setDensity((d) => (d === 'compact' ? 'regular' : d === 'regular' ? 'comfy' : 'compact'))
         }
-        tab={tab}
-        onTabChange={setTab}
         tree={fileTree}
         selectedFile={selectedFile}
         onSelectFile={(rel, fk) => {
@@ -961,9 +959,8 @@ function EditorPane(props: {
 }) {
   return (
     <div className="editor-pane">
-      {/* v2: tabs + file tree moved to Sidebar; this topbar holds the
-          back/forward nav + the active tab label. File-specific actions
-          (rename, slicing, etc) still live inside the body components. */}
+      {/* v2.1: tabs back in the topbar (sidebar is just the file tree now).
+          Back/forward nav + Assets/Scenes/Play tab toggles live here. */}
       <div className="topbar">
         <button
           className="btn btn-sm btn-ghost btn-icon"
@@ -981,9 +978,35 @@ function EditorPane(props: {
         >
           ›
         </button>
-        <span className="topbar-tab">
-          {props.tab === 'assets' ? 'Assets' : props.tab === 'scenes' ? 'Scenes' : 'Play'}
-        </span>
+        <div className="topbar-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={props.tab === 'assets'}
+            className={`topbar-tab-btn ${props.tab === 'assets' ? 'active' : ''}`}
+            onClick={() => props.setTab('assets')}
+          >
+            Assets
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={props.tab === 'scenes'}
+            className={`topbar-tab-btn ${props.tab === 'scenes' ? 'active' : ''}`}
+            onClick={() => props.setTab('scenes')}
+          >
+            Scenes
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={props.tab === 'play'}
+            className={`topbar-tab-btn ${props.tab === 'play' ? 'active' : ''}`}
+            onClick={() => props.setTab('play')}
+          >
+            Play
+          </button>
+        </div>
         <span className="grow" />
       </div>
 

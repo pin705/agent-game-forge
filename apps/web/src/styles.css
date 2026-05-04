@@ -155,9 +155,14 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
   border-right: 1px solid var(--line);
   background: var(--bg-0);
   display: grid;
-  grid-template-rows: 56px minmax(0, 1fr) auto;
+  /* head (56) | project switcher row (auto) | tree (1fr) | foot (auto) */
+  grid-template-rows: 56px auto minmax(0, 1fr) auto;
   min-height: 0;
   overflow: hidden;
+}
+.side-top {
+  padding: 8px 8px 4px;
+  border-bottom: 1px solid var(--line);
 }
 .side-head {
   display: flex; align-items: center; gap: 10px;
@@ -234,53 +239,32 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
 }
 .side-foot .grow { flex: 1; }
 
-/* Files section header — same .nav-section style but with a refresh action
- * docked right. */
-.side-files-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding-right: 4px;
-}
-.side-files-refresh {
-  width: 22px; height: 22px;
-  border-radius: 4px;
-  color: var(--ink-3);
-}
-.side-files-refresh:hover { background: var(--bg-2); color: var(--ink-0); }
-
-/* Sidebar-embedded FileTree — strip the standalone .tree-pane chrome
- * (it has its own head, border, and bg-1 surface). Inside the sidebar
- * it should look like a continuation of the nav, not a separate panel. */
+/* Sidebar file-tree wrapper. Keeps the v1 .tree-pane chrome (head row with
+ * file count + 'used only' filter + refresh) so the user has the same
+ * controls they did before — just hosted in the sidebar instead of as a
+ * separate column. */
 .side-files {
-  flex: 1;
   min-height: 0;
+  overflow: hidden;
   display: flex;
-  margin: 0 -8px;
+  border-top: 1px solid var(--line);
 }
 .side-files .tree-pane {
   flex: 1;
   min-height: 0;
   background: transparent;
   border: 0;
-  grid-template-rows: 0 1fr 0;
 }
-.side-files .tree-pane .tree-head { display: none; }
+.side-files .tree-pane .tree-head {
+  background: transparent;
+  color: var(--ink-3);
+}
 .side-files .tree {
-  padding: 2px 8px;
-  font-size: 13px;
+  padding: 2px 4px 8px;
 }
 .side-files .tree-row {
-  height: 26px;
-  padding-left: calc(8px + var(--depth, 0) * 12px);
-  padding-right: 8px;
-  border-radius: 5px;
-  margin: 0 0 1px;
+  border-radius: 4px;
 }
-.side-files .tree-row:hover { background: var(--bg-2); }
-.side-files .tree-row.selected {
-  background: var(--accent-soft);
-  color: var(--ink-0);
-}
-.side-files .tree-row.selected::before { display: none; }
 
 /* =============== MAIN PANEL (center + right agent) =============== */
 .main {
@@ -518,6 +502,37 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
   color: var(--ink-0);
   letter-spacing: -0.01em;
   margin-left: 8px;
+}
+
+/* Inline tab toggle (Assets / Scenes / Play) inside the editor topbar.
+ * Pill-button style — active state uses bg-2 + ink-0, inactive is ghost. */
+.topbar-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+  padding: 2px;
+  background: var(--bg-2);
+  border-radius: 8px;
+}
+.topbar-tab-btn {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s, color 0.12s;
+}
+.topbar-tab-btn:hover { color: var(--ink-0); }
+.topbar-tab-btn.active {
+  background: var(--bg-1);
+  color: var(--ink-0);
+  box-shadow: var(--shadow-sm);
 }
 .editor-pane .topbar .grow { flex: 1; }
 
