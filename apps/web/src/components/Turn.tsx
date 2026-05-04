@@ -3,8 +3,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Block, ToolFamily, ToolItem } from '../lib/blocks.js';
 import { buildTurn, extractFileChanges, summarizeGroup } from '../lib/blocks.js';
-import type { AgentEvent } from '@ogf/contracts';
+import type { AgentEvent, QuestionFormAnswers } from '@ogf/contracts';
 import { I } from './icons.js';
+import { QuestionFormCard } from './QuestionFormCard.js';
 
 export type TurnStatus = 'streaming' | 'done' | 'failed' | 'canceled';
 
@@ -15,6 +16,13 @@ export interface TurnProps {
   startedAt: number;
   endedAt?: number;
   error?: string;
+  /** Per-form id, true once user has submitted (locks the card). */
+  submittedForms?: Set<string>;
+  /** Submit handler for question-forms emitted by the agent. */
+  onSubmitForm?: (answers: QuestionFormAnswers) => void;
+  /** Project path — passed through so spec-approval forms can fetch
+   *  .ogf/spec.md for inline review. */
+  projectPath?: string;
 }
 
 export function Turn(props: TurnProps) {
@@ -36,7 +44,14 @@ export function Turn(props: TurnProps) {
         )}
 
         {built.blocks.map((b, i) => (
-          <BlockView key={i} block={b} streaming={props.status === 'streaming'} />
+          <BlockView
+            key={i}
+            block={b}
+            streaming={props.status === 'streaming'}
+            submittedForms={props.submittedForms}
+            onSubmitForm={props.onSubmitForm}
+            projectPath={props.projectPath}
+          />
         ))}
 
         {props.status === 'streaming' && built.blocks.length > 0 && (
@@ -59,7 +74,30 @@ export function Turn(props: TurnProps) {
   );
 }
 
-function BlockView({ block, streaming }: { block: Block; streaming: boolean }) {
+function BlockView({
+  block,
+  streaming,
+  submittedForms,
+  onSubmitForm,
+  projectPath,
+}: {
+  block: Block;
+  streaming: boolean;
+  submittedForms?: Set<string>;
+  onSubmitForm?: (answers: QuestionFormAnswers) => void;
+  projectPath?: string;
+}) {
+  if (block.kind === 'form') {
+    const locked = submittedForms?.has(block.form.id) ?? false;
+    return (
+      <QuestionFormCard
+        form={block.form}
+        locked={locked}
+        onSubmit={onSubmitForm}
+        projectPath={projectPath}
+      />
+    );
+  }
   if (block.kind === 'text') {
     return (
       <div className="md-block">

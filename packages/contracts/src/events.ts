@@ -1,3 +1,5 @@
+import type { QuestionForm } from './forms.js';
+
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
 
 export type AgentEvent =
@@ -6,6 +8,10 @@ export type AgentEvent =
   | { type: 'tool_use'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; toolUseId: string; content: string; isError: boolean }
   | { type: 'usage'; usage: { input?: number; output?: number; cachedRead?: number } }
+  /** Agent emitted a structured question for the user. UI renders an
+   *  interactive form; user's answers are sent back as the next turn's
+   *  prompt (pre-formatted prose). */
+  | { type: 'form'; form: QuestionForm }
   | { type: 'raw'; raw: unknown };
 
 export interface RunStartEvent {

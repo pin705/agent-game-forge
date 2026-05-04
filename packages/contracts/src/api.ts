@@ -20,7 +20,11 @@ export interface AgentsResponse {
   agents: AgentInfo[];
 }
 
-export type ReasoningEffort = 'low' | 'medium' | 'high' | 'extra_high';
+// Mirrors the values Codex CLI accepts for `model_reasoning_effort`. Don't
+// invent variants — the CLI's enum is `none / minimal / low / medium / high / xhigh`,
+// and OGF previously sent `extra_high` which the CLI rejects with
+// 'unknown variant'.
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 
 export interface CreateRunRequest {
   agentId: AgentId;
@@ -48,6 +52,21 @@ export interface Project {
 
 export interface OpenProjectRequest {
   path: string;
+}
+
+export interface CreateProjectRequest {
+  /** Absolute path the new project folder should live at. */
+  path: string;
+  /** Engine to scaffold. Web is `Canvas 2D + vanilla JS`. Unity disabled for now. */
+  engine: Extract<EngineKind, 'godot' | 'web'>;
+  /** Display name (used for project.godot config/name and HTML <title>). */
+  name: string;
+}
+
+export interface CreateProjectResponse {
+  project: Project;
+  /** Files written by the scaffold (skipped any that already existed). */
+  files: string[];
 }
 
 export interface ProjectsResponse {

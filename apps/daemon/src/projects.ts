@@ -15,7 +15,10 @@ export interface ProjectRow {
 export function detectEngine(dir: string): EngineKind {
   if (existsSync(path.join(dir, 'project.godot'))) return 'godot';
   if (existsSync(path.join(dir, 'ProjectSettings', 'ProjectVersion.txt'))) return 'unity';
+  // Web: a package.json OR a static index.html (vanilla JS projects without
+  // a build step, like Sengoku-Era).
   if (existsSync(path.join(dir, 'package.json'))) return 'web';
+  if (existsSync(path.join(dir, 'index.html'))) return 'web';
   return 'unknown';
 }
 

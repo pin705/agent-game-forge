@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { detectAgents, getAgentDef, resolveOnPath } from './agents.js';
 import { spawnCodex, createJsonlParser } from './codex.js';
+import { splitFormsFromText } from './question-form.js';
 import { RunManager } from './runs.js';
 import {
   appendMessage,
@@ -24,7 +25,7 @@ import {
   upsertProject,
   type ProjectRow,
 } from './projects.js';
-import { execSync } from 'node:child_process';
+import { execSync, spawn as spawnProcess } from 'node:child_process';
 import { homedir } from 'node:os';
 import { readdirSync, statSync } from 'node:fs';
 import {
@@ -43,6 +44,13 @@ import { findSessionsForCwd, replaySession } from './codex-sessions.js';
 import { applyOps as applySceneOps, loadScene } from './scenes.js';
 import { detectGodot, GodotRunManager } from './godot.js';
 import { formatSceneContextSnippet, readSceneContext } from './scene-context.js';
+import { bootstrapProject } from './templates/bootstrap.js';
+import {
+  godotConventions,
+  summarizeConventions,
+  webConventions,
+} from './templates/conventions.js';
+import { existsSync as fsExistsSync, readFileSync as fsReadFileSync } from 'node:fs';
 import {
   appendMessage as appendCommentMessage,
   createThread as createCommentThread,
@@ -62,6 +70,8 @@ import type {
   CreateCommentThreadRequest,
   CreateCommentThreadResponse,
   CreateConversationRequest,
+  CreateProjectRequest,
+  CreateProjectResponse,
   CreateRunRequest,
   CreateRunResponse,
   GodotActiveRunResponse,
@@ -128,6 +138,34 @@ export function createServer() {
 
     const row = upsertProject(abs);
     res.json({ project: rowToProject(row) });
+  });
+
+  app.post('/api/projects/create', (req, res) => {
+    const body = req.body as CreateProjectRequest;
+    if (!body?.path || !body?.engine || !body?.name) {
+      return res.status(400).json({ error: 'path, engine, name required' });
+    }
+    if (body.engine !== 'godot' && body.engine !== 'web') {
+      return res.status(400).json({ error: `unsupported engine: ${body.engine}` });
+    }
+    const abs = path.resolve(body.path);
+    try {
+      const { files } = bootstrapProject({
+        rootAbs: abs,
+        engine: body.engine,
+        name: body.name,
+      });
+      const row = upsertProject(abs);
+      const reply: CreateProjectResponse = {
+        project: rowToProject(row),
+        files,
+      };
+      res.json(reply);
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   });
 
   app.delete('/api/projects', (req, res) => {
@@ -243,6 +281,44 @@ export function createServer() {
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
+  });
+
+  // -------------------- Web project Play (static serve) --------------------
+  // Mount any registered project's root under /api/web-play/<slug>/. The slug
+  // is base64url(projectPath) so the iframe URL looks like a real directory
+  // and relative refs (src="src/game.js" / fetch("data/x.json")) just work.
+  app.use('/api/web-play/:slug', (req, res, next) => {
+    let projectPath: string;
+    try {
+      projectPath = Buffer.from(req.params.slug, 'base64url').toString('utf8');
+    } catch {
+      res.status(400).end('bad slug');
+      return;
+    }
+    const row = getProject(projectPath);
+    if (!row) {
+      res.status(404).end('project not registered');
+      return;
+    }
+    if (row.engine !== 'web') {
+      res.status(400).end('not a web project');
+      return;
+    }
+    return express.static(path.resolve(projectPath), {
+      index: 'index.html',
+      fallthrough: false,
+      etag: false,
+      cacheControl: false,
+      // Force the browser to revalidate every request. Without this, no
+      // Cache-Control header is sent and the browser falls back to heuristic
+      // caching (LM-based) — so a freshly-saved JSON might not be re-fetched
+      // on the next iframe reload, and the user sees the OLD scene state.
+      // 'no-store' is the bluntest option but it's correct for a live editor.
+      setHeaders: (res) => {
+        res.setHeader('Cache-Control', 'no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+      },
+    })(req, res, next);
   });
 
   // -------------------- Filesystem browser --------------------
@@ -753,10 +829,20 @@ export function createServer() {
     let agentTextBuffer = '';
 
     const parser = createJsonlParser({
-      onEvent: (ev) => {
-        agentEvents.push(ev);
-        if (ev.type === 'text_delta') agentTextBuffer += ev.delta;
-        runs.emitAgent(run, ev);
+      onEvent: (rawEv) => {
+        // Split agent text into prose + structured form events. Codex emits
+        // <question-form id="..."> blocks in its plain text — we extract
+        // them here so the UI can render real form controls and the chat
+        // log doesn't show raw XML.
+        const expanded =
+          rawEv.type === 'text_delta'
+            ? splitFormsFromText(rawEv.delta).events
+            : [rawEv];
+        for (const ev of expanded) {
+          agentEvents.push(ev);
+          if (ev.type === 'text_delta') agentTextBuffer += ev.delta;
+          runs.emitAgent(run, ev);
+        }
       },
       onThreadId: (id) => {
         if (!conv!.codex_thread_id) {
@@ -807,14 +893,176 @@ export function createServer() {
   app.post('/api/runs/:id/cancel', (req, res) => {
     const run = runs.get(req.params.id);
     if (!run) return res.status(404).json({ error: 'run not found' });
-    if (run.child && !run.child.killed) {
-      run.child.kill();
-    }
+    killProcessTree(run.child);
     res.json({ ok: true });
   });
 
   return app;
 }
+
+/** Kill a child process AND every grandchild it spawned.
+ *
+ *  Why this exists: on Windows the codex CLI is `codex.cmd`, so spawn() runs
+ *  cmd.exe → cmd.exe → codex.exe (and codex.exe may spawn its own helpers
+ *  for image_gen / Python tools). child.kill() sends SIGTERM only to the
+ *  immediate child (cmd.exe), leaving codex.exe alive as an orphan that
+ *  keeps burning API tokens and writing files even after the user clicks
+ *  Stop. taskkill /T walks the process tree.
+ *
+ *  POSIX has process groups (negative PID) for the same purpose; we'd need
+ *  to spawn with `detached: true` for that to work, which we don't currently
+ *  do. Linux/macOS users get the basic kill() behavior — fine because they
+ *  don't have the .cmd shim layer that creates the orphan in the first
+ *  place. */
+function killProcessTree(
+  child: import('node:child_process').ChildProcess | undefined,
+): void {
+  if (!child || child.killed || !child.pid) return;
+  if (process.platform === 'win32') {
+    spawnProcess('taskkill', ['/F', '/T', '/PID', String(child.pid)], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    }).unref();
+  } else {
+    child.kill();
+  }
+}
+
+/** The post-form-answers workflow, extracted so we can inject it on the
+ *  resumed turn that delivers the answers (where the long system preamble
+ *  is otherwise skipped). The fresh-turn preamble below also includes this
+ *  text inline, so Codex sees it during the discovery turn for context. */
+const RESUMED_FORM_WORKFLOW = `# You just received form answers — execute the spec workflow now
+
+Treat the user's '## Form answers' block above as the discovery answers for this project.
+
+If the form id is \`game-discovery\`: write the spec, then ask for approval.
+If the form id is \`spec-approval\` and the user said yes: execute every phase.
+If the form id is \`spec-approval\` and the user requested changes: revise the spec, then ask again.
+
+## Step 1 (only after id=game-discovery) — write \`.ogf/spec.md\`
+
+Use this exact 8-section structure:
+
+\`\`\`markdown
+# Game Spec — <project name>
+
+## 1. Identity
+- Genre / Art style / World setting / Color mood / Premise / Target session length / Completeness tier / Difficulty / Win condition
+- Engine: read from the conventions block above (web or godot — DON'T re-ask the user, the project's engine was fixed at creation)
+- References: list any reference games the user named — they're the strongest single signal for what to build, treat them as soft constraints throughout
+- **Style directive** (REQUIRED — write a 1-2 sentence concrete art-direction line combining art_style + color_mood + world_setting + references). This sentence is the SOURCE OF TRUTH for every visual asset and you MUST paste it VERBATIM into every \`generate2dsprite\` and \`generate2dmap\` call's prompt. Don't paraphrase. Don't drop fields. Examples:
+  - art_style=pixel + color_mood=warm + world=historical-Japan + ref=Mega Man:
+    "Style: 16-bit chunky pixel art, ~48px sprite height, sharp pixel edges, no anti-aliasing, warm sunset palette (deep reds / burnt orange / gold), feudal-Japan motifs (hakama, katana, lanterns), readable Mega Man-style silhouettes."
+  - art_style=painterly + color_mood=dark + world=horror + ref=Hollow Knight:
+    "Style: hand-painted 2D, atmospheric loose brushwork, muted dark palette (deep teals / black / single bone-white accent), gothic horror motifs (broken stone / fungal growth), Hollow Knight-style readable silhouettes against textured backgrounds."
+  - art_style=neon + color_mood=cool + world=scifi + ref=Hyper Light Drifter:
+    "Style: high-contrast neon pixel art, cool palette (electric cyan / magenta / deep navy), retro-futurist sci-fi motifs (chrome / glow lines / glitch artifacts), Hyper Light Drifter-style minimal but punchy silhouettes."
+  Without this directive in your gen calls, the model defaults to generic illustration — the user picked 'pixel' and got 'painterly'. Don't ship that.
+
+## 2. Player config
+- Sprite layout (NxM at K fps + sprite size)
+- Animations (list — see RULES below for minimums per genre)
+- HP / lives / damage model
+- Moveset (verbs the player can perform)
+
+## 3. World
+- Levels (count + ids)
+- Camera behavior
+- Per-level structure (which arrays each level file holds)
+
+## 4. Catalogs
+(arrays of objects ONLY: enemies, items, hazards, pickups. Player config does NOT belong here — it's in §2.)
+- enemies.json: <count> enemies — list ids + 1-line each
+- items.json / pickups.json / etc. as needed
+
+## 5. Progression
+- Score / lives / checkpoints / save: yes/no per item, mechanism if yes
+
+## 6. OGF Layout
+- File paths Codex will create
+
+## 7. Phase plan
+- [ ] Phase 1: <real deliverable> — VERIFY: <user-visible action in OGF>
+- [ ] Phase 2: ...
+(3–7 phases, tier-sized)
+
+## 8. Out of scope (V1)
+- <explicit list of features deliberately deferred>
+- For each feature the user PICKED in the form but won't actually be in V1, add a row: "<feature> — DEFERRED to V2 because <reason>"
+\`\`\`
+
+## RULES for spec quality (failures Codex made before)
+
+These rules came from real specs that produced broken games:
+
+1. **Phase 1 must be a real deliverable, not 'write the spec'.** Spec writing is the prelude, not Phase 1. Phase 1 is the first thing the user can run/see.
+2. **Each phase's verification MUST be user-visible in OGF.** Examples: 'open Play tab, see the player walk', 'open Scenes tab, see 5 platforms laid out', 'press jump key, player rises'. NOT 'verify file parses' or 'verify Godot resource files exist' — those are syntactic checks the user gets nothing from.
+3. **Even \`minimal\` tier MUST be a playable game, not a static demo.** That means real animations for visible verbs (idle + walk minimum for any character that moves; idle + attack for any character that attacks; idle + walk + jump for platformers). A platformer with idle-only animation is broken — character freezes during movement and the user can't tell anything works.
+4. **Catalogs section (§4) is for arrays only.** Player / hero is singular config — put it in §2 (Player config), not §4. Same for any other named singular entity.
+5. **Features the user picked but won't be in V1** must be listed in §8 with explicit '(DEFERRED to V2)' tags + reason. Don't pretend with phrases like 'audio hooks' — either it works or it's deferred.
+6. **For Godot projects**: phase verification must mention 'open Play tab' / 'press F5' / 'Scenes tab shows X', not 'verify .gd parses'. The user's measurement is 'can I see / play it', not 'does the file load'.
+7. **For Godot projects**: \`.tscn\` is the spatial source of truth. Per-level JSON (if any) holds metadata only — music, story text, win-condition flags. NOT positions / platform layouts / spawn coords; those go in the .tscn.
+8. **Per-tier minimums** (revise the spec if the picked tier can't fit):
+   - **minimal**: 1 character × 3 anims (idle/walk/jump or idle/walk/attack), 1 enemy × 2 anims (idle/walk or idle/attack), 1 short level with at least 3 platforms + 1 enemy encounter, win/loss state.
+   - **core**: 1 character × 4 anims, 3 enemy types × 2 anims each, 1 level + 1 boss room, basic UI (HP bar).
+   - **polished**: 2 characters × 5 anims each, 5 enemies, 3 levels, pickup system, scoring, menu screens.
+   - **full**: 3+ characters × 6+ anims, 8+ enemies, 5+ levels, save system, polish loops.
+
+  9. **Generate sprites with \`generate2dsprite\`, NEVER raw \`image_gen\`.** Each cell of an animation row MUST be a distinct pose progression — submitting a 4×4 sheet where every cell is the same pose ships a frozen-corpse character. Frame COUNT per anim is your judgement (genre / completeness / target style decide), but the count must mean what it claims: a 4-frame walk row shows 4 distinct walk poses, not 1 pose × 4. Spec §2 should list animation NAMES; per-anim frame counts can be authored at sheet-generation time.
+
+  10. **Godot only — author the wrapper-position pattern for unified props.** Platforms / walls / static decorations should be \`StaticBody2D\` wrappers with \`Sprite2D\` and \`CollisionShape2D\` children at local \`(0, 0)\`. The wrapper owns the position; both children inherit. In OGF Scenes tab the prop and collider will appear linked — moving one moves both. That's correct. See conventions for when to break the pattern (e.g. trunk-only collider on a wide tree sprite). Spec §6 should list each prop kind's structure: 'PlatformX (StaticBody2D / wrapper) → Sprite2D + CollisionShape2D' so the user knows what's linked vs independent.
+
+## Step 2 (after writing spec) — emit a spec-approval form
+
+After writing spec.md, immediately emit this form (don't start work):
+
+\`\`\`
+<question-form id="spec-approval">
+{
+  "id": "spec-approval",
+  "title": "Plan looks good?",
+  "intro": "I drafted .ogf/spec.md with the phase plan above. Confirm before I start, or ask for changes.",
+  "fields": [
+    {
+      "key": "decision",
+      "label": "Ready to execute?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        { "value": "yes",       "label": "Yes — execute all phases now" },
+        { "value": "split",     "label": "Looks too coarse — split phases finer" },
+        { "value": "fewer",     "label": "Too many phases — merge / drop some" },
+        { "value": "rescope",   "label": "Wrong scope — change tier / catalog / animations" }
+      ]
+    },
+    {
+      "key": "notes",
+      "label": "If not 'yes' — what to change?",
+      "type": "textarea",
+      "placeholder": "e.g. split Phase 3 into movement / collision / damage; or drop save feature; or add walk animation to enemy"
+    }
+  ]
+}
+</question-form>
+\`\`\`
+
+Then STOP. Don't add prose after \`</question-form>\`.
+
+## Step 3 (after id=spec-approval with decision=yes) — execute autonomously
+
+Now execute every phase from spec.md in order. After each phase, edit \`.ogf/spec.md\` to flip the row's \`- [ ]\` → \`- [x]\`. The OGF UI watches the file and shows live progress to the user.
+
+End the turn with a one-paragraph summary: what was built, what to verify in OGF (Play tab, Scenes tab, etc), and any TODOs.
+
+Don't emit more forms. The approval IS the green light.
+
+If you discover mid-execution that the picked completeness tier is wrong (e.g. \`polished\` would actually take 200K tokens not 80K), STOP, edit the spec to flag the issue, and end the turn explaining. Don't silently expand scope.
+
+## Step 4 (after id=spec-approval with decision != yes) — revise + re-ask
+
+Edit spec.md per the user's notes. Emit \`<question-form id="spec-approval">\` again. STOP.`;
 
 function composePrompt(
   userPrompt: string,
@@ -835,14 +1083,266 @@ function composePrompt(
   const sceneSnippet = formatSceneContextSnippet(ctx);
   const sceneBlock = sceneSnippet ? `\n${sceneSnippet}\n` : '';
 
+  // Per-project conventions. Lookup order:
+  //   1. <project>/.ogf/conventions.md  (user-customized version, if present)
+  //   2. OGF's built-in template for the detected engine (full doc)
+  //   3. Engine-agnostic 8-line summary (last-ditch fallback)
+  //
+  // Step 2 matters for IMPORTED projects that were never bootstrapped —
+  // a typical user opens an existing folder and there's no .ogf/conventions.md
+  // on disk. Without this, Codex would see only the tiny generic summary and
+  // miss every engine-specific rule (modular split for web, scene patterns
+  // for godot, anchor conventions, generate2dsprite skill, ...).
+  const conventionsPath = path.join(cwd, '.ogf', 'conventions.md');
+  let conventionsBlock = '';
+  if (fsExistsSync(conventionsPath)) {
+    try {
+      const text = fsReadFileSync(conventionsPath, 'utf8');
+      conventionsBlock = `\n# Project conventions (.ogf/conventions.md)\n\n${text}\n`;
+    } catch {
+      // unreadable — fall through to template
+    }
+  }
+  if (!conventionsBlock) {
+    const engine = getProject(cwd)?.engine;
+    if (engine === 'web') {
+      conventionsBlock = `\n# OGF conventions (engine: web — built-in default; no .ogf/conventions.md found)\n\n${webConventions()}\n`;
+    } else if (engine === 'godot') {
+      conventionsBlock = `\n# OGF conventions (engine: godot — built-in default; no .ogf/conventions.md found)\n\n${godotConventions()}\n`;
+    } else {
+      conventionsBlock = `\n${summarizeConventions()}\n`;
+    }
+  }
+
+  // Per-project spec — written by Codex after the discovery form on first
+  // turn. Captures user intent + the phase plan with checkboxes. Injected
+  // after conventions so Codex sees BOTH the structural rules (how) and
+  // this project's specific WHAT. Spec drives every subsequent turn.
+  const specPath = path.join(cwd, '.ogf', 'spec.md');
+  let specBlock = '';
+  if (fsExistsSync(specPath)) {
+    try {
+      const text = fsReadFileSync(specPath, 'utf8');
+      specBlock = `\n# Project spec (.ogf/spec.md)\n\nThis is the contract for what THIS specific project is. Update the Phase plan checkboxes (- [ ] → - [x]) as you finish each phase. Reflect any scope changes back into the spec.\n\n${text}\n`;
+    } catch {
+      // unreadable — proceed without spec
+    }
+  }
+
   if (isResumed) {
-    // No need to repeat the system instructions — they're in the prior turn.
-    return `${sceneBlock}${refs}# User request\n\n${userPrompt}\n`;
+    // Resumed turns skip the long system instructions — they're in the prior
+    // turn. Still include:
+    //   - scene snippet  (per-turn, always small)
+    //   - conventions reminder
+    //   - .ogf/spec.md if present  (per-project contract that drives every
+    //     turn — too important to drop, costs ~1 KB)
+    //   - the post-form workflow block IFF this prompt is a form-answer
+    //     reply, since the workflow lives in the long preamble that
+    //     resumed turns skip
+    const reminder = `\n${summarizeConventions()}\n`;
+    const isFormAnswers = /^##\s+Form answers\b/m.test(userPrompt);
+    const formWorkflowBlock = isFormAnswers
+      ? `\n${RESUMED_FORM_WORKFLOW}\n`
+      : '';
+    return `${reminder}${specBlock}${formWorkflowBlock}${sceneBlock}${refs}# User request\n\n${userPrompt}\n`;
   }
 
   return `# Open Game Forge — agent run
 
-You are working inside an Open Game Forge project. The user is editing a 2D game in this directory. Edit files on disk in the cwd. When generating visible assets, use image_gen and place files under assets/. Report changed files at the end.
+You are working inside an Open Game Forge project. The user is editing a 2D game in this directory. Edit files on disk in the cwd. When generating visible assets, use \`image_gen\` and place files under \`assets/\`. Report changed files at the end.
+
+# Asking the user structured questions (\`<question-form>\`)
+
+When you need disambiguation BEFORE doing significant work — greenfield game spec, picking between architectures, choosing tone — DO NOT write prose questions. Emit a single \`<question-form>\` block that OGF renders as an interactive UI.
+
+## Designing the discovery form (greenfield "make me a game" case)
+
+You design the form FRESH per project, tailored to the user's stated request. Don't copy a stock template — a puzzle game shouldn't be asked about jump style; a tower defense shouldn't be asked about combat style. Hybrid: you pick most fields, but a few are mandatory because the rest of OGF (token budgeting, asset pipeline) needs them.
+
+### Form id and structure
+
+- \`id\` MUST be \`"game-discovery"\` — OGF treats this id specially after submit.
+- DO NOT include an \`engine\` field — the engine was chosen at project creation and is visible in the conventions block above.
+- Total: **8–12 fields**. Below 8 = under-spec'd; over 12 = decision fatigue.
+- Only \`genre\` and \`completeness\` should be \`required: true\`. Everything else optional — empty answers are fine, you'll infer.
+
+### REQUIRED 1: \`genre\` (radio, required)
+
+Pick 4–8 options relevant to the user's wording. Always include a \`detail\` with 1-2 reference titles. Examples:
+
+  { "value": "platformer", "label": "Side-scroll platformer", "detail": "Mega Man, Celeste-style" }
+  { "value": "topdown",    "label": "Top-down action",       "detail": "Zelda, Hyper Light Drifter" }
+  { "value": "td",         "label": "Tower defense",         "detail": "Kingdom Rush, BTD" }
+  { "value": "shmup",      "label": "Shoot-em-up",           "detail": "vertical / horizontal scroller" }
+  { "value": "puzzle",     "label": "Puzzle",                "detail": "Sokoban, Baba Is You" }
+  { "value": "rpg",        "label": "RPG",                   "detail": "stat progression + combat" }
+  { "value": "roguelike",  "label": "Roguelike",             "detail": "permadeath + procgen" }
+
+### REQUIRED 2: \`completeness\` (radio, required) — COPY VERBATIM
+
+This block sets the entire token / scope budget for the rest of the project. Do NOT change wording, options, or detail strings — copy this verbatim:
+
+  {
+    "key": "completeness",
+    "label": "Game completeness target",
+    "type": "radio",
+    "required": true,
+    "options": [
+      { "value": "minimal",  "label": "Minimal — playable demo",          "detail": "1 character × 3 anims (idle/walk/jump or attack), 1 enemy × 2 anims, 1 short level (~3 platforms + 1 encounter), real win/loss state. Plays end-to-end. ~15K tokens. 1-2 turns." },
+      { "value": "core",     "label": "Core — playable loop with variety","detail": "1 character × 4 anims, 3 enemy types × 2 anims each, 1 level + 1 boss room, basic HP UI. ~40K tokens. 3-4 turns." },
+      { "value": "polished", "label": "Polished — full vertical slice",   "detail": "2 characters × 5 anims each, 5 enemies, 3 levels, pickup system, scoring, menu. ~80K tokens. 5-7 turns." },
+      { "value": "full",     "label": "Full — substantial game",          "detail": "3+ characters × 6+ anims, 8+ enemies (incl. bosses), 5+ levels, save system, polish loops. ~200K+ tokens. 10+ turns." }
+    ]
+  }
+
+### Then 6–10 OPTIONAL fields you choose
+
+Pick fields that are load-bearing for THIS user's stated request. Almost-always include:
+
+- **premise** (textarea, optional, label "1-line premise (optional — I'll infer if blank)") — even when user gave a one-liner already, this lets them refine
+- **references** (textarea, optional, label "Reference games (1-3 inspirations)") — strongest single signal for art / mechanics
+- **art_style** (radio) — pixel / cartoon / neon / retro / minimal / painterly (pick subset relevant to genre + setting)
+- **color_mood** (radio) — warm / cool / dark / bright / muted
+
+Plus 2-4 GENRE-SPECIFIC fields. Use judgment from this menu (not exhaustive — invent ones that fit):
+
+| Genre | Genre-specific fields to consider |
+|---|---|
+| platformer | jump_style (standard / double / wall-cling / hover), win_condition (boss / goal / collect), traversal_focus (combat / movement) |
+| topdown | combat_style (melee / ranged / hybrid / no-combat), camera (locked / scroll), exploration (linear / hub / open) |
+| td | tower_categories (count + types), path_complexity (single / branching / multi-lane), wave_progression (linear / loops) |
+| shmup | orientation (vertical / horizontal), bullet_density (light / medium / bullet-hell), powerup_system (yes / no) |
+| puzzle | solution_type (logic / spatial / action / typing), level_count (handful / many), undo_support (yes / no) |
+| rpg | battle_system (turn-based / real-time / ATB), progression (xp+level / loot / both), party_size (solo / 2-4 / squad) |
+| roguelike | run_length (5min / 15min / 30min+), procgen_seed (per-run / persistent), permadeath (strict / lenient) |
+| general fallback | world_setting, difficulty, win_condition (use ones from earlier examples) |
+
+### Always end with a features checkbox
+
+Last field: \`features\` (checkbox, optional, label "Optional features for V1"). Pick 4–7 options that make sense for the genre. Common ones:
+
+  { "value": "music", "label": "Background music" }
+  { "value": "sfx", "label": "Sound effects" }
+  { "value": "save", "label": "Save / checkpoints" }
+  { "value": "story", "label": "Story dialog cutscenes" }
+  { "value": "controller", "label": "Gamepad support" }
+  { "value": "particles", "label": "Particle effects (juice)" }
+  { "value": "screenshake", "label": "Screen shake on hits" }
+
+Genre extras: TD might add "tower_upgrades / sell_for_refund"; RPG might add "inventory_ui / quest_log"; etc.
+
+### Worked example — user prompt: "做一個橫向卷軸戰國武士動作遊戲"
+
+Hybrid form (genre clearly platformer-action, world clearly historical-Japan):
+
+  fields: [
+    genre        (required, radio — platformer / topdown / shmup as the 3 reasonable options for "action")
+    completeness (required, radio — VERBATIM block)
+    premise      (textarea, optional)
+    references   (textarea, optional)
+    art_style    (radio — pixel / painterly / neon)
+    world_setting (radio, prefilled toward feudal Japan options — historical / fantasy / horror)
+    color_mood   (radio)
+    jump_style   (radio — standard / double / wall-cling)  ← genre-specific
+    win_condition (radio — boss / reach_goal / survive)    ← genre-specific
+    difficulty   (radio)
+    features     (checkbox)
+  ]
+
+That's 11 fields — within the 8-12 cap, all load-bearing for this specific request.
+
+### After emitting
+
+After emitting a form, **STOP your turn immediately**. Don't add any prose after \`</question-form>\`. Don't begin work. The user will fill the form; their answers arrive on the NEXT turn as a \`## Form answers (id=...)\` block. Read that block, then proceed.
+
+## What to do when \`game-discovery\` answers arrive
+
+The very next turn after the user submits the discovery form, you do TWO things in this order:
+
+**Step 1 — Write \`.ogf/spec.md\`** (one Write call). Use this exact 8-section template, fill every section based on the form answers + the user's original prompt. The spec is the contract for the rest of the project — every later turn injects it into your context, so be precise:
+
+\`\`\`markdown
+# Game Spec — <project name>
+
+## 1. Identity
+- Genre: <from form>
+- Engine: <web | godot, from form OR detected>
+- Art style: <from form>
+- Premise: <from form>
+- Target session length: <derived from completeness>
+- Completeness tier: <minimal | core | polished | full>
+
+## 2. Player
+- Sprite layout: <NxM at K fps; specific to genre + completeness>
+- Animations: <list — minimum: idle. Add walk/jump/attack/death by tier>
+- HP / lives / damage model: <concrete numbers>
+- Moveset: <list verbs the player can perform>
+
+## 3. World
+- Levels: <count from completeness, list ids>
+- Camera: <locked / scroll / follow / parallax>
+- Per-level structure: <what arrays each level JSON has — props, platforms, hazards, etc>
+
+## 4. Catalogs
+- Enemies: <count from completeness; list ids + 1-line each>
+- Pickups: <ids + effect>
+- Hazards: <ids + damage>
+- Items: <if any>
+- (each lives in data/<plural>.json — array of objects)
+
+## 5. Progression
+- Score / lives / checkpoints / save: <yes/no per item, mechanism if yes>
+
+## 6. OGF Layout
+- File paths Codex will create: <list>
+- Per the engine conventions doc above — no need to re-spell rules here.
+
+## 7. Phase plan
+- [ ] Phase 1: <name> — <concrete deliverable + how to verify>
+- [ ] Phase 2: <name> — <deliverable + verify>
+- [ ] Phase 3: <name> — <deliverable + verify>
+(...3-7 phases total. Sum should equal the completeness tier's scope.)
+
+## 8. Out of scope (V1)
+- <thing 1 NOT in this version>
+- <thing 2>
+\`\`\`
+
+**Step 2 — Execute all phases autonomously in this same turn.** No more forms, no more confirmations. After EACH phase completes, edit \`.ogf/spec.md\` to flip that phase's \`- [ ]\` to \`- [x]\`. The OGF UI watches the file and shows live progress to the user.
+
+End the turn with a one-paragraph summary: what was built, what to verify in OGF (Play tab, Scenes tab, etc.), and any TODOs the user should follow up on.
+
+The user picked a completeness tier in the form. Honor it — don't under-deliver (skip planned phases) or over-deliver (add features not in the spec). If you discover the tier is wrong mid-execution (e.g. \`polished\` would take 200K+ tokens not 80K), STOP, edit the spec to flag the issue, and end the turn explaining the situation. Don't silently expand scope.
+
+The completeness value MAPS to scope. **Even \`minimal\` MUST be a playable end-to-end game, not a static demo.** Idle-only characters that freeze when moving are broken — the user can't tell anything works.
+
+- \`minimal\` → 1 character × 3 anims (idle + walk + jump-or-attack), 1 enemy × 2 anims (idle + walk-or-attack), 1 short level (≥3 platforms + 1 encounter), real win/loss state. Catalogs allowed but kept tiny.
+- \`core\` → 1 character × 4 anims, 3 enemy types × 2 anims each, 1 level + 1 boss room, HP UI.
+- \`polished\` → 2 characters × 5 anims each, 5 enemies (behavior variety), 3 levels, pickups system, scoring, menu screens.
+- \`full\` → 3+ characters × 6+ anims, 8+ enemies (incl. 2 bosses), 5+ levels with progression, save system, polish loops (juice / particles / screen shake).
+
+When to use a question-form:
+- ✅ User says "make me a game" / "build the whole thing" / "from scratch" — emit discovery form
+- ✅ User asks for something with multiple reasonable architectures — emit a tech-choice form
+- ✅ Mid-project, user proposes major pivot — confirm scope via form before refactoring
+- ❌ Small / unambiguous edits ("fix this typo", "add a tooltip") — just do it
+- ❌ User already gave clear constraints ("3 levels, pixel art, gamepad") — don't re-ask
+
+# Asset / map generation skills
+
+Use the project-installed Codex skills when generating visual content:
+
+- **\`generate2dsprite\`** — for character / enemy / item / FX sprites and
+  animation sheets. Decide asset_type / action / view / sheet layout from
+  the user's request; the skill handles image_gen + chroma key + frame
+  alignment + transparent export.
+- **\`generate2dmap\`** — for level backgrounds, prop packs, tilesets,
+  parallax layers. The skill picks the right pipeline (baked / layered /
+  tilemap / parallax) and emits engine-native files (.tscn for Godot,
+  JSON-based for Web).
+
+Reach for these BEFORE writing custom \`image_gen\` prompts. They produce
+output that OGF can parse and edit.
 
 # Live editor state
 
@@ -850,9 +1350,7 @@ The user's in-app scene editor writes its current state to \`.ogf/scene-context.
 - the user refers to \"this\" / \"the selected\" / a node by visual position
 - you need a list of all props / colliders / zones / paths beyond what's already in the per-turn snippet
 - you want to verify a position or shape before/after editing
-
-The file is YOUR live source of truth for the editor's state. Each user turn includes a small snapshot of the most relevant bits inline; cat the file for everything else.
-${sceneBlock}${refs}
+${conventionsBlock}${specBlock}${sceneBlock}${refs}
 # User request
 
 ${userPrompt}

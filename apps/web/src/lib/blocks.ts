@@ -1,4 +1,4 @@
-import type { AgentEvent } from '@ogf/contracts';
+import type { AgentEvent, QuestionForm } from '@ogf/contracts';
 
 export type ToolFamily = 'edit' | 'shell' | 'thinking' | 'other';
 
@@ -13,7 +13,8 @@ export interface ToolItem {
 
 export type Block =
   | { kind: 'text'; text: string }
-  | { kind: 'tool-group'; family: ToolFamily; items: ToolItem[] };
+  | { kind: 'tool-group'; family: ToolFamily; items: ToolItem[] }
+  | { kind: 'form'; form: QuestionForm };
 
 export interface TurnFooter {
   usage?: { input?: number; output?: number; cachedRead?: number };
@@ -110,6 +111,12 @@ export function buildTurn(events: AgentEvent[]): BuiltTurn {
 
       case 'tool_result':
         attachResult(ev.toolUseId, ev.content, ev.isError);
+        break;
+
+      case 'form':
+        flushText();
+        flushGroup();
+        blocks.push({ kind: 'form', form: ev.form });
         break;
 
       case 'usage':

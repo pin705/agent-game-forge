@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="apps/web/public/ogf-logo-256.png" alt="Open Game Forge" width="128" height="128" />
+</p>
+
 # Open Game Forge
 
 Agent-native 2D game editor. Cursor-like workspace where the left pane is a game editor (sprites, maps, scenes) and the right pane is a coding agent (Codex CLI). Drives Godot, Unity, and WebGL projects.

@@ -27,6 +27,7 @@ import {
   readTscnZones,
 } from './zones.js';
 import { readTscnPaths, writeTscnMovePathPoint } from './paths.js';
+import { isWebLevelJson, loadWebLevel } from './web-scene.js';
 import {
   findBodyLine,
   formatVector2,
@@ -164,6 +165,61 @@ const CONTENT_NODE_TYPES = new Set([
   'TileMapLayer',
 ]);
 
+/** Node types that own a Transform2D and therefore contribute to a Sprite2D's
+ *  world position when present in its ancestor chain. Anything not in this
+ *  set (e.g. CanvasLayer, Node) doesn't move children spatially. */
+const TRANSFORM2D_NODE_TYPES = new Set([
+  'Node2D',
+  'Sprite2D',
+  'AnimatedSprite2D',
+  'StaticBody2D',
+  'CharacterBody2D',
+  'RigidBody2D',
+  'KinematicBody2D',
+  'Area2D',
+  'Marker2D',
+  'Path2D',
+  'PathFollow2D',
+  'CollisionShape2D',
+  'CollisionPolygon2D',
+  'TileMapLayer',
+  'TileMap',
+  'Camera2D',
+]);
+
+/** Walk up the parent chain from a node, summing position vectors of every
+ *  Transform2D-bearing ancestor. Returns the node's WORLD-SPACE position
+ *  in the .tscn — what Godot would compose at runtime via the scene tree.
+ *
+ *  Stops at root ('.') or a non-Transform2D ancestor (e.g. CanvasLayer).
+ *  Doesn't try to handle rotation / scale composition — pure position only,
+ *  which is what 99% of game scenes need for OGF visualization. */
+function worldPositionOf(
+  parsed: ParsedTscn,
+  nodes: { byPath: Map<string, ParsedTscn['sections'][number]> },
+  nodePath: string,
+): { x: number; y: number } {
+  let cx = 0;
+  let cy = 0;
+  let cur: string | undefined = nodePath;
+  // Cap the walk depth to avoid pathological loops in malformed scenes.
+  for (let i = 0; i < 32 && cur; i++) {
+    const section = nodes.byPath.get(cur);
+    if (!section) break;
+    const t = section.attrs.type ?? '';
+    if (!TRANSFORM2D_NODE_TYPES.has(t)) break;
+    const p = parseVector2(readBodyValue(parsed, section, 'position'));
+    if (p) {
+      cx += p.x;
+      cy += p.y;
+    }
+    const parent = section.attrs.parent;
+    if (!parent || parent === '.' || parent === '') break;
+    cur = parent;
+  }
+  return { x: cx, y: cy };
+}
+
 /** When a scene has no Sprite2D/etc. of its own and just instances a
  *  PackedScene, redirect to the inner scene so OGF actually shows / edits
  *  the embedded content (e.g. Main.tscn → MapEdit.tscn). Recursively follows
@@ -212,6 +268,17 @@ export interface LoadOptions {
 }
 
 export function loadScene(opts: LoadOptions): LoadSceneResponse {
+  // Web engine: a level is a JSON file. Dispatch to the web-scene loader.
+  if (opts.relPath.toLowerCase().endsWith('.json')) {
+    const abs = safeJoin(opts.rootAbs, opts.relPath);
+    if (!existsSync(abs)) throw new Error(`level not found: ${opts.relPath}`);
+    const probe = readFileSync(abs, 'utf8');
+    if (isWebLevelJson(probe)) {
+      return loadWebLevel(opts.rootAbs, opts.relPath);
+    }
+    throw new Error('JSON file is not a level (missing mapSize)');
+  }
+
   // If the requested scene is just a wrapper that instances another scene,
   // follow the instance and load that one instead.
   const actualRelPath = resolveActualScenePath(opts.rootAbs, opts.relPath);
@@ -258,12 +325,15 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
     return resResolve(r.path);
   }
 
-  // ---- Pattern A: Node2D wrapper with exactly one Sprite2D child ----
-  // (skill_generatemap_test style: tree_north_1 / Sprite2D pair)
-  // If a Node2D has many Sprite2D children, it's a grouping container — let
-  // Pattern B handle each child as its own prop.
+  // ---- Pattern A: any Transform2D-bearing parent with exactly one Sprite2D
+  // child. Covers the canonical Codex-generated structure — StaticBody2D /
+  // CharacterBody2D / Area2D wrapping a Sprite2D + CollisionShape2D — as
+  // well as the historic Node2D + Sprite2D pattern.
+  // If a parent has many Sprite2D children, it's a grouping container —
+  // let Pattern B handle each child individually.
   for (const [nodePath, section] of nodes.byPath) {
-    if (section.attrs.type !== 'Node2D') continue;
+    if (!TRANSFORM2D_NODE_TYPES.has(section.attrs.type ?? '')) continue;
+    if (section.attrs.type === 'Sprite2D') continue; // a Sprite2D itself isn't a wrapper
 
     const children = parsed.sections.filter(
       (s) =>
@@ -276,9 +346,24 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
     const texturePath = resolveTexture(spriteSection);
     if (!texturePath) continue;
 
-    const position = parseVector2(readBodyValue(parsed, section, 'position')) ?? { x: 0, y: 0 };
+    // World position = parent's accumulated world transform. Sprite offset =
+    // its local position relative to that parent. SceneEditor combines both
+    // when drawing (position + spriteOffset = sprite anchor; anchor's role
+    // depends on centered).
+    const position = worldPositionOf(parsed, nodes, nodePath);
     const spriteOffset = parseVector2(readBodyValue(parsed, spriteSection, 'position')) ?? { x: 0, y: 0 };
     const scale = parseVector2(readBodyValue(parsed, spriteSection, 'scale')) ?? { x: 1, y: 1 };
+    // Godot Sprite2D defaults to centered = true; only present in .tscn when
+    // the user (or Codex) flipped it. When false, position is the TOP-LEFT
+    // of the drawn sprite, not its center — propBounds switches anchor.
+    const centeredRaw = readBodyValue(parsed, spriteSection, 'centered');
+    const centered = centeredRaw === 'false' ? false : true;
+    // z_index: render order. Default 0. Negative = behind. Read from the
+    // SPRITE node itself (not the wrapper) — that's what Godot honors.
+    const zIndex = parseInt(
+      readBodyValue(parsed, spriteSection, 'z_index') ?? '0',
+      10,
+    );
 
     referencedTextures.add(texturePath);
     seenNodePaths.add(nodePath);
@@ -290,6 +375,8 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
       scale,
       texture: texturePath,
       metadata: readMetadata(section),
+      centered,
+      zIndex,
     });
   }
 
@@ -299,7 +386,7 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
     if (section.attrs.type !== 'Sprite2D') continue;
     if (seenNodePaths.has(nodePath)) continue;
 
-    // Skip Sprite2Ds that ARE the child of a Pattern-A Node2D (already counted).
+    // Skip Sprite2Ds that ARE the child of a Pattern-A wrapper (already counted).
     // Their parent attr looks like "X/Y" where X/Y is in seenNodePaths.
     const parent = section.attrs.parent;
     if (!parent || parent === '.' || parent === root) continue; // skip root-level / unparented
@@ -308,8 +395,17 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
     const texturePath = resolveTexture(section);
     if (!texturePath) continue;
 
-    const position = parseVector2(readBodyValue(parsed, section, 'position')) ?? { x: 0, y: 0 };
+    // World position = walk up parent chain summing transforms, then add
+    // this Sprite2D's local position. Without this, deeply-nested sprites
+    // (under Group / Layer / WrapperBody) get plotted at the origin.
+    const position = worldPositionOf(parsed, nodes, nodePath);
     const scale = parseVector2(readBodyValue(parsed, section, 'scale')) ?? { x: 1, y: 1 };
+    const centeredRaw = readBodyValue(parsed, section, 'centered');
+    const centered = centeredRaw === 'false' ? false : true;
+    const zIndex = parseInt(
+      readBodyValue(parsed, section, 'z_index') ?? '0',
+      10,
+    );
 
     referencedTextures.add(texturePath);
     seenNodePaths.add(nodePath);
@@ -321,6 +417,8 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
       scale,
       texture: texturePath,
       metadata: readMetadata(section),
+      centered,
+      zIndex,
     });
   }
 
@@ -482,6 +580,12 @@ export interface ApplyOpsResult {
 }
 
 export function applyOps(opts: ApplyOpsOptions): ApplyOpsResult {
+  // Web scene: the relPath is a level JSON. Don't parseTscn — JSON is not a
+  // TSCN file. Dispatch to the JSON-only writer.
+  if (opts.relPath.toLowerCase().endsWith('.json')) {
+    return applyOpsToJsonScene(opts);
+  }
+
   // If the requested scene is a wrapper that instances another scene, edits
   // go to the inner scene — same redirect rule as loadScene.
   const actualRelPath = resolveActualScenePath(opts.rootAbs, opts.relPath);
@@ -493,6 +597,14 @@ export function applyOps(opts: ApplyOpsOptions): ApplyOpsResult {
 
   for (const op of opts.ops) {
     if (op.kind === 'move-prop') {
+      // Web prop: ref points at a JSON entry. Patch x/y in the JSON file.
+      if (op.ref?.backend === 'json') {
+        applyJsonColliderEdit(opts.rootAbs, op.ref, {
+          x: op.position.x,
+          y: op.position.y,
+        });
+        continue;
+      }
       const section = nodes.byPath.get(op.nodePath);
       if (!section) throw new Error(`node not found: ${op.nodePath}`);
       const newLine = `position = ${formatVector2(op.position)}`;
@@ -592,6 +704,91 @@ export function applyOps(opts: ApplyOpsOptions): ApplyOpsResult {
     return { size: Buffer.byteLength(newText, 'utf8') };
   }
   return { size: Buffer.byteLength(text, 'utf8') };
+}
+
+/** Web-scene apply path. Operates only on JSON files; never touches .tscn.
+ *  All ops MUST carry a json-backend `ref`; otherwise we can't know where to
+ *  write. A missing ref usually means OGF was loaded against an older daemon
+ *  that didn't attach refs — refresh the browser to re-fetch. */
+function applyOpsToJsonScene(opts: ApplyOpsOptions): ApplyOpsResult {
+  function requireJsonRef<T extends { ref?: { backend: string } }>(
+    op: T,
+    kind: string,
+  ): asserts op is T & { ref: import('@ogf/contracts').ColliderRef & { backend: 'json' } } {
+    if (!op.ref || op.ref.backend !== 'json') {
+      throw new Error(
+        `${kind} on a .json scene needs a json-backed ref (got '${op.ref?.backend ?? 'none'}'). ` +
+          `Refresh OGF — the prop/collider was loaded before the JSON-ref upgrade.`,
+      );
+    }
+  }
+
+  for (const op of opts.ops) {
+    if (op.kind === 'move-prop') {
+      requireJsonRef(op, 'move-prop');
+      applyJsonColliderEdit(opts.rootAbs, op.ref, {
+        x: op.position.x,
+        y: op.position.y,
+      });
+    } else if (op.kind === 'scale-prop') {
+      requireJsonRef(op, 'scale-prop');
+      // Web entries store size as (w, h), not a unit scale. Translate the
+      // unit scale to a pixel size using the entry's CURRENT w/h. The entry
+      // can live in any top-level array (props / platforms / pickups / ...);
+      // op.ref.section tells us which.
+      const map = JSON.parse(
+        readFileSync(safeJoin(opts.rootAbs, op.ref.relPath), 'utf8'),
+      ) as Record<string, unknown>;
+      const arr = map[op.ref.section];
+      if (Array.isArray(arr)) {
+        const cur = (arr as Array<{ id?: string; w?: number; h?: number }>).find(
+          (p) => p?.id === op.ref!.id,
+        );
+        if (cur && typeof cur.w === 'number' && typeof cur.h === 'number') {
+          applyJsonColliderEdit(opts.rootAbs, op.ref, {
+            w: cur.w * op.scale.x,
+            h: cur.h * op.scale.y,
+          });
+        }
+      }
+    } else if (op.kind === 'move-collider') {
+      if (op.ref.backend !== 'json') {
+        throw new Error(`move-collider on .json scene must use json ref`);
+      }
+      applyJsonColliderEditForMove(opts.rootAbs, op.ref, op.position);
+    } else if (op.kind === 'resize-rect-collider') {
+      if (op.ref.backend !== 'json') {
+        throw new Error(`resize-rect-collider on .json scene must use json ref`);
+      }
+      const ref = op.ref;
+      const colliders = readJsonColliders(opts.rootAbs, ref.relPath);
+      const target = colliders.find(
+        (c) => c.ref.backend === 'json' && c.ref.id === ref.id,
+      );
+      if (target && target.shape.kind === 'rect') {
+        const tlx = target.position.x - op.w / 2;
+        const tly = target.position.y - op.h / 2;
+        applyJsonColliderEdit(opts.rootAbs, ref, {
+          x: tlx,
+          y: tly,
+          w: op.w,
+          h: op.h,
+        });
+      }
+    } else if (op.kind === 'resize-circle-collider') {
+      if (op.ref.backend !== 'json') {
+        throw new Error(`resize-circle-collider on .json scene must use json ref`);
+      }
+      applyJsonColliderEdit(opts.rootAbs, op.ref, { radius: op.r });
+    } else {
+      throw new Error(
+        `op '${(op as { kind: string }).kind}' not supported on .json scenes`,
+      );
+    }
+  }
+
+  const sceneAbs = safeJoin(opts.rootAbs, opts.relPath);
+  return { size: existsSync(sceneAbs) ? statSync(sceneAbs).size : 0 };
 }
 
 /** JSON colliders store rects as top-left + (w,h) but our model uses center.

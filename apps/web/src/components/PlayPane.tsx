@@ -12,10 +12,22 @@ import { I } from './icons.js';
 
 interface Props {
   projectPath: string;
-  /** Default scene from project.godot. */
+  /** Engine kind from the daemon's analysis. */
+  engine?: string;
+  /** Default scene from project.godot (Godot only). */
   mainScene: string | null;
   /** Click an error line → jump to that .gd file at that line. */
   onJumpTo?: (relPath: string, line: number) => void;
+}
+
+/** base64url-encode a string the same way Node's Buffer does, so the frontend
+ *  produces the same slug the daemon's /api/web-play/:slug route decodes. */
+function base64Url(s: string): string {
+  // unicode-safe encode
+  const bytes = new TextEncoder().encode(s);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 interface ConsoleLine {
@@ -230,6 +242,11 @@ export function PlayPane(props: Props) {
 
   // -------- Render --------
 
+  // Web project: serve the project root as static + show in iframe.
+  if (props.engine === 'web') {
+    return <WebPlayPane projectPath={props.projectPath} />;
+  }
+
   if (godotLoading) {
     return (
       <div className="inspector">
@@ -384,6 +401,81 @@ function PlayLine({
         {m[0]}
       </button>
       {line.text.slice(idx + m[0].length)}
+    </div>
+  );
+}
+
+// ============= Web project Play =============
+
+function WebPlayPane({ projectPath }: { projectPath: string }) {
+  const slug = useMemo(() => base64Url(projectPath), [projectPath]);
+  // Don't auto-run on mount — the iframe runs an animation loop / audio /
+  // network and would burn CPU even when the user has the Play tab in the
+  // background. User clicks ▶ play to start.
+  const [running, setRunning] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
+  const src = `/api/web-play/${slug}/index.html?_=${reloadTick}`;
+
+  // If the project switches while running, stop — the slug just changed and
+  // the new project should start fresh.
+  useEffect(() => {
+    setRunning(false);
+  }, [projectPath]);
+
+  return (
+    <div className="inspector">
+      <div className="crumbs">
+        <span className="last">Play</span>
+        <span className="badge-dim">web</span>
+        <span className="actions">
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => setReloadTick((n) => n + 1)}
+            disabled={!running}
+            title="Reload iframe"
+          >
+            ↻ reload
+          </button>
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => window.open(src, '_blank')}
+            title="Open in a new browser tab"
+          >
+            ↗ open in tab
+          </button>
+          {running ? (
+            <button
+              className="btn btn-sm"
+              style={{ color: 'var(--red)' }}
+              onClick={() => setRunning(false)}
+              title="Stop the game (unmount iframe)"
+            >
+              {I.stop} stop
+            </button>
+          ) : (
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={() => setRunning(true)}
+              title="Run the project in an iframe"
+            >
+              {I.play} play
+            </button>
+          )}
+        </span>
+      </div>
+      <div className="web-play-frame-wrap">
+        {running ? (
+          <iframe
+            key={reloadTick}
+            src={src}
+            className="web-play-frame"
+            title="Project preview"
+            sandbox="allow-scripts allow-same-origin allow-modals"
+          />
+        ) : (
+          <div className="play-empty muted">Press play to launch the web project.</div>
+        )}
+      </div>
     </div>
   );
 }

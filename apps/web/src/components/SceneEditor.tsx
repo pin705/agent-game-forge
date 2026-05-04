@@ -83,6 +83,53 @@ export function SceneEditor(props: Props) {
   /** When non-null, user is composing a brand-new thread at this anchor. */
   const [draftAnchor, setDraftAnchor] = useState<CommentAnchor | null>(null);
   const [showResolvedThreads, setShowResolvedThreads] = useState(false);
+  // Locked prop nodePaths — skipped by hit-test so the user can park
+  // backgrounds / decorative tiles and keep clicking through them to the
+  // real interactive props underneath. Persisted to localStorage per
+  // (project + scene) so the lock state survives reloads + scene switches.
+  const lockStorageKey = `ogf:locks:${props.projectPath}:${props.relPath}`;
+  const [lockedNodePaths, setLockedNodePaths] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(lockStorageKey);
+      if (raw) return new Set(JSON.parse(raw) as string[]);
+    } catch {
+      // ignore corrupted entry
+    }
+    return new Set();
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        lockStorageKey,
+        JSON.stringify([...lockedNodePaths]),
+      );
+    } catch {
+      // localStorage full — ignore
+    }
+  }, [lockStorageKey, lockedNodePaths]);
+  // Reset locks when switching scenes (different relPath = different set).
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(lockStorageKey);
+      setLockedNodePaths(raw ? new Set(JSON.parse(raw) as string[]) : new Set());
+    } catch {
+      setLockedNodePaths(new Set());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockStorageKey]);
+
+  function toggleLock(nodePath: string) {
+    setLockedNodePaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodePath)) next.delete(nodePath);
+      else next.add(nodePath);
+      return next;
+    });
+    // Locking the currently-selected prop deselects it — there's no UX where
+    // you'd want a locked prop to stay selected (selection implies you'll act
+    // on it, but locked = ignored).
+    if (selectedNodePath === nodePath) setSelectedNodePath(null);
+  }
 
   // Threads visible in the side panel + as pins. Resolved hidden by default.
   const visibleThreads = useMemo(
@@ -326,8 +373,19 @@ export function SceneEditor(props: Props) {
       }
     }
 
-    // Props
-    for (const p of scene.props) {
+    // Props — render in z_index order (lower draws first / further back).
+    // Backgrounds typically have negative z (-10 / -20) so they sit behind.
+    // Sprites without an explicit z_index get a fallback: huge centered=false
+    // sprites (likely backdrops) push to -1 so they don't accidentally cover
+    // all the gameplay props they share z=0 with.
+    const sortedProps = scene.props
+      .map((p, i) => ({
+        p,
+        i,
+        z: p.zIndex ?? backdropFallbackZ(p, bank),
+      }))
+      .sort((a, b) => a.z - b.z || a.i - b.i);
+    for (const { p } of sortedProps) {
       drawProp(
         ctx,
         p,
@@ -491,20 +549,34 @@ export function SceneEditor(props: Props) {
 
   function findPropAt(world: Vec2): SceneProp | null {
     if (!scene) return null;
-    for (let i = scene.props.length - 1; i >= 0; i--) {
-      const p = scene.props[i];
-      const r = propBounds(p, bank);
-      if (!r) continue;
-      if (
-        world.x >= r.x &&
-        world.x <= r.x + r.w &&
-        world.y >= r.y &&
-        world.y <= r.y + r.h
-      ) {
-        return p;
-      }
-    }
-    return null;
+    // Hit-test in REVERSE z-order: the visually-topmost prop wins. Without
+    // this, clicking on a platform that overlaps a background would select
+    // whichever appeared later in the array. Tie-break by smaller bbox
+    // area — between two same-z props, the smaller is almost certainly the
+    // foreground feature.
+    // Locked props are skipped entirely so the user can park backgrounds.
+    const candidates = scene.props
+      .map((p, i) => ({ p, i, r: propBounds(p, bank) }))
+      .filter(
+        (e) =>
+          e.r != null &&
+          !lockedNodePaths.has(e.p.nodePath) &&
+          world.x >= e.r.x &&
+          world.x <= e.r.x + e.r.w &&
+          world.y >= e.r.y &&
+          world.y <= e.r.y + e.r.h,
+      );
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => {
+      const za = a.p.zIndex ?? backdropFallbackZ(a.p, bank);
+      const zb = b.p.zIndex ?? backdropFallbackZ(b.p, bank);
+      if (za !== zb) return zb - za; // higher z first
+      const aa = a.r!.w * a.r!.h;
+      const ab = b.r!.w * b.r!.h;
+      if (aa !== ab) return aa - ab; // smaller area first
+      return b.i - a.i;              // last in array first (Godot draw order)
+    });
+    return candidates[0].p;
   }
 
   /** Hit-test the 4 corner handles of the currently selected prop. */
@@ -976,9 +1048,12 @@ export function SceneEditor(props: Props) {
         moved &&
         (moved.position.x !== ds.startProp.x || moved.position.y !== ds.startProp.y)
       ) {
+        // Web-backed props carry a ref so the daemon writes to JSON instead
+        // of trying to find a (non-existent) .tscn node.
+        const ref = moved.ref;
         commitOps(
-          [{ kind: 'move-prop', nodePath: ds.nodePath, position: moved.position }],
-          [{ kind: 'move-prop', nodePath: ds.nodePath, position: ds.startProp }],
+          [{ kind: 'move-prop', nodePath: ds.nodePath, position: moved.position, ref }],
+          [{ kind: 'move-prop', nodePath: ds.nodePath, position: ds.startProp, ref }],
           `move ${ds.nodePath.split('/').pop() ?? ds.nodePath}`,
         );
       }
@@ -990,9 +1065,14 @@ export function SceneEditor(props: Props) {
         cur &&
         (cur.scale.x !== ds.startScale.x || cur.scale.y !== ds.startScale.y)
       ) {
+        // Web props are JSON-backed and need ref so the daemon writes back
+        // to the right array (props / platforms / pickups / hazards / ...).
+        // Without ref, applyOpsToJsonScene rejects with 'needs a json-backed
+        // ref' and the user sees a save failure.
+        const ref = cur.ref;
         commitOps(
-          [{ kind: 'scale-prop', nodePath: ds.nodePath, scale: cur.scale }],
-          [{ kind: 'scale-prop', nodePath: ds.nodePath, scale: ds.startScale }],
+          [{ kind: 'scale-prop', nodePath: ds.nodePath, scale: cur.scale, ref }],
+          [{ kind: 'scale-prop', nodePath: ds.nodePath, scale: ds.startScale, ref }],
           `scale ${ds.nodePath.split('/').pop() ?? ds.nodePath}`,
         );
       }
@@ -1086,10 +1166,36 @@ export function SceneEditor(props: Props) {
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current);
     }
+    // Short debounce: just enough to batch a couple of drag-end commits in
+    // the same frame, but tight enough that a 'click drag, immediately
+    // switch tab' sequence still flushes BEFORE the unmount-and-remount
+    // race lets loadScene re-fetch stale .tscn. Was 220ms which lost edits
+    // when users navigated away fast.
     saveTimerRef.current = window.setTimeout(() => {
       void flushSave();
-    }, 220);
+    }, 50);
   }
+
+  // On unmount (tab switch / scene switch), force any pending ops to disk
+  // synchronously. Without this, a debounce timer firing AFTER unmount races
+  // with the next mount's loadScene — daemon serves the still-stale .tscn,
+  // user sees their edit reverted.
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current !== null) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      if (pendingOpsRef.current.length > 0) {
+        // Fire-and-forget — we can't await in a cleanup but the fetch is
+        // already in-flight, and React's next render of this surface will
+        // re-fetch (loadScene) which serializes after the write at the
+        // daemon level.
+        void flushSave();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Forward = ops to send to daemon (also applied locally already by drag).
    *  Inverse = ops that, applied to current state, would revert the forward. */
@@ -1384,6 +1490,8 @@ export function SceneEditor(props: Props) {
             const promptText = buildAskCodexPrompt(thread, draftMsg);
             props.onAskCodex?.(promptText);
           }}
+          lockedNodePaths={lockedNodePaths}
+          onToggleLock={toggleLock}
         />
       </div>
     </div>
@@ -1438,6 +1546,8 @@ function ScenePanel({
   onResolveThread,
   onDeleteThread,
   onAskCodex,
+  lockedNodePaths,
+  onToggleLock,
 }: {
   scene: SceneModel | null;
   mode: EditMode;
@@ -1461,6 +1571,8 @@ function ScenePanel({
   onResolveThread: (threadId: string, resolved: boolean) => void;
   onDeleteThread: (threadId: string) => void;
   onAskCodex: (thread: CommentThread, latestMsg?: string) => void;
+  lockedNodePaths: Set<string>;
+  onToggleLock: (nodePath: string) => void;
 }) {
   const selPath = scene?.paths.find((p) => p.uid === selectedPath?.uid) ?? null;
   const selThread = threads.find((t) => t.id === selectedThreadId) ?? null;
@@ -1503,18 +1615,36 @@ function ScenePanel({
         <div className="scene-panel-section" style={{ flex: 1, minHeight: 0 }}>
           <div className="scene-panel-title">Props</div>
           <div className="scene-panel-list">
-            {scene?.props.map((p) => (
-              <button
-                key={p.nodePath}
-                className={`scene-prop-item ${selectedProp?.nodePath === p.nodePath ? 'active' : ''}`}
-                onClick={() => onSelectProp(p.nodePath)}
-              >
-                <span className="mono">{p.name}</span>
-                <span className="muted mono">
-                  {Math.round(p.position.x)},{Math.round(p.position.y)}
-                </span>
-              </button>
-            ))}
+            {scene?.props.map((p) => {
+              const locked = lockedNodePaths.has(p.nodePath);
+              return (
+                <div
+                  key={p.nodePath}
+                  className={`scene-prop-item ${selectedProp?.nodePath === p.nodePath ? 'active' : ''} ${locked ? 'locked' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    if (!locked) onSelectProp(p.nodePath);
+                  }}
+                >
+                  <span className="mono">{p.name}</span>
+                  <span className="muted mono">
+                    {Math.round(p.position.x)},{Math.round(p.position.y)}
+                  </span>
+                  <button
+                    type="button"
+                    className={`scene-prop-lock ${locked ? 'on' : ''}`}
+                    title={locked ? 'Unlock — clicks pass through to this' : 'Lock — block clicks on this prop'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleLock(p.nodePath);
+                    }}
+                  >
+                    {locked ? '🔒' : '🔓'}
+                  </button>
+                </div>
+              );
+            })}
             {scene && scene.props.length === 0 && (
               <div className="muted" style={{ padding: 8 }}>
                 No draggable props in this scene.
@@ -3058,16 +3188,77 @@ function drawLabel(ctx: CanvasRenderingContext2D, x: number, y: number, text: st
   ctx.fillText(text, x - w / 2, y - padY);
 }
 
+/** Best-effort z-index when the prop's .tscn didn't specify one. We default
+ *  big centered=false sprites to -1 so backdrops don't accidentally cover
+ *  game props they share z=0 with. Anything else stays at 0. */
+function backdropFallbackZ(p: SceneProp, bank: ImageBank): number {
+  if (p.centered !== false) return 0;
+  const size = p.texture ? bank.sizes.get(p.texture) : null;
+  if (!size) return 0;
+  // Heuristic: 'big' = covers > ~80% of either dimension of a typical level
+  // viewport (roughly 1280x720). A platform sprite that's centered=false
+  // with size 600x100 doesn't qualify; a 1280x720 background does.
+  if (size.w >= 1024 || size.h >= 576) return -1;
+  return 0;
+}
+
 function propBounds(p: SceneProp, bank: ImageBank) {
-  if (!p.texture) return null;
-  const size = bank.sizes.get(p.texture);
-  if (!size) return null;
-  const w = size.w * Math.abs(p.scale.x);
-  const h = size.h * Math.abs(p.scale.y);
-  // Sprite2D draws centered at its origin by default. Origin = parent.position + sprite.offset.
-  const cx = p.position.x + p.spriteOffset.x;
-  const cy = p.position.y + p.spriteOffset.y;
-  return { x: cx - w / 2, y: cy - h / 2, w, h };
+  // Web props carry an explicit displaySize from the JSON (their declared
+  // w/h). Godot props rely on naturalSize × scale.
+  // For BOTH backends, we still multiply by scale so a live resize drag
+  // (which mutates p.scale in React state until commit) produces visible
+  // growth. After commit the daemon writes the new w/h back, the loader
+  // re-emits with scale = 1, so the visual stays put.
+  const size = p.texture ? bank.sizes.get(p.texture) : null;
+  let w: number;
+  let h: number;
+  if (p.displaySize) {
+    w = p.displaySize.x * Math.abs(p.scale.x);
+    h = p.displaySize.y * Math.abs(p.scale.y);
+  } else if (size) {
+    w = size.w * Math.abs(p.scale.x);
+    h = size.h * Math.abs(p.scale.y);
+  } else {
+    return null;
+  }
+  // Sprite2D's anchor depends on the `centered` attribute:
+  //   centered = true (default) → position = render center → bbox = (cx-w/2, cy-h/2, w, h)
+  //   centered = false          → position = top-left      → bbox = (cx, cy, w, h)
+  // Without honoring this, big background sprites that Codex sets to
+  // centered=false (per OGF Godot conventions) appear shifted up-left by
+  // (w/2, h/2) in the OGF Scenes tab while Play renders them correctly.
+  const ax = p.position.x + p.spriteOffset.x;
+  const ay = p.position.y + p.spriteOffset.y;
+  if (p.centered === false) {
+    return { x: ax, y: ay, w, h };
+  }
+  return { x: ax - w / 2, y: ay - h / 2, w, h };
+}
+
+/** Color for the border of a non-default-props section. Lets the user tell
+ *  platforms vs pickups vs hazards apart at a glance without clicking. The
+ *  default 'props' section gets no tint (returns null) — it's the neutral
+ *  decoration layer and a border on every prop would be visual noise. */
+function sectionTint(section: string | undefined): string | null {
+  if (!section || section === 'props') return null;
+  // Stable color palette by section name. Common platformer / metroidvania
+  // entity types get explicit colors; anything else hashes into a fallback.
+  const FIXED: Record<string, string> = {
+    platforms: 'rgba(96, 165, 250, 0.95)',     // blue
+    pickups: 'rgba(110, 231, 142, 0.95)',      // green
+    hazards: 'rgba(248, 113, 113, 0.95)',      // red
+    enemies: 'rgba(232, 125, 232, 0.95)',      // magenta
+    enemySpawns: 'rgba(232, 125, 232, 0.95)',  // magenta (alias)
+    doors: 'rgba(251, 191, 36, 0.95)',         // amber
+    checkpoints: 'rgba(165, 180, 252, 0.95)',  // indigo
+    decorations: 'rgba(180, 180, 180, 0.85)',  // gray
+  };
+  if (FIXED[section]) return FIXED[section];
+  // Fallback: deterministic hue from name hash so the same section always
+  // gets the same color across reloads.
+  let h = 0;
+  for (let i = 0; i < section.length; i++) h = (h * 31 + section.charCodeAt(i)) >>> 0;
+  return `hsl(${h % 360}, 65%, 65%)`;
 }
 
 function drawProp(
@@ -3085,6 +3276,35 @@ function drawProp(
   } else {
     ctx.fillStyle = 'rgba(255, 80, 80, 0.3)';
     ctx.fillRect(r.x, r.y, r.w, r.h);
+  }
+
+  // Section tint: thin colored border + tiny label tab in the top-left so the
+  // user can tell which array the entry came from (platforms / pickups / ...).
+  // Only drawn for non-default sections. Hidden when the prop is selected so
+  // the bright yellow selection outline remains the visual focus.
+  const sectionName =
+    p.ref && p.ref.backend === 'json' ? p.ref.section : undefined;
+  const tint = sectionTint(sectionName);
+  if (tint && !selected) {
+    ctx.lineWidth = 1.5 / scale;
+    ctx.strokeStyle = tint;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    // Section label tab — small, only readable when zoomed in. Doesn't
+    // distract at low zoom but is there when needed.
+    if (scale >= 0.6 && sectionName) {
+      const label = sectionName;
+      ctx.font = `${10 / scale}px ui-monospace, Menlo, monospace`;
+      const metrics = ctx.measureText(label);
+      const padX = 4 / scale;
+      const padY = 2 / scale;
+      const tabW = metrics.width + padX * 2;
+      const tabH = 14 / scale;
+      ctx.fillStyle = tint;
+      ctx.fillRect(r.x, r.y - tabH, tabW, tabH);
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      ctx.textBaseline = 'top';
+      ctx.fillText(label, r.x + padX, r.y - tabH + padY);
+    }
   }
 
   // Origin marker (small cross at the parent Node2D position)

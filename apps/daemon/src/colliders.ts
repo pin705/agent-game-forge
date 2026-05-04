@@ -279,18 +279,21 @@ export function findCollisionJsonPath(rootAbs: string, scenePath: string): strin
 
 interface JsonBlocker {
   id: string;
-  type?: 'rect' | 'circle' | 'polygon';
+  type?: 'rect' | 'circle' | 'ellipse' | 'polygon';
   x?: number;
   y?: number;
   w?: number;
   h?: number;
   radius?: number;
+  rx?: number;
+  ry?: number;
   points?: [number, number][];
 }
 
 interface CollisionJson {
   blockers?: JsonBlocker[];
   buildZones?: JsonBlocker[];
+  walkBounds?: JsonBlocker[];
 }
 
 export function readJsonColliders(rootAbs: string, jsonRel: string): SceneCollider[] {
@@ -304,7 +307,16 @@ export function readJsonColliders(rootAbs: string, jsonRel: string): SceneCollid
   }
   const out: SceneCollider[] = [];
 
-  function ingest(items: JsonBlocker[] | undefined, sectionName: 'blockers' | 'buildZones') {
+  function kindFor(sectionName: string): string {
+    if (sectionName === 'buildZones') return 'buildzone';
+    if (sectionName === 'walkBounds') return 'walkbound';
+    return 'blocker';
+  }
+
+  function ingest(
+    items: JsonBlocker[] | undefined,
+    sectionName: 'blockers' | 'buildZones' | 'walkBounds',
+  ) {
     if (!items) return;
     for (const b of items) {
       const ref: ColliderRef = {
@@ -314,12 +326,13 @@ export function readJsonColliders(rootAbs: string, jsonRel: string): SceneCollid
         id: b.id,
       };
       const uid = `json:${sectionName}:${b.id}`;
+      const kind = kindFor(sectionName);
       if (b.type === 'rect') {
         out.push({
           uid,
           ref,
           name: b.id,
-          kind: sectionName === 'buildZones' ? 'buildzone' : 'blocker',
+          kind,
           position: { x: (b.x ?? 0) + (b.w ?? 0) / 2, y: (b.y ?? 0) + (b.h ?? 0) / 2 },
           shape: { kind: 'rect', w: b.w ?? 0, h: b.h ?? 0 },
           editable: true,
@@ -329,9 +342,24 @@ export function readJsonColliders(rootAbs: string, jsonRel: string): SceneCollid
           uid,
           ref,
           name: b.id,
-          kind: sectionName === 'buildZones' ? 'buildzone' : 'blocker',
+          kind,
           position: { x: b.x ?? 0, y: b.y ?? 0 },
           shape: { kind: 'circle', r: b.radius ?? 0 },
+          editable: true,
+        });
+      } else if (b.type === 'ellipse') {
+        // V1: render and edit ellipses as a circle of max(rx, ry). Center
+        // semantics match the JSON ({x, y} = center). Keep this in sync with
+        // web-scene.ts inferShapeFromEntry — both readers must agree on the
+        // shape mapping or applyJsonColliderEditForMove can't translate moves.
+        const r = Math.max(Number(b.rx ?? b.radius ?? 0), Number(b.ry ?? b.radius ?? 0));
+        out.push({
+          uid,
+          ref,
+          name: b.id,
+          kind,
+          position: { x: b.x ?? 0, y: b.y ?? 0 },
+          shape: { kind: 'circle', r },
           editable: true,
         });
       } else if (b.type === 'polygon') {
@@ -343,7 +371,7 @@ export function readJsonColliders(rootAbs: string, jsonRel: string): SceneCollid
           uid,
           ref,
           name: b.id,
-          kind: sectionName === 'buildZones' ? 'buildzone' : 'blocker',
+          kind,
           position: { x: cx, y: cy },
           shape: { kind: 'polygon', points },
           editable: false, // polygon edit = Phase 4
@@ -354,6 +382,7 @@ export function readJsonColliders(rootAbs: string, jsonRel: string): SceneCollid
 
   ingest(parsed.blockers, 'blockers');
   ingest(parsed.buildZones, 'buildZones');
+  ingest(parsed.walkBounds, 'walkBounds');
   return out;
 }
 
@@ -407,7 +436,11 @@ export function applyJsonSingleFieldEdit(
   writeFileSync(abs, lines.join(eol), 'utf8');
 }
 
-/** Patch a single collider's fields in JSON text via line-targeted regex. */
+/** Patch a single collider/prop entry's fields in JSON text. Handles BOTH
+ *  one-line entries (`{ "id": ..., "x": ..., ... }`) and pretty-printed
+ *  multi-line objects. Walks the section's array, tracks brace depth per
+ *  entry, finds the entry containing `"id": "<target>"`, then patches each
+ *  field on whichever line carries it. */
 export function applyJsonColliderEdit(
   rootAbs: string,
   ref: ColliderRef & { backend: 'json' },
@@ -415,40 +448,67 @@ export function applyJsonColliderEdit(
 ): void {
   const abs = path.join(rootAbs, ref.relPath);
   const text = readFileSync(abs, 'utf8');
-
-  // Identify the line by the id quote — works because IDs are stable per row.
-  // We also gate by the matching section to avoid cross-talk.
   const lines = text.split(/\r?\n/);
-  let inSection = false;
-  let depth = 0;
+
+  const sectionRe = new RegExp(`"${escapeRe(ref.section)}"\\s*:\\s*\\[`);
+  const idRe = new RegExp(`"id"\\s*:\\s*"${escapeRe(ref.id)}"`);
+
+  // Phase 1: find the array open and scan section.
+  let i = 0;
+  while (i < lines.length && !sectionRe.test(lines[i])) i++;
+  if (i >= lines.length) {
+    throw new Error(`JSON section "${ref.section}" not found in ${ref.relPath}`);
+  }
+  // Track depth from the position the array opens. Stop when it closes.
+  let arrDepth = countChar(lines[i], '[') - countChar(lines[i], ']');
+  i++;
+
+  // Phase 2: scan entries until we find the one with our id.
+  let entryStart = -1;
+  let entryDepth = 0;
   let updated = false;
-  for (let i = 0; i < lines.length; i++) {
+  for (; i < lines.length && arrDepth > 0; i++) {
     const line = lines[i];
-    if (!inSection) {
-      if (new RegExp(`"${ref.section}"\\s*:\\s*\\[`).test(line)) {
-        inSection = true;
-        depth = countChar(line, '[') - countChar(line, ']');
-        continue;
-      }
-    } else {
-      depth += countChar(line, '[') - countChar(line, ']');
-      // We're scanning blocker rows. Match `"id": "X"` on this line.
-      const idRe = new RegExp(`"id"\\s*:\\s*"${escapeRe(ref.id)}"`);
-      if (idRe.test(line)) {
-        let next = line;
-        for (const [k, v] of Object.entries(patch)) {
-          if (typeof v !== 'number') continue;
-          next = patchField(next, k, v);
-        }
-        if (next !== line) {
-          lines[i] = next;
-          updated = true;
-          break;
+    arrDepth += countChar(line, '[') - countChar(line, ']');
+    const opens = countChar(line, '{');
+    const closes = countChar(line, '}');
+
+    if (entryStart < 0) {
+      // Outside an entry. An entry starts on the line the first '{' appears.
+      if (opens > 0) {
+        entryStart = i;
+        entryDepth = opens - closes;
+        // Single-line entry collapses immediately.
+        if (entryDepth === 0) {
+          if (idRe.test(line)) {
+            lines[i] = applyPatchOnLines(lines, i, i, patch);
+            updated = true;
+            break;
+          }
+          entryStart = -1;
         }
       }
-      if (depth <= 0) break;
+      continue;
+    }
+
+    // Inside an entry — accumulate depth.
+    entryDepth += opens - closes;
+    if (entryDepth <= 0) {
+      const startIdx = entryStart;
+      const endIdx = i;
+      const slice = lines.slice(startIdx, endIdx + 1).join('\n');
+      if (idRe.test(slice)) {
+        const patched = applyPatchOnLines(lines, startIdx, endIdx, patch);
+        // applyPatchOnLines mutates `lines` in-place and returns last touched
+        // line; we don't need its return value for multi-line.
+        void patched;
+        updated = true;
+        break;
+      }
+      entryStart = -1;
     }
   }
+
   if (!updated) {
     throw new Error(
       `JSON collider not found for patch: ${ref.section} id=${ref.id} (or already up-to-date)`,
@@ -456,6 +516,33 @@ export function applyJsonColliderEdit(
   }
   const eol = text.includes('\r\n') ? '\r\n' : '\n';
   writeFileSync(abs, lines.join(eol), 'utf8');
+}
+
+/** Patch every named field across the inclusive line range [startIdx, endIdx].
+ *  Each field may live on its own line (multi-line entry) or on the same line
+ *  (compact entry). Returns the last patched line for caller convenience. */
+function applyPatchOnLines(
+  lines: string[],
+  startIdx: number,
+  endIdx: number,
+  patch: { [k: string]: number | undefined },
+): string {
+  let last = lines[endIdx];
+  for (let i = startIdx; i <= endIdx; i++) {
+    let next = lines[i];
+    for (const [k, v] of Object.entries(patch)) {
+      if (typeof v !== 'number') continue;
+      const re = new RegExp(`("${k}"\\s*:\\s*)(-?\\d+(?:\\.\\d+)?)`);
+      if (re.test(next)) {
+        next = next.replace(re, (_, lhs) => `${lhs}${formatNumber(v)}`);
+      }
+    }
+    if (next !== lines[i]) {
+      lines[i] = next;
+      last = next;
+    }
+  }
+  return last;
 }
 
 function patchField(line: string, field: string, value: number): string {

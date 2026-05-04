@@ -25,7 +25,7 @@ export interface SceneProp {
   nodePath: string;
   /** Display label. */
   name: string;
-  /** Parent Node2D position — what the user drags. */
+  /** What the user drags — written back as the prop's position. */
   position: Vec2;
   /** Sprite2D child render offset. */
   spriteOffset: Vec2;
@@ -35,6 +35,22 @@ export interface SceneProp {
   texture: string | null;
   /** prop_type, encounter_zone_id, etc. — preserved verbatim. */
   metadata: Record<string, string>;
+  /** When set, render at this size (overrides naturalSize × scale). Used by
+   *  web props that store fixed w/h in JSON instead of a Godot-style scale. */
+  displaySize?: Vec2;
+  /** Sprite2D's centered attribute (Godot). Default true.
+   *  - true (default):  position = render center
+   *  - false:           position = top-left corner of the rendered sprite
+   *  Frontend propBounds branches on this so OGF Scenes tab matches what
+   *  Godot draws at runtime. */
+  centered?: boolean;
+  /** z_index — render order. Lower draws first (further back). Default 0.
+   *  Backgrounds typically use negative values (-10, -20). Foreground UI
+   *  elements use higher values. Frontend sorts before drawing. */
+  zIndex?: number;
+  /** When set, write-back goes through this ref instead of the default
+   *  Godot .tscn nodePath path. Used for web JSON-backed props. */
+  ref?: ColliderRef;
 }
 
 export type ColliderShape =
@@ -165,6 +181,8 @@ export interface MovePropOp {
   kind: 'move-prop';
   nodePath: string;
   position: Vec2;
+  /** When set, write to the JSON-backed location instead of the .tscn node. */
+  ref?: ColliderRef;
 }
 
 /** Scale a prop's Sprite2D (independent X/Y scale). */
@@ -172,6 +190,10 @@ export interface ScalePropOp {
   kind: 'scale-prop';
   nodePath: string;
   scale: Vec2;
+  /** When set, write to the JSON-backed location (uses displaySize w/h fields). */
+  ref?: ColliderRef;
+  /** Web-only: the new display w/h for the JSON entry (when ref is set). */
+  displaySize?: Vec2;
 }
 
 export interface MoveColliderOp {

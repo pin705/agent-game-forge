@@ -9,16 +9,18 @@ import type {
   ReasoningEffort,
   RefImage,
 } from '@ogf/contracts';
-import type { PendingSliceEntry } from '@ogf/contracts';
+import type { PendingSliceEntry, QuestionFormAnswers } from '@ogf/contracts';
 import {
   cancelRun,
   clearPendingSlices,
   createConversation,
+  createProject,
   createRun,
   deleteFile,
   fetchAgents,
   fetchAnalyze,
   fetchConversations,
+  fetchFileContent,
   fetchFileTree,
   fetchMessages,
   fetchPendingSlices,
@@ -26,10 +28,12 @@ import {
   fetchRefs,
   openProject,
   removeConversation,
+  removeProject,
   subscribeRun,
   writeFileContent,
 } from './lib/api.js';
 import { Turn, type TurnStatus } from './components/Turn.js';
+import { SpecProgressCard } from './components/SpecProgressCard.js';
 import { FileTree } from './components/FileTree.js';
 import { FileEditor } from './components/FileEditor.js';
 import { SceneEditor } from './components/SceneEditor.js';
@@ -100,12 +104,22 @@ export function App() {
 
   // Chat
   const [turns, setTurns] = useState<UiTurn[]>([]);
-  const [model, setModel] = useState<string>('default');
-  const [reasoning, setReasoning] = useState<ReasoningEffort>('low');
+  // Defaults chosen for OGF use case: gpt-5.5 + xhigh reasoning. The user
+  // is doing real game refactoring (Sengoku, megaman_new) where rule-following
+  // and multi-file coherence matter more than latency or token cost.
+  const [model, setModel] = useState<string>('gpt-5.5');
+  const [reasoning, setReasoning] = useState<ReasoningEffort>('xhigh');
   const [prompt, setPrompt] = useState('');
   const [runId, setRunId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [lastRunAt, setLastRunAt] = useState<number | null>(null);
+  // Form ids the user has submitted in this conversation. Locks the form
+  // card so it stays visible in chat history but can't be re-submitted.
+  // Reset by the useEffect below whenever the active conversation changes.
+  const [submittedForms, setSubmittedForms] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    setSubmittedForms(new Set());
+  }, [conversationId]);
 
   // Files / editor
   const [tab, setTab] = useState<Tab>('assets');
@@ -115,6 +129,11 @@ export function App() {
   const [showNewFile, setShowNewFile] = useState(false);
   const [usedAssets, setUsedAssets] = useState<Set<string>>(new Set());
   const [mainScene, setMainScene] = useState<string | null>(null);
+  // Web projects: data/*.json that data/levels.json lists. Used to route file
+  // clicks — only THESE go to the Scenes tab. Other JSONs (catalogs / wave
+  // files / arbitrary data) stay in the Assets tab so they don't fail the
+  // SceneEditor's mapSize check.
+  const [webLevelFiles, setWebLevelFiles] = useState<Set<string>>(new Set());
 
   // Navigation history (back/forward through tab + file selection)
   type NavState = { tab: Tab; selectedFile: { relPath: string; fileKind?: FileNode['fileKind'] } | null };
@@ -265,6 +284,45 @@ export function App() {
       });
   }, []);
 
+  // Web only: read data/levels.json and remember which file paths are levels.
+  // The Sengoku layout has data/<scene>-collision-map.json next to data/
+  // catalogs (enemies.json, items.json, ...). Only the level files should
+  // route to the Scenes tab; catalogs stay in Assets to avoid the
+  // 'JSON file is not a level (missing mapSize)' error from SceneEditor.
+  const loadWebLevelRegistry = useCallback(async (p: Project) => {
+    if (p.engine !== 'web') {
+      setWebLevelFiles(new Set());
+      return;
+    }
+    try {
+      const r = await fetchFileContent(p.path, 'data/levels.json');
+      if (!r.content) {
+        setWebLevelFiles(new Set());
+        return;
+      }
+      const parsed = JSON.parse(r.content) as unknown;
+      // Accept either shape (both are conventional):
+      //   { "levels": [ { id, file }, ... ] }   ← bootstrap template
+      //   [ { id, file }, ... ]                 ← bare array (Codex sometimes
+      //                                           prefers this for catalogs)
+      let entries: Array<{ id?: string; file?: string }> = [];
+      if (Array.isArray(parsed)) {
+        entries = parsed as Array<{ id?: string; file?: string }>;
+      } else if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { levels?: unknown }).levels)) {
+        entries = (parsed as { levels: Array<{ id?: string; file?: string }> }).levels;
+      }
+      const files = new Set<string>();
+      for (const lv of entries) {
+        if (typeof lv.file === 'string') files.add(lv.file.replace(/\\/g, '/'));
+      }
+      setWebLevelFiles(files);
+    } catch {
+      // No levels.json (legacy / pre-conventions project). Routing falls
+      // back to a name-based heuristic; badges just won't show.
+      setWebLevelFiles(new Set());
+    }
+  }, []);
+
   // Boot
   useEffect(() => {
     fetchAgents()
@@ -328,6 +386,7 @@ export function App() {
       fetchRefs(p.path)
         .then((r) => setRefs(r.refs))
         .catch(() => setRefs([]));
+      void loadWebLevelRegistry(p);
 
       // Default-load the main scene if we don't have a saved selection yet.
       // We wait for analyze to come back so mainScene is known.
@@ -394,6 +453,41 @@ export function App() {
     [conversationId, askConfirm],
   );
 
+  const deleteProjectFromList = useCallback(
+    async (p: Project) => {
+      try {
+        await removeProject(p.path);
+        // Update the dropdown list immediately, then clean up local state if
+        // the active project was the one removed.
+        const remaining = projects.filter((x) => x.path !== p.path);
+        setProjects(remaining);
+        if (project?.path === p.path) {
+          // Active project was removed. Switch to the next remaining project,
+          // or fall back to the open-folder modal if the list is now empty.
+          const next = remaining[0] ?? null;
+          if (next) {
+            await selectProject(next);
+          } else {
+            setProject(null);
+            setSelectedFile(null);
+            setTurns([]);
+            setConversations([]);
+            setConversationId(null);
+            localStorage.removeItem(LS_PROJECT);
+            setShowOpenModal(true);
+          }
+        }
+      } catch (err) {
+        notify({
+          kind: 'error',
+          title: 'Could not remove project',
+          body: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+    [project, projects, selectProject, notify],
+  );
+
   const handleOpenProject = useCallback(
     async (rawPath: string) => {
       const trimmed = rawPath.trim();
@@ -438,10 +532,32 @@ export function App() {
     });
   }
 
-  async function send() {
-    if (!agent?.available || !prompt.trim() || running || !project) return;
+  // Question-form submit: format answers as a prose block, lock the form,
+  // and immediately send as the next turn. The form's Submit IS the user's
+  // confirmation — making them click 'Send' next would be redundant.
+  //
+  // NOT useCallback'd: send() reads agent / running / project / etc. via
+  // closure, which a memoized handler would freeze to first-render values.
+  // Recreating this each render is cheap; the stale-closure bug is not.
+  function onSubmitForm(answers: QuestionFormAnswers): void {
+    const lines: string[] = [`## Form answers (id=${answers.formId})`, ''];
+    for (const [key, value] of Object.entries(answers.answers)) {
+      if (Array.isArray(value)) {
+        lines.push(`- **${key}**: ${value.join(', ') || '(none)'}`);
+      } else {
+        lines.push(`- **${key}**: ${value}`);
+      }
+    }
+    const text = lines.join('\n');
+    setSubmittedForms((prev) => new Set([...prev, answers.formId]));
+    void send(text);
+  }
 
-    const userText = prompt.trim();
+  async function send(overridePrompt?: string) {
+    const text = overridePrompt ?? prompt;
+    if (!agent?.available || !text.trim() || running || !project) return;
+
+    const userText = text.trim();
     setPrompt('');
 
     const newTurn: UiTurn = {
@@ -563,6 +679,7 @@ export function App() {
         projects={projects}
         onSelectProject={(p) => void selectProject(p)}
         onOpenProject={() => setShowOpenModal(true)}
+        onDeleteProject={(p) => void deleteProjectFromList(p)}
         theme={theme}
         onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
         density={density}
@@ -584,11 +701,25 @@ export function App() {
             tree={fileTree}
             selectedFile={selectedFile}
             onSelectFile={(rel, fk) => {
-              // .tscn → scenes (canvas view); everything else → assets
-              // (which now hosts Monaco / FileEditor / TableEditor for any kind).
-              const ext = rel.split('.').pop()?.toLowerCase() ?? '';
+              // .tscn → scenes (canvas view); web levels listed in
+              // data/levels.json → also scenes; everything else (including
+              // data/enemies.json and other catalogs) → assets.
+              const relPosix = rel.replace(/\\/g, '/');
+              const ext = relPosix.split('.').pop()?.toLowerCase() ?? '';
               const isScene = ext === 'tscn';
-              setTab(isScene ? 'scenes' : 'assets');
+              let isWebLevel = false;
+              if (project?.engine === 'web' && ext === 'json' && relPosix.startsWith('data/')) {
+                if (webLevelFiles.size > 0) {
+                  isWebLevel = webLevelFiles.has(relPosix);
+                } else {
+                  // No levels.json registry → permissive name-based heuristic.
+                  isWebLevel =
+                    /(?:^|\/)(?:[^/]*-)?(?:collision-map|level)(?:-[^/]+)?\.json$/i.test(
+                      relPosix,
+                    );
+                }
+              }
+              setTab(isScene || isWebLevel ? 'scenes' : 'assets');
               setSelectedFile({ relPath: rel, fileKind: fk });
             }}
             onCloseFile={() => setSelectedFile(null)}
@@ -597,6 +728,7 @@ export function App() {
             recentlyChanged={recentlyChanged}
             usedAssets={usedAssets}
             mainScene={mainScene}
+            sceneFiles={webLevelFiles}
             sceneReloadKey={sceneReloadKey}
             onJumpTo={(rel) => {
               const ext = rel.split('.').pop()?.toLowerCase() ?? '';
@@ -659,6 +791,8 @@ export function App() {
           pendingCount={pending.length}
           onOpenPending={() => setShowPending(true)}
           onImportSession={() => setShowImportSession(true)}
+          submittedForms={submittedForms}
+          onSubmitForm={onSubmitForm}
         />
       </div>
 
@@ -675,6 +809,27 @@ export function App() {
           initialPath={project?.path}
           onCancel={() => setShowOpenModal(false)}
           onSelect={(p) => void handleOpenProject(p)}
+          onCreateProject={async ({ parentPath, name, engine }) => {
+            // Create the folder under parentPath / name and scaffold it.
+            const slug = name.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+            const sep = parentPath.includes('\\') ? '\\' : '/';
+            const fullPath = `${parentPath}${parentPath.endsWith(sep) ? '' : sep}${slug}`;
+            try {
+              const r = await createProject({ path: fullPath, engine, name });
+              setProjects((prev) => {
+                const without = prev.filter((p) => p.path !== r.project.path);
+                return [r.project, ...without];
+              });
+              setShowOpenModal(false);
+              await selectProject(r.project);
+            } catch (err) {
+              notify({
+                kind: 'error',
+                title: 'Could not create project',
+                body: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }}
         />
       )}
 
@@ -710,6 +865,7 @@ export function App() {
       {showPending && project && (
         <PendingChangesModal
           pending={pending}
+          engine={project?.engine}
           onClose={() => setShowPending(false)}
           onApplyAll={(promptText) => {
             setPrompt(promptText);
@@ -770,6 +926,7 @@ function EditorPane(props: {
   recentlyChanged: Set<string>;
   usedAssets: Set<string>;
   mainScene: string | null;
+  sceneFiles: Set<string>;
   sceneReloadKey: number;
   onJumpTo: (relPath: string, line: number) => void;
   onAskCodex: (text: string) => void;
@@ -865,6 +1022,7 @@ function EditorPane(props: {
               recentlyChanged={props.recentlyChanged}
               usedAssets={props.usedAssets}
               mainScene={props.mainScene}
+              sceneFiles={props.sceneFiles}
               filter={treeFilter}
               engine={props.project.engine}
               scopeKey={props.project.path}
@@ -878,6 +1036,7 @@ function EditorPane(props: {
               key={props.selectedFile.relPath}
               projectPath={props.project.path}
               relPath={props.selectedFile.relPath}
+              engine={props.project.engine}
               fileKind={
                 props.selectedFile.fileKind === 'binary'
                   ? 'binary'
@@ -896,12 +1055,19 @@ function EditorPane(props: {
             <ProjectWelcome project={props.project} />
           )
         )}
-        {props.tab === 'scenes' && (
-          props.selectedFile && props.selectedFile.relPath.toLowerCase().endsWith('.tscn') ? (
+        {props.tab === 'scenes' && (() => {
+          const file = props.selectedFile;
+          const ext = file?.relPath.split('.').pop()?.toLowerCase();
+          const isSceneFile =
+            ext === 'tscn' ||
+            (ext === 'json' &&
+              props.project.engine === 'web' &&
+              !!file?.relPath.startsWith('data/'));
+          return isSceneFile && file ? (
             <SceneEditor
-              key={props.selectedFile.relPath}
+              key={file.relPath}
               projectPath={props.project.path}
-              relPath={props.selectedFile.relPath}
+              relPath={file.relPath}
               reloadKey={props.sceneReloadKey}
               onAskCodex={props.onAskCodex}
               onClose={props.onCloseFile}
@@ -914,11 +1080,12 @@ function EditorPane(props: {
               usedAssets={props.usedAssets}
               mainScene={props.mainScene}
             />
-          )
-        )}
+          );
+        })()}
         {props.tab === 'play' && (
           <PlayPane
             projectPath={props.project.path}
+            engine={props.project.engine}
             mainScene={props.mainScene}
             onJumpTo={(rel, line) => {
               const ext = rel.split('.').pop()?.toLowerCase() ?? '';
@@ -981,7 +1148,7 @@ function ScenePicker({
   }, [usedOnly]);
 
   const all: FileNode[] = [];
-  if (tree) collectScenes(tree, all);
+  if (tree) collectScenes(tree, all, project.engine);
 
   const items = all.map((s) => {
     const isMain = mainScene === s.relPath;
@@ -1046,12 +1213,25 @@ function ScenePicker({
   );
 }
 
-function collectScenes(node: FileNode, out: FileNode[]) {
+function isWebLevelCandidate(rel: string): boolean {
+  // Web projects: data/<level>.json files are level candidates. We don't
+  // probe the contents here (that would require reading every JSON); the
+  // Sengoku-style naming convention is enough for picker purposes.
+  if (!rel.toLowerCase().endsWith('.json')) return false;
+  if (!rel.startsWith('data/')) return false;
+  // Skip catalogs / index files we know aren't levels.
+  const base = rel.split('/').pop() ?? '';
+  if (/^(enemies|heroes|towers|items|waves|levels)\.json$/i.test(base)) return false;
+  return true;
+}
+
+function collectScenes(node: FileNode, out: FileNode[], engine?: string) {
   if (node.kind === 'file') {
     if (node.name.toLowerCase().endsWith('.tscn')) out.push(node);
+    else if (engine === 'web' && isWebLevelCandidate(node.relPath)) out.push(node);
     return;
   }
-  for (const c of node.children ?? []) collectScenes(c, out);
+  for (const c of node.children ?? []) collectScenes(c, out, engine);
 }
 
 function PlaceholderView({ title, hint }: { title: string; hint: string }) {
@@ -1072,11 +1252,19 @@ function EmptyEditor({ onOpen }: { onOpen: () => void }) {
   return (
     <div className="empty-state">
       <div className="empty-card">
-        <div className="pix">
-          {Array.from({ length: 64 }).map((_, i) => (
-            <div key={i} style={{ background: emptyPixColor(i) }} />
-          ))}
-        </div>
+        <img
+          className="empty-logo"
+          src="/ogf-logo-256.png"
+          srcSet="/ogf-logo-128.png 1x, /ogf-logo-256.png 2x, /ogf-logo-512.png 4x"
+          alt=""
+          width={128}
+          height={128}
+        />
+        <span className="brand-title brand-title-large" aria-label="Agent Game Forge">
+          <span className="brand-agent">Agent</span>
+          <span className="brand-game">Game</span>
+          <span className="brand-forge">Forge</span>
+        </span>
         <h2>Open a project to begin</h2>
         <p>Pick a Godot, Unity, or web game folder. Codex will run with that folder as its workspace.</p>
         <button className="btn btn-primary" onClick={onOpen}>
@@ -1085,21 +1273,6 @@ function EmptyEditor({ onOpen }: { onOpen: () => void }) {
       </div>
     </div>
   );
-}
-
-function emptyPixColor(i: number): string {
-  // build a tiny "F" pixel-art mark
-  const F: number[] = [
-    0,0,0,0,0,0,0,0,
-    0,1,1,1,1,1,1,0,
-    0,1,1,0,0,0,0,0,
-    0,1,1,1,1,0,0,0,
-    0,1,1,0,0,0,0,0,
-    0,1,1,0,0,0,0,0,
-    0,1,1,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-  ];
-  return F[i] === 1 ? 'var(--accent)' : 'var(--bg-2)';
 }
 
 // ===================== Agent Pane =====================
@@ -1131,6 +1304,10 @@ function AgentPane(props: {
   pendingCount: number;
   onOpenPending: () => void;
   onImportSession: () => void;
+  /** Form ids the user has already submitted in this conversation. */
+  submittedForms: Set<string>;
+  /** Called when user submits a question-form rendered inline in chat. */
+  onSubmitForm: (answers: QuestionFormAnswers) => void;
 }) {
   const currentTitle =
     props.conversations.find((c) => c.id === props.conversationId)?.title || 'New conversation';
@@ -1252,8 +1429,16 @@ function AgentPane(props: {
             startedAt={t.startedAt}
             endedAt={t.endedAt}
             error={t.error}
+            submittedForms={props.submittedForms}
+            onSubmitForm={props.onSubmitForm}
+            projectPath={props.project?.path}
           />
         ))}
+        <SpecProgressCard
+          projectPath={props.project?.path ?? null}
+          conversationId={props.conversationId}
+          streaming={props.running}
+        />
       </div>
 
       <Dropzone
@@ -1287,10 +1472,11 @@ function AgentPane(props: {
               onChange={(e) => props.setReasoning(e.target.value as ReasoningEffort)}
               style={{ background: 'transparent', color: 'inherit', border: 0, outline: 0, fontSize: 11, fontFamily: 'inherit' }}
             >
+              <option value="minimal" style={{ background: 'var(--bg-1)' }}>minimal · cheapest</option>
               <option value="low" style={{ background: 'var(--bg-1)' }}>low · fast</option>
               <option value="medium" style={{ background: 'var(--bg-1)' }}>medium · balanced</option>
               <option value="high" style={{ background: 'var(--bg-1)' }}>high · deep</option>
-              <option value="extra_high" style={{ background: 'var(--bg-1)' }}>extra_high · max</option>
+              <option value="xhigh" style={{ background: 'var(--bg-1)' }}>xhigh · max</option>
             </select>
           </button>
           <span style={{ flex: 1 }} />
