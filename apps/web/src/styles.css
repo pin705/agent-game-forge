@@ -162,14 +162,66 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   flex-shrink: 0;
   display: block;
 }
-.logo-title {
-  height: 22px;
-  width: auto;
-  display: block;
-  /* Pixel-art logotype — keep crisp at integer scales rather than smooth bicubic. */
-  image-rendering: pixelated;
-  image-rendering: -moz-crisp-edges;
-  flex-shrink: 0;
+/* Brand title — three-color pixel-art logotype rendered in CSS so we don't
+ * ship a white-background PNG. Uses Press Start 2P (chunky 8-bit font) +
+ * a thick black outline via stacked text-shadows. The outline trick draws
+ * the same glyph in black at 8 small offsets, then the colored fill on top.
+ *
+ *   .brand-title                      — flex container, base sizing
+ *   .brand-title-large                — opt-in scale-up for hero surfaces
+ *   .brand-{agent,game,forge}         — per-word color
+ *
+ * Colors picked from the reference logotype (cyan / white / orange).
+ */
+.brand-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: 'Press Start 2P', system-ui, monospace;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0;
+  /* 1px offset on the bottom-right gives the slight 'sitting on a surface'
+   * drop-shadow look from the reference, without clashing with the outline. */
+  filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.55));
+  user-select: none;
+}
+/* Outline shared by all three colored words. -webkit-text-stroke is the
+ * cleaner option but loses the inside-the-glyph anti-aliasing on Chrome,
+ * so we use the stacked text-shadow technique instead. */
+.brand-title > span {
+  color: var(--brand-fill, #fff);
+  text-shadow:
+    -1px -1px 0 #000,
+     1px -1px 0 #000,
+    -1px  1px 0 #000,
+     1px  1px 0 #000,
+    -1px  0   0 #000,
+     1px  0   0 #000,
+     0   -1px 0 #000,
+     0    1px 0 #000;
+}
+.brand-agent { --brand-fill: #5fd6e8; }   /* cyan / matches eye color */
+.brand-game  { --brand-fill: #ffffff; }
+.brand-forge { --brand-fill: #ffb433; }   /* orange / matches forge fire */
+
+/* Empty-state hero scale: ~3x the header size, with proportionally bigger
+ * outline so it doesn't get swallowed at large font-size. */
+.brand-title-large {
+  font-size: 28px;
+  gap: 14px;
+  filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, 0.6));
+}
+.brand-title-large > span {
+  text-shadow:
+    -2px -2px 0 #000,
+     2px -2px 0 #000,
+    -2px  2px 0 #000,
+     2px  2px 0 #000,
+    -2px  0   0 #000,
+     2px  0   0 #000,
+     0   -2px 0 #000,
+     0    2px 0 #000;
 }
 
 .proj-switch {
@@ -1484,13 +1536,10 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   image-rendering: pixelated;
   image-rendering: -moz-crisp-edges;
 }
-.empty-card .empty-title {
-  display: block;
-  margin: 0 auto 18px;
-  width: 240px;
-  height: auto;
-  image-rendering: pixelated;
-  image-rendering: -moz-crisp-edges;
+.empty-card .brand-title-large {
+  display: flex;
+  justify-content: center;
+  margin: 0 auto 22px;
 }
 .empty-card h2 {
   margin: 0 0 6px;

@@ -1260,13 +1260,11 @@ function EmptyEditor({ onOpen }: { onOpen: () => void }) {
           width={128}
           height={128}
         />
-        <img
-          className="empty-title"
-          src="/ogf-title-480.png"
-          alt="Agent Game Forge"
-          width={240}
-          height={47}
-        />
+        <span className="brand-title brand-title-large" aria-label="Agent Game Forge">
+          <span className="brand-agent">Agent</span>
+          <span className="brand-game">Game</span>
+          <span className="brand-forge">Forge</span>
+        </span>
         <h2>Open a project to begin</h2>
         <p>Pick a Godot, Unity, or web game folder. Codex will run with that folder as its workspace.</p>
         <button className="btn btn-primary" onClick={onOpen}>

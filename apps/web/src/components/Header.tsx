@@ -42,14 +42,11 @@ export function Header(props: Props) {
             width={22}
             height={22}
           />
-          <img
-            className="logo-title"
-            src="/ogf-title-222.png"
-            srcSet="/ogf-title-111.png 1x, /ogf-title-222.png 2x, /ogf-title-333.png 3x"
-            alt="Agent Game Forge"
-            width={111}
-            height={22}
-          />
+          <span className="brand-title" aria-label="Agent Game Forge">
+            <span className="brand-agent">Agent</span>
+            <span className="brand-game">Game</span>
+            <span className="brand-forge">Forge</span>
+          </span>
         </div>
         <div style={{ width: 1, height: 18, background: 'var(--line)', margin: '0 4px' }} />
         <ProjectSwitcher
