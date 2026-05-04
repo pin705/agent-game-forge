@@ -825,6 +825,29 @@ export function createServer() {
     run.child = child;
     run.status = 'running';
 
+    // Codex CLI v0.128 does NOT stream image_generation_call / _end events
+    // to stdout — image_gen runs silently and just writes the file. We
+    // detect generated images by watching the project workspace: any
+    // .png / .jpg / .jpeg / .webp / .gif appearing during the run gets
+    // surfaced as a synthetic 'image_gen' tool group in the chat. Without
+    // this, the user generates 5 sprites and sees nothing in the chat
+    // panel.
+    const imageWatcher = startImageWatch(cwd, (relPath) => {
+      const id = `synth_image_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      runs.emitAgent(run, {
+        type: 'tool_use',
+        id,
+        name: 'image_gen',
+        input: { detected: relPath },
+      });
+      runs.emitAgent(run, {
+        type: 'tool_result',
+        toolUseId: id,
+        content: JSON.stringify({ paths: [relPath] }),
+        isError: false,
+      });
+    });
+
     const agentEvents: AgentEvent[] = [];
     let agentTextBuffer = '';
 
@@ -864,6 +887,7 @@ export function createServer() {
     });
     child.on('close', (code, signal) => {
       parser.flush();
+      imageWatcher.stop();
       const status = code === 0 ? 'succeeded' : 'failed';
 
       // Persist agent message (text + raw events) so refresh restores it.
@@ -914,6 +938,98 @@ export function createServer() {
  *  do. Linux/macOS users get the basic kill() behavior — fine because they
  *  don't have the .cmd shim layer that creates the orphan in the first
  *  place. */
+/** Watch a project workspace for new image files appearing during a run.
+ *
+ *  Why: Codex CLI v0.128's `exec --json` stdout does NOT emit any
+ *  image_generation events — image_gen is a silent built-in tool that
+ *  writes the output file directly into the workspace. So the stream
+ *  never tells us 'an image was generated'. The only signal we have is
+ *  that a new PNG/JPG/WEBP/GIF appeared on disk somewhere under the
+ *  project directory.
+ *
+ *  Implementation: snapshot every existing image path at run start, then
+ *  poll once per second for additions. Each new path triggers the
+ *  callback. We also re-poll the path's mtime + size to make sure the
+ *  file has stopped growing before reporting it (image_gen writes can
+ *  take 1-2 seconds for large sheets) — otherwise the frontend renders
+ *  a partial PNG.
+ *
+ *  Skips: anything under common non-asset folders (.git, node_modules,
+ *  .ogf, build output) — those churn for unrelated reasons during a
+ *  run and would emit false positives. */
+const IMAGE_EXT = /\.(png|jpe?g|webp|gif)$/i;
+const SKIP_DIR = new Set(['.git', 'node_modules', '.ogf', 'dist', 'build', '.godot', 'Library', 'Temp']);
+
+function listImagesUnder(root: string): Map<string, { size: number; mtime: number }> {
+  const out = new Map<string, { size: number; mtime: number }>();
+  function walk(dir: string) {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name.startsWith('.') && SKIP_DIR.has(e.name)) continue;
+      if (SKIP_DIR.has(e.name)) continue;
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        walk(full);
+      } else if (e.isFile() && IMAGE_EXT.test(e.name)) {
+        try {
+          const st = statSync(full);
+          out.set(full, { size: st.size, mtime: st.mtimeMs });
+        } catch {
+          /* file vanished mid-walk — skip */
+        }
+      }
+    }
+  }
+  walk(root);
+  return out;
+}
+
+function startImageWatch(
+  projectPath: string,
+  onNewImage: (relPath: string) => void,
+): { stop: () => void } {
+  const baseline = listImagesUnder(projectPath);
+  const seen = new Set(baseline.keys());
+  // Files we noticed but haven't yet emitted because they're still being
+  // written — we wait until size stops growing for two consecutive polls.
+  const pending = new Map<string, { size: number; pollsStable: number }>();
+
+  const interval = setInterval(() => {
+    const current = listImagesUnder(projectPath);
+    for (const [full, meta] of current) {
+      if (seen.has(full)) continue;
+      const prev = pending.get(full);
+      if (prev && prev.size === meta.size) {
+        prev.pollsStable += 1;
+        if (prev.pollsStable >= 1) {
+          // Two polls (≥1.5s) at the same size — file write done.
+          seen.add(full);
+          pending.delete(full);
+          const rel = path.relative(projectPath, full).replace(/\\/g, '/');
+          try {
+            onNewImage(rel);
+          } catch {
+            /* never let a bad emit kill the watcher */
+          }
+        }
+      } else {
+        pending.set(full, { size: meta.size, pollsStable: 0 });
+      }
+    }
+  }, 1000);
+
+  return {
+    stop: () => {
+      clearInterval(interval);
+    },
+  };
+}
+
 function killProcessTree(
   child: import('node:child_process').ChildProcess | undefined,
 ): void {
