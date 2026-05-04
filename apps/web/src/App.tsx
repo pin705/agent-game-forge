@@ -691,6 +691,33 @@ export function App() {
         }
         tab={tab}
         onTabChange={setTab}
+        tree={fileTree}
+        selectedFile={selectedFile}
+        onSelectFile={(rel, fk) => {
+          // Same routing logic the EditorPane used to own — moved here since
+          // the file tree now lives in the Sidebar. Keeps tab routing consistent
+          // with whatever the user clicks.
+          const relPosix = rel.replace(/\\/g, '/');
+          const ext = relPosix.split('.').pop()?.toLowerCase() ?? '';
+          const isScene = ext === 'tscn';
+          let isWebLevel = false;
+          if (project?.engine === 'web' && ext === 'json' && relPosix.startsWith('data/')) {
+            if (webLevelFiles.size > 0) {
+              isWebLevel = webLevelFiles.has(relPosix);
+            } else {
+              isWebLevel =
+                /(?:^|\/)(?:[^/]*-)?(?:collision-map|level)(?:-[^/]+)?\.json$/i.test(relPosix);
+            }
+          }
+          setTab(isScene || isWebLevel ? 'scenes' : 'assets');
+          setSelectedFile({ relPath: rel, fileKind: fk });
+        }}
+        onNewFile={() => setShowNewFile(true)}
+        onRefreshTree={() => void refreshTree(project)}
+        recentlyChanged={recentlyChanged}
+        usedAssets={usedAssets}
+        mainScene={mainScene}
+        sceneFiles={webLevelFiles}
       />
 
       <div
@@ -757,10 +784,6 @@ export function App() {
             canForward={navIndexRef.current < navStackRef.current.length - 1}
             onBack={navBack}
             onForward={navForward}
-            treeWidth={treeWidth}
-            onTreeWidthChange={setTreeWidth}
-            treeCollapsed={treeCollapsed}
-            onToggleTree={() => setTreeCollapsed((v) => !v)}
           />
         ) : (
           <EmptyEditor onOpen={() => setShowOpenModal(true)} />
@@ -935,48 +958,13 @@ function EditorPane(props: {
   canForward: boolean;
   onBack: () => void;
   onForward: () => void;
-  treeWidth: number;
-  onTreeWidthChange: (w: number) => void;
-  treeCollapsed: boolean;
-  onToggleTree: () => void;
 }) {
-  // Tree no longer filters by tab — every tab sees the full file list.
-  const treeFilter: 'all' = 'all';
-
-  function onTreeDragStart(e: React.MouseEvent) {
-    e.preventDefault();
-    const target = e.currentTarget as HTMLDivElement;
-    target.classList.add('active');
-    document.body.style.cursor = 'col-resize';
-    const startX = e.clientX;
-    const startW = props.treeWidth;
-    const onMove = (ev: MouseEvent) => {
-      const next = Math.max(160, Math.min(600, startW + (ev.clientX - startX)));
-      props.onTreeWidthChange(next);
-    };
-    const onUp = () => {
-      target.classList.remove('active');
-      document.body.style.cursor = '';
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }
-
   return (
     <div className="editor-pane">
-      {/* v2: tabs moved to Sidebar; this is now a thin topbar with crumbs +
-          back/forward + tree-toggle. File-specific actions (rename, slicing,
-          etc.) still live inside the body components. */}
+      {/* v2: tabs + file tree moved to Sidebar; this topbar holds the
+          back/forward nav + the active tab label. File-specific actions
+          (rename, slicing, etc) still live inside the body components. */}
       <div className="topbar">
-        <button
-          className="btn btn-sm btn-ghost btn-icon"
-          onClick={props.onToggleTree}
-          title={props.treeCollapsed ? 'Show file tree' : 'Hide file tree'}
-        >
-          {props.treeCollapsed ? '▸' : '◂'}
-        </button>
         <button
           className="btn btn-sm btn-ghost btn-icon"
           onClick={props.onBack}
@@ -999,33 +987,7 @@ function EditorPane(props: {
         <span className="grow" />
       </div>
 
-      <div
-        className="editor-body"
-        style={{
-          gridTemplateColumns: props.treeCollapsed
-            ? '1fr'
-            : `${props.treeWidth}px 4px 1fr`,
-        }}
-      >
-        {!props.treeCollapsed && (
-          <>
-            <FileTree
-              tree={props.tree}
-              selected={props.selectedFile?.relPath ?? null}
-              onSelect={props.onSelectFile}
-              onNewFile={props.onNewFile}
-              onRefresh={props.onRefresh}
-              recentlyChanged={props.recentlyChanged}
-              usedAssets={props.usedAssets}
-              mainScene={props.mainScene}
-              sceneFiles={props.sceneFiles}
-              filter={treeFilter}
-              engine={props.project.engine}
-              scopeKey={props.project.path}
-            />
-            <div className="tree-resize" onMouseDown={onTreeDragStart} title="Drag to resize" />
-          </>
-        )}
+      <div className="editor-body">
         {props.tab === 'assets' && (
           props.selectedFile ? (
             <FileEditor

@@ -234,6 +234,54 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
 }
 .side-foot .grow { flex: 1; }
 
+/* Files section header — same .nav-section style but with a refresh action
+ * docked right. */
+.side-files-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-right: 4px;
+}
+.side-files-refresh {
+  width: 22px; height: 22px;
+  border-radius: 4px;
+  color: var(--ink-3);
+}
+.side-files-refresh:hover { background: var(--bg-2); color: var(--ink-0); }
+
+/* Sidebar-embedded FileTree — strip the standalone .tree-pane chrome
+ * (it has its own head, border, and bg-1 surface). Inside the sidebar
+ * it should look like a continuation of the nav, not a separate panel. */
+.side-files {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  margin: 0 -8px;
+}
+.side-files .tree-pane {
+  flex: 1;
+  min-height: 0;
+  background: transparent;
+  border: 0;
+  grid-template-rows: 0 1fr 0;
+}
+.side-files .tree-pane .tree-head { display: none; }
+.side-files .tree {
+  padding: 2px 8px;
+  font-size: 13px;
+}
+.side-files .tree-row {
+  height: 26px;
+  padding-left: calc(8px + var(--depth, 0) * 12px);
+  padding-right: 8px;
+  border-radius: 5px;
+  margin: 0 0 1px;
+}
+.side-files .tree-row:hover { background: var(--bg-2); }
+.side-files .tree-row.selected {
+  background: var(--accent-soft);
+  color: var(--ink-0);
+}
+.side-files .tree-row.selected::before { display: none; }
+
 /* =============== MAIN PANEL (center + right agent) =============== */
 .main {
   display: grid;
@@ -506,12 +554,17 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
 }
 .tab[aria-selected="true"] .badge { background: var(--accent-soft); color: var(--accent); }
 
-.editor-body { display: grid; grid-template-columns: 248px 1fr; min-height: 0; }
-[data-density="compact"] .editor-body { grid-template-columns: 220px 1fr; }
-/* Grid items default to min-width: auto (= content size), so a wide table
- * inside the 1fr track can grow the track past its declared size. Force
- * each child to be allowed to shrink. */
-.editor-body > * { min-width: 0; }
+/* v2: file tree moved to Sidebar; editor-body is now a single content
+ * column. Kept as a positioning wrapper so child layouts (FileEditor's
+ * .inspector-body grid, SceneEditor's overlay panes) compose cleanly. */
+.editor-body {
+  display: block;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.editor-body > * { min-width: 0; height: 100%; }
 
 /* =============== FILE TREE =============== */
 .tree-pane {

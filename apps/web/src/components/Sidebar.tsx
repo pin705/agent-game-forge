@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AgentInfo, Project } from '@ogf/contracts';
+import type { AgentInfo, FileNode, Project } from '@ogf/contracts';
 import { I } from './icons.js';
+import { FileTree } from './FileTree.js';
 
 export type Theme = 'dark' | 'light';
 export type Density = 'compact' | 'regular' | 'comfy';
@@ -21,6 +22,16 @@ interface Props {
   onCycleDensity: () => void;
   tab: SidebarTab;
   onTabChange: (t: SidebarTab) => void;
+  /** Project file tree — rendered as a "Files" section in the sidebar. */
+  tree: FileNode | null;
+  selectedFile?: { relPath: string; fileKind?: FileNode['fileKind'] } | null;
+  onSelectFile: (relPath: string, fileKind: FileNode['fileKind']) => void;
+  onNewFile?: () => void;
+  onRefreshTree?: () => void;
+  recentlyChanged?: Set<string>;
+  usedAssets?: Set<string>;
+  mainScene?: string | null;
+  sceneFiles?: Set<string>;
 }
 
 export function Sidebar(props: Props) {
@@ -93,6 +104,41 @@ export function Sidebar(props: Props) {
           <span className="ico">{I.play}</span>
           <span>Play</span>
         </button>
+
+        {/* Files section — shows the project's file tree as a nested list,
+            consistent with v2 reference (Linear-style nav with file leaves). */}
+        {props.project && (
+          <>
+            <div className="nav-section side-files-head">
+              <span>Files</span>
+              {props.onRefreshTree && (
+                <button
+                  className="icon-btn side-files-refresh"
+                  title="Refresh tree"
+                  onClick={props.onRefreshTree}
+                >
+                  {I.refresh}
+                </button>
+              )}
+            </div>
+            <div className="side-files">
+              <FileTree
+                tree={props.tree}
+                selected={props.selectedFile?.relPath ?? null}
+                onSelect={props.onSelectFile}
+                onNewFile={props.onNewFile}
+                onRefresh={props.onRefreshTree}
+                recentlyChanged={props.recentlyChanged}
+                usedAssets={props.usedAssets}
+                mainScene={props.mainScene}
+                sceneFiles={props.sceneFiles}
+                filter="all"
+                engine={props.project.engine}
+                scopeKey={props.project.path}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Foot: agent status + theme + density toggles */}
