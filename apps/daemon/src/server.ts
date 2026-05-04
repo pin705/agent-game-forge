@@ -1012,6 +1012,8 @@ These rules came from real specs that produced broken games:
 
   9. **Generate sprites with \`generate2dsprite\`, NEVER raw \`image_gen\`.** Each cell of an animation row MUST be a distinct pose progression — submitting a 4×4 sheet where every cell is the same pose ships a frozen-corpse character. Frame COUNT per anim is your judgement (genre / completeness / target style decide), but the count must mean what it claims: a 4-frame walk row shows 4 distinct walk poses, not 1 pose × 4. Spec §2 should list animation NAMES; per-anim frame counts can be authored at sheet-generation time.
 
+  10. **Godot only — author the wrapper-position pattern for unified props.** Platforms / walls / static decorations should be \`StaticBody2D\` wrappers with \`Sprite2D\` and \`CollisionShape2D\` children at local \`(0, 0)\`. The wrapper owns the position; both children inherit. In OGF Scenes tab the prop and collider will appear linked — moving one moves both. That's correct. See conventions for when to break the pattern (e.g. trunk-only collider on a wide tree sprite). Spec §6 should list each prop kind's structure: 'PlatformX (StaticBody2D / wrapper) → Sprite2D + CollisionShape2D' so the user knows what's linked vs independent.
+
 ## Step 2 (after writing spec) — emit a spec-approval form
 
 After writing spec.md, immediately emit this form (don't start work):

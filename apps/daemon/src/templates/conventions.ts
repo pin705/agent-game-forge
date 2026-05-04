@@ -226,6 +226,46 @@ background as a centered=false Sprite2D with no z_index, OGF will guess
 '-1' to keep it behind — but be explicit; relying on the heuristic is
 fragile across edits.
 
+### Wrapper-position pattern: Sprite2D + CollisionShape2D share one transform
+
+A platform / wall / static prop is conceptually ONE thing — a visual surface
+the player walks on. The standard Godot pattern is a single \`StaticBody2D\`
+that owns the position, with both children at local \`(0, 0)\`:
+
+\`\`\`
+PlatformStart  StaticBody2D  position = (320, 650)   ← THE position. Owns transform.
+  Visual       Sprite2D      position = (0, 0)        ← inherits parent transform
+  CollisionShape2D            position = (0, 0)        ← inherits parent transform
+\`\`\`
+
+Both children's positions are LOCAL offsets relative to the wrapper. With
+both at (0, 0), they sit exactly where the wrapper is.
+
+**OGF behavior with this pattern**: the same \`StaticBody2D.position\` field
+drives both the prop's render position AND the collider's position. So in
+the Scenes tab:
+- Drag the prop → wrapper moves → collider tracks it
+- Drag the collider → wrapper moves → prop tracks it
+- They are **linked** because they're the same physical thing.
+
+This is correct. Don't try to "fix" it by giving each child a non-zero
+local position to compensate for something — that just makes the .tscn
+authored state diverge from the runtime composition.
+
+**When to break the pattern (use child local position non-zero)**:
+
+- The collision rect intentionally covers a smaller region than the sprite
+  (e.g. a wide tree sprite with a thin trunk-only collider). Set
+  CollisionShape2D.position to the collider's offset relative to the
+  visual center.
+- Decoration (smoke / glow / shadow) sits in front-of or behind the prop
+  with its own offset. Use a separate Sprite2D sibling with non-zero
+  position for that, NOT the main Visual sprite.
+
+**Don't break the pattern just because OGF shows them linked.** Linked is
+the right behavior for a 'platform' — moving the platform should move
+both its visual AND its collision, in lockstep.
+
 ### Initial positions in .tscn must already be correct — don't reposition in \`_ready\`
 
 The .tscn file IS the authoritative initial layout. If \`_ready()\` does
