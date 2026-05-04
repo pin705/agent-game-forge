@@ -44,6 +44,10 @@ export interface SceneProp {
    *  Frontend propBounds branches on this so OGF Scenes tab matches what
    *  Godot draws at runtime. */
   centered?: boolean;
+  /** z_index — render order. Lower draws first (further back). Default 0.
+   *  Backgrounds typically use negative values (-10, -20). Foreground UI
+   *  elements use higher values. Frontend sorts before drawing. */
+  zIndex?: number;
   /** When set, write-back goes through this ref instead of the default
    *  Godot .tscn nodePath path. Used for web JSON-backed props. */
   ref?: ColliderRef;

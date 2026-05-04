@@ -358,6 +358,12 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
     // of the drawn sprite, not its center — propBounds switches anchor.
     const centeredRaw = readBodyValue(parsed, spriteSection, 'centered');
     const centered = centeredRaw === 'false' ? false : true;
+    // z_index: render order. Default 0. Negative = behind. Read from the
+    // SPRITE node itself (not the wrapper) — that's what Godot honors.
+    const zIndex = parseInt(
+      readBodyValue(parsed, spriteSection, 'z_index') ?? '0',
+      10,
+    );
 
     referencedTextures.add(texturePath);
     seenNodePaths.add(nodePath);
@@ -370,6 +376,7 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
       texture: texturePath,
       metadata: readMetadata(section),
       centered,
+      zIndex,
     });
   }
 
@@ -395,6 +402,10 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
     const scale = parseVector2(readBodyValue(parsed, section, 'scale')) ?? { x: 1, y: 1 };
     const centeredRaw = readBodyValue(parsed, section, 'centered');
     const centered = centeredRaw === 'false' ? false : true;
+    const zIndex = parseInt(
+      readBodyValue(parsed, section, 'z_index') ?? '0',
+      10,
+    );
 
     referencedTextures.add(texturePath);
     seenNodePaths.add(nodePath);
@@ -407,6 +418,7 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
       texture: texturePath,
       metadata: readMetadata(section),
       centered,
+      zIndex,
     });
   }
 

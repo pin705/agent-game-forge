@@ -326,8 +326,19 @@ export function SceneEditor(props: Props) {
       }
     }
 
-    // Props
-    for (const p of scene.props) {
+    // Props — render in z_index order (lower draws first / further back).
+    // Backgrounds typically have negative z (-10 / -20) so they sit behind.
+    // Sprites without an explicit z_index get a fallback: huge centered=false
+    // sprites (likely backdrops) push to -1 so they don't accidentally cover
+    // all the gameplay props they share z=0 with.
+    const sortedProps = scene.props
+      .map((p, i) => ({
+        p,
+        i,
+        z: p.zIndex ?? backdropFallbackZ(p, bank),
+      }))
+      .sort((a, b) => a.z - b.z || a.i - b.i);
+    for (const { p } of sortedProps) {
       drawProp(
         ctx,
         p,
@@ -3064,6 +3075,20 @@ function drawLabel(ctx: CanvasRenderingContext2D, x: number, y: number, text: st
   ctx.fillRect(x - w / 2 - padX, y - px - padY * 2, w + padX * 2, px + padY * 2);
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
   ctx.fillText(text, x - w / 2, y - padY);
+}
+
+/** Best-effort z-index when the prop's .tscn didn't specify one. We default
+ *  big centered=false sprites to -1 so backdrops don't accidentally cover
+ *  game props they share z=0 with. Anything else stays at 0. */
+function backdropFallbackZ(p: SceneProp, bank: ImageBank): number {
+  if (p.centered !== false) return 0;
+  const size = p.texture ? bank.sizes.get(p.texture) : null;
+  if (!size) return 0;
+  // Heuristic: 'big' = covers > ~80% of either dimension of a typical level
+  // viewport (roughly 1280x720). A platform sprite that's centered=false
+  // with size 600x100 doesn't qualify; a 1280x720 background does.
+  if (size.w >= 1024 || size.h >= 576) return -1;
+  return 0;
 }
 
 function propBounds(p: SceneProp, bank: ImageBank) {

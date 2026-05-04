@@ -208,6 +208,24 @@ visual. If the sprite's top half is decoration the player can pass through,
 either crop the sprite OR put the decoration in a separate Sprite2D
 sibling. The collider and the sprite must agree on what 'origin' means.
 
+### Set \`z_index\` for layering — backgrounds behind, foreground above
+
+Without explicit \`z_index\`, sprites render in scene-tree order, which is
+usually NOT what you want. A background Sprite2D placed AFTER the
+platforms in the .tscn will draw ON TOP of them and hide gameplay.
+
+Conventions:
+- Backgrounds / parallax layers: \`z_index = -10\` or \`-20\`
+- Static world props (platforms, decorations): \`z_index = 0\` (default, omit)
+- Actors (player, enemies): \`z_index = 5\`
+- Foreground / particle effects: \`z_index = 10\`
+- UI overlays: use a CanvasLayer instead
+
+OGF's Scenes tab sorts by z_index when rendering. If you ship a 1280×720
+background as a centered=false Sprite2D with no z_index, OGF will guess
+'-1' to keep it behind — but be explicit; relying on the heuristic is
+fragile across edits.
+
 ### Initial positions in .tscn must already be correct — don't reposition in \`_ready\`
 
 The .tscn file IS the authoritative initial layout. If \`_ready()\` does
