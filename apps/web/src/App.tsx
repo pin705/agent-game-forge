@@ -65,6 +65,7 @@ const LS_THEME = 'ogf:theme';
 const LS_SPLIT = 'ogf:split';
 const LS_DENSITY = 'ogf:density';
 const LS_TREE_W = 'ogf:treeWidth';
+const LS_AGENT_COLLAPSED = 'ogf:agentCollapsed';
 const LS_TREE_COLLAPSED = 'ogf:treeCollapsed';
 const LS_SIDEBAR_W = 'ogf:sidebarWidth';
 const LS_LAST_FILE_PREFIX = 'ogf:lastFile:'; // per-project: { tab, relPath }
@@ -247,6 +248,16 @@ export function App() {
   useEffect(() => {
     localStorage.setItem(LS_SPLIT, String(split));
   }, [split]);
+
+  // Agent panel collapse — when true, the right column hides entirely and
+  // the editor expands full-width. A small floating handle lets the user
+  // bring the panel back. Persists across reloads.
+  const [agentCollapsed, setAgentCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem(LS_AGENT_COLLAPSED) === '1';
+  });
+  useEffect(() => {
+    localStorage.setItem(LS_AGENT_COLLAPSED, agentCollapsed ? '1' : '0');
+  }, [agentCollapsed]);
 
   const [treeWidth, setTreeWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem(LS_TREE_W));
@@ -757,7 +768,12 @@ export function App() {
 
       <div
         className="main"
-        style={{ gridTemplateColumns: `${split}fr 1px ${100 - split}fr` }}
+        data-agent-collapsed={agentCollapsed ? 'true' : 'false'}
+        style={{
+          gridTemplateColumns: agentCollapsed
+            ? '1fr 0 0'
+            : `${split}fr 1px ${100 - split}fr`,
+        }}
       >
         {project ? (
           <EditorPane
@@ -824,38 +840,59 @@ export function App() {
           <EmptyEditor onOpen={() => setShowOpenModal(true)} />
         )}
 
-        <div className="split-bar" onMouseDown={onSplitDragStart} title="Drag to resize" />
+        {!agentCollapsed && (
+          <div className="split-bar" onMouseDown={onSplitDragStart} title="Drag to resize" />
+        )}
 
-        <AgentPane
-          conversations={conversations}
-          conversationId={conversationId}
-          onSelectConversation={(id) => void selectConversation(id)}
-          onNewConversation={() => void newConversation()}
-          onDeleteConversation={(id) => void deleteConversationAt(id)}
-          showHistory={showHistory}
-          setShowHistory={setShowHistory}
-          turns={turns}
-          model={model}
-          setModel={setModel}
-          reasoning={reasoning}
-          setReasoning={setReasoning}
-          prompt={prompt}
-          setPrompt={setPrompt}
-          running={running}
-          onSend={() => void send()}
-          onStop={() => void stop()}
-          onKey={onKey}
-          agent={agent}
-          project={project}
-          convoRef={convoRef}
-          refs={refs}
-          onRefsChange={setRefs}
-          pendingCount={pending.length}
-          onOpenPending={() => setShowPending(true)}
-          onImportSession={() => setShowImportSession(true)}
-          submittedForms={submittedForms}
-          onSubmitForm={onSubmitForm}
-        />
+        {!agentCollapsed && (
+          <AgentPane
+            conversations={conversations}
+            conversationId={conversationId}
+            onSelectConversation={(id) => void selectConversation(id)}
+            onNewConversation={() => void newConversation()}
+            onDeleteConversation={(id) => void deleteConversationAt(id)}
+            showHistory={showHistory}
+            setShowHistory={setShowHistory}
+            turns={turns}
+            model={model}
+            setModel={setModel}
+            reasoning={reasoning}
+            setReasoning={setReasoning}
+            prompt={prompt}
+            setPrompt={setPrompt}
+            running={running}
+            onSend={() => void send()}
+            onStop={() => void stop()}
+            onKey={onKey}
+            agent={agent}
+            project={project}
+            convoRef={convoRef}
+            refs={refs}
+            onRefsChange={setRefs}
+            pendingCount={pending.length}
+            onOpenPending={() => setShowPending(true)}
+            onImportSession={() => setShowImportSession(true)}
+            submittedForms={submittedForms}
+            onSubmitForm={onSubmitForm}
+            onCollapse={() => setAgentCollapsed(true)}
+          />
+        )}
+
+        {/* Restore button — only rendered when the panel is collapsed.
+         *  Pinned to the editor's right edge as a thin vertical strip
+         *  with a chevron, mirroring the sidebar resize affordance. */}
+        {agentCollapsed && (
+          <button
+            type="button"
+            className="agent-restore"
+            onClick={() => setAgentCollapsed(false)}
+            title="Show Codex chat (⌘⇧A)"
+            aria-label="Show Codex chat"
+          >
+            <span className="agent-restore-chev">{I.caret}</span>
+            <span className="agent-restore-lbl">Codex</span>
+          </button>
+        )}
       </div>
 
       {/* v2: status bar removed (no chrome at the bottom of the app — agent
@@ -1326,6 +1363,8 @@ function AgentPane(props: {
   submittedForms: Set<string>;
   /** Called when user submits a question-form rendered inline in chat. */
   onSubmitForm: (answers: QuestionFormAnswers) => void;
+  /** Hide the panel (collapses the right column entirely). */
+  onCollapse: () => void;
 }) {
   const currentTitle =
     props.conversations.find((c) => c.id === props.conversationId)?.title || 'New conversation';
@@ -1430,6 +1469,14 @@ function AgentPane(props: {
               <button className="btn btn-sm btn-ghost" onClick={props.onNewConversation} disabled={!props.project} title="New conversation">{I.plus}</button>
             </>
           )}
+          <button
+            className="icon-btn agent-collapse-btn"
+            onClick={props.onCollapse}
+            title="Hide chat panel"
+            aria-label="Hide Codex chat panel"
+          >
+            {I.caretRight}
+          </button>
         </span>
       </div>
 

@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Block, ToolFamily, ToolItem } from '../lib/blocks.js';
-import { buildTurn, extractFileChanges, summarizeGroup } from '../lib/blocks.js';
+import { buildTurn, extractFileChanges, extractImagePaths, summarizeGroup } from '../lib/blocks.js';
 import type { AgentEvent, QuestionFormAnswers } from '@ogf/contracts';
 import { I } from './icons.js';
 import { QuestionFormCard } from './QuestionFormCard.js';
+import { fetchFileContent } from '../lib/api.js';
 
 export type TurnStatus = 'streaming' | 'done' | 'failed' | 'canceled';
 
@@ -131,17 +132,26 @@ function BlockView({
       </div>
     );
   }
-  return <ToolGroup family={block.family} items={block.items} streaming={streaming} />;
+  return (
+    <ToolGroup
+      family={block.family}
+      items={block.items}
+      streaming={streaming}
+      projectPath={projectPath}
+    />
+  );
 }
 
 function ToolGroup({
   family,
   items,
   streaming,
+  projectPath,
 }: {
   family: ToolFamily;
   items: ToolItem[];
   streaming: boolean;
+  projectPath?: string;
 }) {
   const [open, setOpen] = useState(false);
   const isRunning = streaming && items.some((it) => it.output === undefined);
@@ -160,16 +170,127 @@ function ToolGroup({
         </span>
         <span className="twirl">{I.caretRight}</span>
       </div>
+      {/* Body has a hard max-height + scroll. Long bash outputs and big
+       *  edit JSON dumps used to balloon the chat to thousands of
+       *  pixels when expanded — now they cap at a reasonable size and
+       *  the user scrolls within the card. */}
       <div className="tool-body">
-        {items.map((it) => (
-          <ToolDetail key={it.id} item={it} />
-        ))}
+        <div className="tool-body-scroll">
+          {items.map((it) => (
+            <ToolDetail key={it.id} item={it} projectPath={projectPath} />
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
-function ToolDetail({ item }: { item: ToolItem }) {
+function ImageGenDetail({ item, projectPath }: { item: ToolItem; projectPath?: string }) {
+  const prompt = String((item.input as { prompt?: unknown })?.prompt ?? '');
+  const size = String((item.input as { size?: unknown })?.size ?? '');
+  const paths = extractImagePaths(item);
+  const isRunning = item.output === undefined;
+
+  return (
+    <div>
+      {prompt && (
+        <>
+          <span className="label">Prompt</span>
+          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{prompt}</pre>
+        </>
+      )}
+      {size && (
+        <>
+          <span className="label">Size</span>
+          <pre>{size}</pre>
+        </>
+      )}
+      {isRunning && (
+        <div className="image-gen-pending">
+          <span className="dot-pulse" /> generating…
+        </div>
+      )}
+      {!isRunning && paths.length === 0 && item.output && (
+        <>
+          <span className="label">Output</span>
+          <pre>{item.output}</pre>
+        </>
+      )}
+      {paths.length > 0 && (
+        <>
+          <span className="label">Result{paths.length > 1 ? 's' : ''}</span>
+          <div className="image-gen-grid">
+            {paths.map((p, i) => (
+              <ImagePreview key={p + i} path={p} projectPath={projectPath} />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ImagePreview({ path, projectPath }: { path: string; projectPath?: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const tried = useRef(false);
+
+  // Daemon emits absolute paths sometimes (when image_gen writes outside
+  // cwd) and project-relative when it writes under the workspace.
+  // fetchFileContent only accepts project-relative paths, so we strip
+  // the project prefix when present, otherwise we try the path verbatim.
+  const relPath = (() => {
+    const norm = path.replace(/\\/g, '/');
+    if (!projectPath) return norm;
+    const proj = projectPath.replace(/\\/g, '/');
+    if (norm.toLowerCase().startsWith(proj.toLowerCase() + '/')) {
+      return norm.slice(proj.length + 1);
+    }
+    return norm;
+  })();
+
+  useEffect(() => {
+    if (!projectPath || tried.current) return;
+    tried.current = true;
+    fetchFileContent(projectPath, relPath)
+      .then((r) => {
+        if (r.kind === 'image' && r.base64) {
+          const ext = relPath.split('.').pop()?.toLowerCase() ?? 'png';
+          const mime =
+            ext === 'jpg' || ext === 'jpeg'
+              ? 'image/jpeg'
+              : ext === 'gif'
+                ? 'image/gif'
+                : ext === 'webp'
+                  ? 'image/webp'
+                  : 'image/png';
+          setSrc(`data:${mime};base64,${r.base64}`);
+        } else {
+          setError('Not an image');
+        }
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, [projectPath, relPath]);
+
+  return (
+    <figure className="image-gen-card">
+      {src ? (
+        <img src={src} alt={path} />
+      ) : error ? (
+        <div className="image-gen-err">⚠ {error}</div>
+      ) : (
+        <div className="image-gen-loading">loading…</div>
+      )}
+      <figcaption title={path}>{shortPath(path)}</figcaption>
+    </figure>
+  );
+}
+
+function ToolDetail({ item, projectPath }: { item: ToolItem; projectPath?: string }) {
+  if (item.family === 'image') {
+    return <ImageGenDetail item={item} projectPath={projectPath} />;
+  }
+
   if (item.family === 'edit') {
     const changes = extractFileChanges(item);
     return (
@@ -263,6 +384,7 @@ function familyIconClass(f: ToolFamily): string {
   if (f === 'edit') return 'edit';
   if (f === 'shell') return 'bash';
   if (f === 'thinking') return 'view';
+  if (f === 'image') return 'gen';
   return 'gen';
 }
 
@@ -270,6 +392,7 @@ function familyIconEl(f: ToolFamily) {
   if (f === 'edit') return I.edit;
   if (f === 'shell') return I.bash;
   if (f === 'thinking') return I.spark;
+  if (f === 'image') return I.image;
   return I.image;
 }
 
@@ -277,6 +400,7 @@ function toolHeadName(f: ToolFamily, items: ToolItem[]): string {
   if (f === 'edit') return 'edit_file';
   if (f === 'shell') return 'bash';
   if (f === 'thinking') return 'thinking';
+  if (f === 'image') return 'image_gen';
   if (items.length > 0) return items[0].name.toLowerCase();
   return 'tool';
 }

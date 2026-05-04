@@ -1506,8 +1506,19 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
   background: var(--bg-1);
   font-family: var(--font-mono);
   font-size: 11px;
+  padding: 0;
+}
+/* The actual gap-driven flow lives on .tool-body-scroll so we can cap
+ * the height + scroll without losing the inter-section spacing. Long
+ * bash outputs and multi-file edit dumps used to balloon expanded
+ * cards to thousands of pixels — now they cap at 360px and scroll. */
+.tool-body-scroll {
+  display: grid;
+  gap: 8px;
   padding: 8px 10px;
-  display: grid; gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .tool-body .label {
   font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
@@ -2206,6 +2217,122 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
 
 /* err pre in tool-body */
 .tool-body pre.err { color: var(--red); }
+
+/* image_gen preview cards — shown inside an expanded image_gen tool
+ * card. Multiple results lay out in a responsive grid. */
+.image-gen-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+.image-gen-card {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.image-gen-card img {
+  display: block;
+  width: 100%;
+  height: 140px;
+  object-fit: contain;
+  background:
+    linear-gradient(45deg, var(--check-1) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--check-1) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--check-1) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--check-1) 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  image-rendering: pixelated;
+}
+.image-gen-card figcaption {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-2);
+  padding: 4px 8px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.image-gen-loading,
+.image-gen-err {
+  display: grid;
+  place-items: center;
+  height: 140px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.image-gen-err { color: var(--red); }
+.image-gen-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+/* Agent panel collapse/restore.
+ * - .agent-collapse-btn — chevron in agent-head's runctl, tucked
+ *   behind a small ghost border so it reads as a control not a label.
+ * - .agent-restore — vertical strip pinned to the editor's right edge
+ *   when the panel is collapsed. Click to reopen. Hover gets the
+ *   accent treatment so it's discoverable. */
+.agent-collapse-btn {
+  margin-left: 4px;
+}
+.agent-collapse-btn svg {
+  /* The icon is a left-pointing caret in our pack — rotating 180° so
+   * it visually means 'push the panel away to the right'. */
+  transform: rotate(180deg);
+}
+.agent-restore {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px;
+  border: 1px solid var(--line);
+  border-right: 0;
+  border-radius: 6px 0 0 6px;
+  background: var(--bg-1);
+  color: var(--ink-2);
+  cursor: pointer;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  z-index: 5;
+  box-shadow: var(--shadow-pop);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.agent-restore:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-line);
+}
+.agent-restore-chev {
+  display: inline-flex;
+  /* I.caret points down by default; rotate 90° to point left toward
+   * the user, since clicking pulls the panel out from the right. */
+  transform: rotate(90deg);
+}
+.agent-restore-lbl {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-weight: 600;
+}
+.main[data-agent-collapsed="true"] {
+  position: relative;
+}
 
 /* main grid — designer used `var(--split-left/right)`; we set inline */
 .main { grid-template-columns: 64fr 1px 36fr; }

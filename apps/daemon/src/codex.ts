@@ -130,6 +130,39 @@ export function mapCodexEvent(raw: CodexJsonEvent): AgentEvent | null {
         input: { changes: raw.item.changes ?? [] },
       };
     }
+    // Image generation (built-in image_gen tool). The Codex CLI emits an
+    // item with prompt + size on start; completed gives us the saved file
+    // path(s). We capture whatever we can — the frontend reads input.prompt
+    // for the head summary, and waits on tool_result for the image path
+    // before rendering the preview.
+    if (itemType === 'image_generation' || itemType === 'image_gen') {
+      const prompt = String(raw.item.prompt ?? '');
+      const size = String(raw.item.size ?? '');
+      return {
+        type: 'tool_use',
+        id: String(raw.item.id ?? Math.random()),
+        name: 'image_gen',
+        input: { prompt, size, raw: raw.item },
+      };
+    }
+    // Generic MCP / built-in tool calls we don't have a special view for.
+    // Surface them so the user at least sees what's happening.
+    if (itemType === 'mcp_tool_call') {
+      const name = String(
+        (raw.item as { tool_name?: string; name?: string; tool?: string })
+          .tool_name ??
+          (raw.item as { tool_name?: string; name?: string }).name ??
+          (raw.item as { tool?: string }).tool ??
+          'mcp',
+      );
+      const args = (raw.item as { arguments?: unknown }).arguments ?? raw.item;
+      return {
+        type: 'tool_use',
+        id: String(raw.item.id ?? Math.random()),
+        name,
+        input: args,
+      };
+    }
   }
 
   if (t === 'item.completed' && raw.item) {
@@ -161,6 +194,46 @@ export function mapCodexEvent(raw: CodexJsonEvent): AgentEvent | null {
       return text
         ? { type: 'tool_use', id: String(raw.item.id ?? ''), name: 'Thinking', input: { text } }
         : null;
+    }
+    // image_gen result. Different Codex versions emit different field names
+    // for the saved file(s). Collect every plausible candidate; the
+    // frontend probes for any of these and renders the first match. We
+    // serialize as JSON so frontend has structured access to all hints.
+    if (itemType === 'image_generation' || itemType === 'image_gen') {
+      const item = raw.item as {
+        image_paths?: string[];
+        output_path?: string;
+        path?: string;
+        file?: string;
+        files?: string[];
+        url?: string;
+      };
+      const paths: string[] = [];
+      if (Array.isArray(item.image_paths)) paths.push(...item.image_paths);
+      if (Array.isArray(item.files)) paths.push(...item.files);
+      if (typeof item.output_path === 'string') paths.push(item.output_path);
+      if (typeof item.path === 'string') paths.push(item.path);
+      if (typeof item.file === 'string') paths.push(item.file);
+      const payload = {
+        paths,
+        url: typeof item.url === 'string' ? item.url : undefined,
+        raw: raw.item,
+      };
+      return {
+        type: 'tool_result',
+        toolUseId: String(raw.item.id ?? ''),
+        content: JSON.stringify(payload),
+        isError: false,
+      };
+    }
+    if (itemType === 'mcp_tool_call') {
+      const result = (raw.item as { result?: unknown }).result;
+      return {
+        type: 'tool_result',
+        toolUseId: String(raw.item.id ?? ''),
+        content: typeof result === 'string' ? result : JSON.stringify(result ?? raw.item),
+        isError: !!(raw.item as { is_error?: boolean }).is_error,
+      };
     }
   }
 

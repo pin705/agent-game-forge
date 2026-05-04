@@ -1,6 +1,6 @@
 import type { AgentEvent, QuestionForm } from '@ogf/contracts';
 
-export type ToolFamily = 'edit' | 'shell' | 'thinking' | 'other';
+export type ToolFamily = 'edit' | 'shell' | 'thinking' | 'image' | 'other';
 
 export interface ToolItem {
   id: string;
@@ -30,6 +30,8 @@ export function familyOf(name: string): ToolFamily {
   if (name === 'Edit' || name === 'Write') return 'edit';
   if (name === 'Bash') return 'shell';
   if (name === 'Thinking') return 'thinking';
+  // image_gen, image_generation, ImageGen — case/spelling tolerant.
+  if (/^image[_-]?(gen|generation)$/i.test(name)) return 'image';
   return 'other';
 }
 
@@ -189,5 +191,40 @@ export function summarizeGroup(group: { family: ToolFamily; items: ToolItem[] })
     return `Thought · ${total} step${total === 1 ? '' : 's'}`;
   }
 
+  if (group.family === 'image') {
+    if (total === 1) {
+      const prompt = String(
+        (group.items[0].input as { prompt?: unknown })?.prompt ?? '',
+      );
+      const shown = prompt.length > 60 ? prompt.slice(0, 60) + '…' : prompt;
+      return shown
+        ? `Generated “${shown}” · ${stateLabel}`
+        : `Generated image · ${stateLabel}`;
+    }
+    return `Generated ${total} images · ${stateLabel}`;
+  }
+
   return `${group.items[0].name} ×${total} · ${stateLabel}`;
+}
+
+/** Extract candidate file paths the daemon embedded in an image_gen
+ *  tool_result payload. Falls back to scanning the raw text for any
+ *  *.png / *.jpg / *.webp tokens in case the structured payload
+ *  schema differs across Codex versions. */
+export function extractImagePaths(item: ToolItem): string[] {
+  if (item.output === undefined) return [];
+  const out = item.output;
+  try {
+    const parsed = JSON.parse(out) as {
+      paths?: unknown;
+      url?: unknown;
+    };
+    if (Array.isArray(parsed.paths)) {
+      return parsed.paths.filter((p): p is string => typeof p === 'string');
+    }
+  } catch {
+    /* fall through to regex scan */
+  }
+  const matches = out.match(/[\w./\\-]+\.(?:png|jpg|jpeg|webp|gif)/gi);
+  return matches ? Array.from(new Set(matches)) : [];
 }
