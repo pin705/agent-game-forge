@@ -83,6 +83,53 @@ export function SceneEditor(props: Props) {
   /** When non-null, user is composing a brand-new thread at this anchor. */
   const [draftAnchor, setDraftAnchor] = useState<CommentAnchor | null>(null);
   const [showResolvedThreads, setShowResolvedThreads] = useState(false);
+  // Locked prop nodePaths — skipped by hit-test so the user can park
+  // backgrounds / decorative tiles and keep clicking through them to the
+  // real interactive props underneath. Persisted to localStorage per
+  // (project + scene) so the lock state survives reloads + scene switches.
+  const lockStorageKey = `ogf:locks:${props.projectPath}:${props.relPath}`;
+  const [lockedNodePaths, setLockedNodePaths] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(lockStorageKey);
+      if (raw) return new Set(JSON.parse(raw) as string[]);
+    } catch {
+      // ignore corrupted entry
+    }
+    return new Set();
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        lockStorageKey,
+        JSON.stringify([...lockedNodePaths]),
+      );
+    } catch {
+      // localStorage full — ignore
+    }
+  }, [lockStorageKey, lockedNodePaths]);
+  // Reset locks when switching scenes (different relPath = different set).
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(lockStorageKey);
+      setLockedNodePaths(raw ? new Set(JSON.parse(raw) as string[]) : new Set());
+    } catch {
+      setLockedNodePaths(new Set());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockStorageKey]);
+
+  function toggleLock(nodePath: string) {
+    setLockedNodePaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodePath)) next.delete(nodePath);
+      else next.add(nodePath);
+      return next;
+    });
+    // Locking the currently-selected prop deselects it — there's no UX where
+    // you'd want a locked prop to stay selected (selection implies you'll act
+    // on it, but locked = ignored).
+    if (selectedNodePath === nodePath) setSelectedNodePath(null);
+  }
 
   // Threads visible in the side panel + as pins. Resolved hidden by default.
   const visibleThreads = useMemo(
@@ -502,20 +549,34 @@ export function SceneEditor(props: Props) {
 
   function findPropAt(world: Vec2): SceneProp | null {
     if (!scene) return null;
-    for (let i = scene.props.length - 1; i >= 0; i--) {
-      const p = scene.props[i];
-      const r = propBounds(p, bank);
-      if (!r) continue;
-      if (
-        world.x >= r.x &&
-        world.x <= r.x + r.w &&
-        world.y >= r.y &&
-        world.y <= r.y + r.h
-      ) {
-        return p;
-      }
-    }
-    return null;
+    // Hit-test in REVERSE z-order: the visually-topmost prop wins. Without
+    // this, clicking on a platform that overlaps a background would select
+    // whichever appeared later in the array. Tie-break by smaller bbox
+    // area — between two same-z props, the smaller is almost certainly the
+    // foreground feature.
+    // Locked props are skipped entirely so the user can park backgrounds.
+    const candidates = scene.props
+      .map((p, i) => ({ p, i, r: propBounds(p, bank) }))
+      .filter(
+        (e) =>
+          e.r != null &&
+          !lockedNodePaths.has(e.p.nodePath) &&
+          world.x >= e.r.x &&
+          world.x <= e.r.x + e.r.w &&
+          world.y >= e.r.y &&
+          world.y <= e.r.y + e.r.h,
+      );
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => {
+      const za = a.p.zIndex ?? backdropFallbackZ(a.p, bank);
+      const zb = b.p.zIndex ?? backdropFallbackZ(b.p, bank);
+      if (za !== zb) return zb - za; // higher z first
+      const aa = a.r!.w * a.r!.h;
+      const ab = b.r!.w * b.r!.h;
+      if (aa !== ab) return aa - ab; // smaller area first
+      return b.i - a.i;              // last in array first (Godot draw order)
+    });
+    return candidates[0].p;
   }
 
   /** Hit-test the 4 corner handles of the currently selected prop. */
@@ -1403,6 +1464,8 @@ export function SceneEditor(props: Props) {
             const promptText = buildAskCodexPrompt(thread, draftMsg);
             props.onAskCodex?.(promptText);
           }}
+          lockedNodePaths={lockedNodePaths}
+          onToggleLock={toggleLock}
         />
       </div>
     </div>
@@ -1457,6 +1520,8 @@ function ScenePanel({
   onResolveThread,
   onDeleteThread,
   onAskCodex,
+  lockedNodePaths,
+  onToggleLock,
 }: {
   scene: SceneModel | null;
   mode: EditMode;
@@ -1480,6 +1545,8 @@ function ScenePanel({
   onResolveThread: (threadId: string, resolved: boolean) => void;
   onDeleteThread: (threadId: string) => void;
   onAskCodex: (thread: CommentThread, latestMsg?: string) => void;
+  lockedNodePaths: Set<string>;
+  onToggleLock: (nodePath: string) => void;
 }) {
   const selPath = scene?.paths.find((p) => p.uid === selectedPath?.uid) ?? null;
   const selThread = threads.find((t) => t.id === selectedThreadId) ?? null;
@@ -1522,18 +1589,36 @@ function ScenePanel({
         <div className="scene-panel-section" style={{ flex: 1, minHeight: 0 }}>
           <div className="scene-panel-title">Props</div>
           <div className="scene-panel-list">
-            {scene?.props.map((p) => (
-              <button
-                key={p.nodePath}
-                className={`scene-prop-item ${selectedProp?.nodePath === p.nodePath ? 'active' : ''}`}
-                onClick={() => onSelectProp(p.nodePath)}
-              >
-                <span className="mono">{p.name}</span>
-                <span className="muted mono">
-                  {Math.round(p.position.x)},{Math.round(p.position.y)}
-                </span>
-              </button>
-            ))}
+            {scene?.props.map((p) => {
+              const locked = lockedNodePaths.has(p.nodePath);
+              return (
+                <div
+                  key={p.nodePath}
+                  className={`scene-prop-item ${selectedProp?.nodePath === p.nodePath ? 'active' : ''} ${locked ? 'locked' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    if (!locked) onSelectProp(p.nodePath);
+                  }}
+                >
+                  <span className="mono">{p.name}</span>
+                  <span className="muted mono">
+                    {Math.round(p.position.x)},{Math.round(p.position.y)}
+                  </span>
+                  <button
+                    type="button"
+                    className={`scene-prop-lock ${locked ? 'on' : ''}`}
+                    title={locked ? 'Unlock — clicks pass through to this' : 'Lock — block clicks on this prop'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleLock(p.nodePath);
+                    }}
+                  >
+                    {locked ? '🔒' : '🔓'}
+                  </button>
+                </div>
+              );
+            })}
             {scene && scene.props.length === 0 && (
               <div className="muted" style={{ padding: 8 }}>
                 No draggable props in this scene.
