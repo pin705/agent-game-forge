@@ -348,10 +348,16 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
 
     // World position = parent's accumulated world transform. Sprite offset =
     // its local position relative to that parent. SceneEditor combines both
-    // when drawing (position + spriteOffset = sprite center).
+    // when drawing (position + spriteOffset = sprite anchor; anchor's role
+    // depends on centered).
     const position = worldPositionOf(parsed, nodes, nodePath);
     const spriteOffset = parseVector2(readBodyValue(parsed, spriteSection, 'position')) ?? { x: 0, y: 0 };
     const scale = parseVector2(readBodyValue(parsed, spriteSection, 'scale')) ?? { x: 1, y: 1 };
+    // Godot Sprite2D defaults to centered = true; only present in .tscn when
+    // the user (or Codex) flipped it. When false, position is the TOP-LEFT
+    // of the drawn sprite, not its center — propBounds switches anchor.
+    const centeredRaw = readBodyValue(parsed, spriteSection, 'centered');
+    const centered = centeredRaw === 'false' ? false : true;
 
     referencedTextures.add(texturePath);
     seenNodePaths.add(nodePath);
@@ -363,6 +369,7 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
       scale,
       texture: texturePath,
       metadata: readMetadata(section),
+      centered,
     });
   }
 
@@ -386,6 +393,8 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
     // (under Group / Layer / WrapperBody) get plotted at the origin.
     const position = worldPositionOf(parsed, nodes, nodePath);
     const scale = parseVector2(readBodyValue(parsed, section, 'scale')) ?? { x: 1, y: 1 };
+    const centeredRaw = readBodyValue(parsed, section, 'centered');
+    const centered = centeredRaw === 'false' ? false : true;
 
     referencedTextures.add(texturePath);
     seenNodePaths.add(nodePath);
@@ -397,6 +406,7 @@ export function loadScene(opts: LoadOptions): LoadSceneResponse {
       scale,
       texture: texturePath,
       metadata: readMetadata(section),
+      centered,
     });
   }
 

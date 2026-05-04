@@ -38,6 +38,12 @@ export interface SceneProp {
   /** When set, render at this size (overrides naturalSize × scale). Used by
    *  web props that store fixed w/h in JSON instead of a Godot-style scale. */
   displaySize?: Vec2;
+  /** Sprite2D's centered attribute (Godot). Default true.
+   *  - true (default):  position = render center
+   *  - false:           position = top-left corner of the rendered sprite
+   *  Frontend propBounds branches on this so OGF Scenes tab matches what
+   *  Godot draws at runtime. */
+  centered?: boolean;
   /** When set, write-back goes through this ref instead of the default
    *  Godot .tscn nodePath path. Used for web JSON-backed props. */
   ref?: ColliderRef;

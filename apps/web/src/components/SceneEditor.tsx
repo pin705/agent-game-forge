@@ -3085,10 +3085,18 @@ function propBounds(p: SceneProp, bank: ImageBank) {
   } else {
     return null;
   }
-  // Sprite2D draws centered at its origin by default. Origin = parent.position + sprite.offset.
-  const cx = p.position.x + p.spriteOffset.x;
-  const cy = p.position.y + p.spriteOffset.y;
-  return { x: cx - w / 2, y: cy - h / 2, w, h };
+  // Sprite2D's anchor depends on the `centered` attribute:
+  //   centered = true (default) → position = render center → bbox = (cx-w/2, cy-h/2, w, h)
+  //   centered = false          → position = top-left      → bbox = (cx, cy, w, h)
+  // Without honoring this, big background sprites that Codex sets to
+  // centered=false (per OGF Godot conventions) appear shifted up-left by
+  // (w/2, h/2) in the OGF Scenes tab while Play renders them correctly.
+  const ax = p.position.x + p.spriteOffset.x;
+  const ay = p.position.y + p.spriteOffset.y;
+  if (p.centered === false) {
+    return { x: ax, y: ay, w, h };
+  }
+  return { x: ax - w / 2, y: ay - h / 2, w, h };
 }
 
 /** Color for the border of a non-default-props section. Lets the user tell
