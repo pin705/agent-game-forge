@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentInfo, FileNode, Project } from '@ogf/contracts';
 import { I } from './icons.js';
 import { FileTree } from './FileTree.js';
@@ -45,6 +45,35 @@ export function Sidebar(props: Props) {
         ? 'Codex offline'
         : 'Detecting…';
 
+  // Project-scoped search. State is local to this Sidebar — empty when there
+  // is no project, reset when switching projects (re-render of <Sidebar> for
+  // a different project clears the input naturally because we tie the key
+  // through React tree, but we also reset on project path change to be safe).
+  const [search, setSearch] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    setSearch('');
+  }, [props.project?.path]);
+  // Cmd/Ctrl+K → focus search.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const meta = e.metaKey || e.ctrlKey;
+      if (meta && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  const onSearchKey = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      setSearch('');
+      (e.currentTarget as HTMLInputElement).blur();
+    }
+  }, []);
+
   return (
     <aside className="side">
       {/* Brand head — pixel mascot + "Agent Game Forge" wordmark */}
@@ -79,6 +108,43 @@ export function Sidebar(props: Props) {
         />
       </div>
 
+      {/* Project search — substring filter over file paths. ⌘K / Ctrl+K
+          jumps focus here from anywhere in the app. The FileTree below
+          auto-expands every dir containing a match; clearing restores
+          the user's prior expansion state. */}
+      {props.project && (
+        <div className="side-search">
+          <span className="side-search-icon" aria-hidden>{I.search ?? '⌕'}</span>
+          <input
+            ref={searchInputRef}
+            type="text"
+            className="side-search-input"
+            placeholder="Search files…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={onSearchKey}
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+          />
+          {search && (
+            <button
+              type="button"
+              className="side-search-clear"
+              onClick={() => {
+                setSearch('');
+                searchInputRef.current?.focus();
+              }}
+              title="Clear (Esc)"
+              aria-label="Clear search"
+            >
+              ×
+            </button>
+          )}
+          {!search && <span className="side-search-kbd">⌘K</span>}
+        </div>
+      )}
+
       {/* The full file tree fills the rest of the sidebar with its v1 chrome
           intact — head row (file count + 'show only used' toggle + refresh)
           on top, scrolling list below. */}
@@ -97,6 +163,7 @@ export function Sidebar(props: Props) {
             filter="all"
             engine={props.project.engine}
             scopeKey={props.project.path}
+            searchQuery={search}
           />
         </div>
       )}

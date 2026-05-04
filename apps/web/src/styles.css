@@ -169,8 +169,10 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
   border-right: 1px solid var(--line);
   background: var(--bg-0);
   display: grid;
-  /* head (56) | project switcher row (auto) | tree (1fr) | foot (auto) */
-  grid-template-rows: 56px auto minmax(0, 1fr) auto;
+  /* head (56) | project switcher (auto) | search (auto) | tree (1fr) | foot (auto)
+   * search collapses to 0 when there's no active project (the row is gated
+   * in JSX), so empty-state sidebar still aligns project-switcher → tree. */
+  grid-template-rows: 56px auto auto minmax(0, 1fr) auto;
   min-height: 0;
   /* overflow: visible so the project switcher dropdown can extend past
    * the sidebar's bottom edge (and shadow can spill outside). Each inner
@@ -181,6 +183,63 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
   padding: 8px 8px 4px;
   border-bottom: 1px solid var(--line);
 }
+
+/* Project search row — sits between the project switcher and the file tree.
+ * One-line input with a leading magnifier icon and a trailing ⌘K hint
+ * that's replaced by a × clear button when there's an active query. */
+.side-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-0);
+}
+.side-search-icon {
+  color: var(--ink-3);
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.side-search-icon svg { width: 14px; height: 14px; }
+.side-search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-0);
+  padding: 4px 0;
+}
+.side-search-input::placeholder { color: var(--ink-3); }
+.side-search-kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 1px 5px;
+  background: var(--bg-1);
+  flex-shrink: 0;
+  user-select: none;
+}
+.side-search-clear {
+  width: 18px; height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 3px;
+  flex-shrink: 0;
+  padding: 0;
+}
+.side-search-clear:hover { background: var(--bg-2); color: var(--ink-0); }
 .side-head {
   display: flex; align-items: center; gap: 8px;
   padding: 0 14px;

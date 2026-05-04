@@ -22,6 +22,9 @@ interface Props {
   engine?: EngineKind;
   /** Stable identifier (project path) — used to scope localStorage of folder-open state. */
   scopeKey?: string;
+  /** Case-insensitive substring filter on file relPath. Empty/undefined = no
+   *  search. When set, dirs auto-expand to reveal matching descendants. */
+  searchQuery?: string;
 }
 
 const CODE_EXT_BY_ENGINE: Record<EngineKind, Set<string>> = {
@@ -60,6 +63,9 @@ export function FileTree(props: Props) {
 
   const usedOnlyAvailable = !!props.usedAssets;
   const effectiveUsedOnly = usedOnly && usedOnlyAvailable;
+
+  const search = (props.searchQuery ?? '').trim().toLowerCase();
+  const isSearching = search.length > 0;
 
   const [openFolders, setOpenFolders] = useState<Set<string>>(() => {
     if (!lsKey) return new Set();
@@ -125,9 +131,31 @@ export function FileTree(props: Props) {
   };
 
   const fileCount = useMemo(
-    () => (props.tree ? countVisible(props.tree, filter, engine, effectiveUsedOnly, props.usedAssets) : 0),
-    [props.tree, filter, engine, effectiveUsedOnly, props.usedAssets],
+    () => (props.tree ? countVisible(props.tree, filter, engine, effectiveUsedOnly, props.usedAssets, search) : 0),
+    [props.tree, filter, engine, effectiveUsedOnly, props.usedAssets, search],
   );
+
+  // While searching, expand every ancestor of a matching file so all matches
+  // are visible without manual clicking. We compose this with the user's
+  // openFolders rather than mutate it, so clearing the query restores the
+  // user's prior expansion state.
+  const searchOpenFolders = useMemo(() => {
+    if (!isSearching || !props.tree) return null;
+    const opened = new Set<string>();
+    function walk(n: FileNode, ancestors: string[]) {
+      if (n.kind === 'file') {
+        if (!isVisible(n, filter, engine, effectiveUsedOnly, props.usedAssets, search)) return;
+        for (const a of ancestors) opened.add(a);
+      } else {
+        const next = n.relPath ? [...ancestors, n.relPath] : ancestors;
+        for (const c of n.children ?? []) walk(c, next);
+      }
+    }
+    walk(props.tree, []);
+    return opened;
+  }, [isSearching, search, props.tree, filter, engine, effectiveUsedOnly, props.usedAssets]);
+
+  const effectiveOpenFolders = searchOpenFolders ?? openFolders;
 
   return (
     <div className="tree-pane">
@@ -176,11 +204,17 @@ export function FileTree(props: Props) {
             sceneFiles={props.sceneFiles}
             filter={filter}
             engine={engine}
-            openFolders={openFolders}
+            openFolders={effectiveOpenFolders}
             toggleFolder={toggleFolder}
             usedOnly={effectiveUsedOnly}
+            search={search}
             isRoot
           />
+        )}
+        {props.tree && isSearching && fileCount === 0 && (
+          <div style={{ padding: '12px 14px', color: 'var(--ink-3)', fontSize: 11 }}>
+            No files match “{props.searchQuery}”.
+          </div>
         )}
       </div>
       <div className="tree-foot">
@@ -208,13 +242,14 @@ function Node(props: {
   openFolders: Set<string>;
   toggleFolder: (rel: string) => void;
   usedOnly: boolean;
+  search: string;
   isRoot?: boolean;
 }) {
-  const { node, depth, isRoot, filter, engine, openFolders, toggleFolder, usedOnly } = props;
+  const { node, depth, isRoot, filter, engine, openFolders, toggleFolder, usedOnly, search } = props;
   const open = isRoot ? true : openFolders.has(node.relPath);
 
   if (node.kind === 'dir') {
-    const visibleChildren = (node.children ?? []).filter((c) => isVisible(c, filter, engine, usedOnly, props.usedAssets));
+    const visibleChildren = (node.children ?? []).filter((c) => isVisible(c, filter, engine, usedOnly, props.usedAssets, search));
     if (!isRoot && visibleChildren.length === 0) return null;
     return (
       <>
@@ -246,13 +281,14 @@ function Node(props: {
             openFolders={openFolders}
             toggleFolder={toggleFolder}
             usedOnly={usedOnly}
+            search={search}
           />
         ))}
       </>
     );
   }
 
-  if (!isVisible(node, filter, engine, usedOnly, props.usedAssets)) return null;
+  if (!isVisible(node, filter, engine, usedOnly, props.usedAssets, search)) return null;
 
   const isSelected = props.selected === node.relPath;
   const isChanged = props.recentlyChanged?.has(node.relPath);
@@ -320,10 +356,14 @@ function isVisible(
   engine: EngineKind,
   usedOnly: boolean,
   usedAssets: Set<string> | undefined,
+  search: string,
 ): boolean {
   if (node.kind === 'dir') {
-    return (node.children ?? []).some((c) => isVisible(c, filter, engine, usedOnly, usedAssets));
+    return (node.children ?? []).some((c) => isVisible(c, filter, engine, usedOnly, usedAssets, search));
   }
+  // Search is a substring filter on the file's project-relative path. Both
+  // path and name match because relPath includes name.
+  if (search && !node.relPath.toLowerCase().includes(search)) return false;
   // Used-only hides assets that aren't referenced. Code files are always shown
   // (we don't track their usage; hiding them based on .gd grep would be wrong).
   if (usedOnly && usedAssets) {
@@ -339,10 +379,11 @@ function countVisible(
   engine: EngineKind,
   usedOnly: boolean,
   usedAssets: Set<string> | undefined,
+  search: string,
 ): number {
-  if (node.kind === 'file') return isVisible(node, filter, engine, usedOnly, usedAssets) ? 1 : 0;
+  if (node.kind === 'file') return isVisible(node, filter, engine, usedOnly, usedAssets, search) ? 1 : 0;
   let n = 0;
-  for (const c of node.children ?? []) n += countVisible(c, filter, engine, usedOnly, usedAssets);
+  for (const c of node.children ?? []) n += countVisible(c, filter, engine, usedOnly, usedAssets, search);
   return n;
 }
 
