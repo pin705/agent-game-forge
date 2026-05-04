@@ -1002,7 +1002,7 @@ These rules came from real specs that produced broken games:
    - **polished**: 2 characters × 5 anims each, 5 enemies, 3 levels, pickup system, scoring, menu screens.
    - **full**: 3+ characters × 6+ anims, 8+ enemies, 5+ levels, save system, polish loops.
 
-  9. **Generate sprites with \`generate2dsprite\`, NEVER raw \`image_gen\`.** Request DISTINCT frames per anim row — see conventions for required frame counts (idle 2, walk 4-6, jump 3, attack 3-4). Submitting a 4×4 sheet where every cell is the same pose ships a frozen-corpse character. Spec §2 must specify per-anim frame count, not just animation names. Example: 'idle (2 frames), walk (4 frames), jump (3 frames), attack (3 frames)' — total = 12 frames laid out as 4 rows × 4 cols (the longest row's count determines cols, shorter rows pad with the last frame).
+  9. **Generate sprites with \`generate2dsprite\`, NEVER raw \`image_gen\`.** Each cell of an animation row MUST be a distinct pose progression — submitting a 4×4 sheet where every cell is the same pose ships a frozen-corpse character. Frame COUNT per anim is your judgement (genre / completeness / target style decide), but the count must mean what it claims: a 4-frame walk row shows 4 distinct walk poses, not 1 pose × 4. Spec §2 should list animation NAMES; per-anim frame counts can be authored at sheet-generation time.
 
 ## Step 2 (after writing spec) — emit a spec-approval form
 

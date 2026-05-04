@@ -82,32 +82,22 @@ skill, even when "you just need one frame quickly". Specifically:
 
 - ❌ DON'T call \`image_gen\` directly for character / enemy / item / FX sprites
 - ❌ DON'T inline-generate a single PNG and use it as a sprite
-- ❌ DON'T fake an animation sheet by tiling one pose 4× and calling each cell
+- ❌ DON'T fake an animation sheet by tiling one pose N× and calling each cell
   a "frame" — the result looks like the character froze. (We've shipped this
   bug. The skill exists to prevent it.)
-- ✅ Call \`generate2dsprite\` and request one row per animation, with N
-  DISTINCT frames per row. For idle/walk/jump/attack at 4 frames each,
-  request a 4×4 sheet where every cell is a unique pose progression.
+- ✅ Call \`generate2dsprite\` and request one row per animation, with each
+  cell a DISTINCT pose progression — actual motion frames, not duplicates.
 - ✅ Request the SAME number of frames for each animation row in the sheet
-  (so the slicer can grid-cut). 4 anims × 4 frames is a safe default.
+  (so the slicer can grid-cut). The exact count is your judgement call —
+  pick what suits the genre / style / completeness tier (a chunky NES-style
+  walk reads at 2 frames; a fluid Hollow-Knight-style walk wants 6+).
 - ✅ Backgrounds + props go through \`generate2dmap\` regardless of whether
   you "could just" \`image_gen\` a single image.
 
-### Frame-count guidance per anim type
-
-When telling the skill what to draw for each anim row:
-
-| Animation | Distinct frames needed |
-|---|---|
-| idle | 2 (subtle breathing) — even idle shouldn't be 1 frame |
-| walk / run | 4–6 (foot cycle) |
-| jump | 3 (rise / peak / fall) |
-| attack / slash | 3–4 (windup / strike / recover) |
-| hit / damage | 2 (flash / recoil) |
-| death | 4–6 (fall / fade) |
-
-If you ship "4 frames of identical idle" for any of these, the user's
-character looks like a corpse. Request actual motion variation.
+The non-negotiable rule is **motion variation**: every cell in a row must
+show actual progression. The frame COUNT is your call, but the count must
+mean what it claims (a 4-frame walk row must show 4 distinct walk poses,
+not 1 pose × 4).
 
 ### Generating ≠ done — you MUST wire it into game data
 
