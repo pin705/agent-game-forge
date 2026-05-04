@@ -106,6 +106,15 @@ export function Sidebar(props: Props) {
           onOpen={props.onOpenProject}
           onDelete={props.onDeleteProject}
         />
+        <button
+          type="button"
+          className="icon-btn side-top-open"
+          onClick={props.onOpenProject}
+          title="Open project folder…"
+          aria-label="Open project folder"
+        >
+          {I.plus}
+        </button>
       </div>
 
       {/* Project search — substring filter over file paths. ⌘K / Ctrl+K
@@ -303,16 +312,10 @@ function ProjectSwitcher(props: {
               </div>
             );
           })}
-          <div className="proj-dropdown-divider" />
-          <div
-            className="proj-dropdown-item action"
-            onClick={() => {
-              props.onOpen();
-              setOpen(false);
-            }}
-          >
-            + Open folder…
-          </div>
+          {/* 'Open folder…' moved out of the dropdown — it's now a
+              dedicated icon-btn next to the switcher in .side-top, so
+              the user doesn't have to open the menu just to add a new
+              project. The dropdown is purely for picking among recents. */}
         </div>
       )}
     </div>
