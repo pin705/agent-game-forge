@@ -372,30 +372,48 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
   background: var(--bg-1);
 }
 
+/* v2 button — hairline border, flat surface, no shadow, slight bg shift on hover. */
 .btn {
-  height: 28px;
-  padding: 0 10px;
-  border-radius: var(--radius);
-  display: inline-flex; align-items: center; gap: 6px;
-  border: 1px solid var(--line);
-  background: var(--bg-2);
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 7px;
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-1);
   color: var(--ink-0);
   font-weight: 500;
-  font-size: 12.5px;
+  font-size: 13px;
   white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+  font-family: inherit;
 }
-.btn:hover { background: var(--bg-3); border-color: var(--line-strong); }
+.btn:hover { background: var(--bg-2); border-color: var(--ink-3); }
 .btn.btn-ghost { background: transparent; border-color: transparent; color: var(--ink-1); }
-.btn.btn-ghost:hover { background: var(--bg-2); color: var(--ink-0); }
+.btn.btn-ghost:hover { background: var(--bg-2); color: var(--ink-0); border-color: transparent; }
+
+/* Primary button is now dark ink-on-white (Claude / Linear pattern), not
+ * accent-tinted. The accent stays reserved for status / special-purpose
+ * actions like the .btn-accent variant below. */
 .btn.btn-primary {
+  background: var(--ink-0);
+  color: var(--bg-0);
+  border-color: var(--ink-0);
+  font-weight: 500;
+}
+.btn.btn-primary:hover { background: #000; border-color: #000; }
+[data-theme="dark"] .btn.btn-primary:hover { background: var(--ink-0); border-color: var(--ink-0); filter: brightness(1.06); }
+
+.btn.btn-accent {
   background: var(--accent);
   color: var(--accent-ink);
-  border-color: transparent;
-  font-weight: 600;
+  border-color: var(--accent);
+  font-weight: 500;
 }
-.btn.btn-primary:hover { filter: brightness(1.05); }
-.btn.btn-icon { padding: 0; width: 28px; justify-content: center; }
-.btn-sm { height: 24px; font-size: 12px; padding: 0 8px; }
+.btn.btn-accent:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+.btn.btn-icon { padding: 0; width: 32px; justify-content: center; }
+.btn-sm { height: 26px; font-size: 12px; padding: 0 8px; }
+.btn-sm.btn-icon { width: 26px; }
 
 .agent-pill {
   display: inline-flex; align-items: center; gap: 6px;
@@ -589,30 +607,31 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
 /* =============== INSPECTOR =============== */
 .inspector {
   display: grid;
-  grid-template-rows: 36px 1fr;
+  grid-template-rows: 56px 1fr;
   min-width: 0; min-height: 0;
   background: var(--bg-0);
 }
 .crumbs {
-  display: flex; align-items: center; gap: 6px;
-  padding: 0 14px;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 24px;
+  font-size: 13px;
   color: var(--ink-2);
   border-bottom: 1px solid var(--line);
-  background: var(--bg-1);
+  background: var(--bg-0);
 }
 .crumbs .sep { color: var(--ink-3); }
-.crumbs .last { color: var(--ink-0); }
+.crumbs .last { color: var(--ink-0); font-weight: 500; }
 .crumbs .badge-dim {
-  margin-left: 6px;
-  font-size: 10.5px;
+  margin-left: 8px;
+  font-size: 11px;
   color: var(--ink-3);
   border: 1px solid var(--line);
-  padding: 0px 5px;
-  border-radius: 3px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  background: var(--bg-1);
 }
-.crumbs .actions { margin-left: auto; display: flex; gap: 4px; }
+.crumbs .actions { margin-left: auto; display: flex; gap: 6px; }
 
 .inspector-body {
   display: grid;
@@ -1702,20 +1721,21 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
 /* =============== SPRITE MODAL =============== */
 .modal-scrim {
   position: fixed; inset: 0; z-index: 30;
-  background: oklch(0.1 0.01 60 / 0.65);
-  backdrop-filter: blur(4px);
+  background: rgba(20, 18, 16, 0.45);
+  backdrop-filter: blur(2px);
   display: grid; place-items: center;
   padding: 32px;
 }
+[data-theme="dark"] .modal-scrim { background: rgba(0, 0, 0, 0.55); }
 .modal {
   width: min(1100px, 100%);
   height: min(720px, 90vh);
   background: var(--bg-1);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 12px;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+  box-shadow: var(--shadow-pop);
   display: grid;
-  grid-template-rows: 48px 1fr 56px;
+  grid-template-rows: 56px 1fr 56px;
   overflow: hidden;
 }
 .modal-head {
