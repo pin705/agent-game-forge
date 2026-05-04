@@ -75,6 +75,40 @@ under \`assets/\` plus a metadata JSON under \`data/\`.
 When the user asks "make me a slime", reach for these skills before writing
 custom image_gen prompts.
 
+### These skills are MANDATORY for visual assets — no shortcuts
+
+You MUST NOT generate game-visible art with raw \`image_gen\` and bypass the
+skill, even when "you just need one frame quickly". Specifically:
+
+- ❌ DON'T call \`image_gen\` directly for character / enemy / item / FX sprites
+- ❌ DON'T inline-generate a single PNG and use it as a sprite
+- ❌ DON'T fake an animation sheet by tiling one pose 4× and calling each cell
+  a "frame" — the result looks like the character froze. (We've shipped this
+  bug. The skill exists to prevent it.)
+- ✅ Call \`generate2dsprite\` and request one row per animation, with N
+  DISTINCT frames per row. For idle/walk/jump/attack at 4 frames each,
+  request a 4×4 sheet where every cell is a unique pose progression.
+- ✅ Request the SAME number of frames for each animation row in the sheet
+  (so the slicer can grid-cut). 4 anims × 4 frames is a safe default.
+- ✅ Backgrounds + props go through \`generate2dmap\` regardless of whether
+  you "could just" \`image_gen\` a single image.
+
+### Frame-count guidance per anim type
+
+When telling the skill what to draw for each anim row:
+
+| Animation | Distinct frames needed |
+|---|---|
+| idle | 2 (subtle breathing) — even idle shouldn't be 1 frame |
+| walk / run | 4–6 (foot cycle) |
+| jump | 3 (rise / peak / fall) |
+| attack / slash | 3–4 (windup / strike / recover) |
+| hit / damage | 2 (flash / recoil) |
+| death | 4–6 (fall / fade) |
+
+If you ship "4 frames of identical idle" for any of these, the user's
+character looks like a corpse. Request actual motion variation.
+
 ### Generating ≠ done — you MUST wire it into game data
 
 Both skills produce ASSETS only. The generated \`assets/\*\` files are

@@ -1424,11 +1424,6 @@ function AgentPane(props: {
       </div>
 
       <div className="convo" ref={props.convoRef}>
-        <SpecProgressCard
-          projectPath={props.project?.path ?? null}
-          conversationId={props.conversationId}
-          streaming={props.running}
-        />
         {props.turns.length === 0 && (
           <div className="msg-sys">{I.spark} {props.project ? 'Ready. Ask Codex something.' : 'Open a project to start.'}</div>
         )}
@@ -1443,8 +1438,14 @@ function AgentPane(props: {
             error={t.error}
             submittedForms={props.submittedForms}
             onSubmitForm={props.onSubmitForm}
+            projectPath={props.project?.path}
           />
         ))}
+        <SpecProgressCard
+          projectPath={props.project?.path ?? null}
+          conversationId={props.conversationId}
+          streaming={props.running}
+        />
       </div>
 
       <Dropzone

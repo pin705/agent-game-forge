@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { QuestionForm, QuestionFormAnswers } from '@ogf/contracts';
+import { fetchFileContent } from '../lib/api.js';
 
 interface Props {
   form: QuestionForm;
@@ -9,6 +10,9 @@ interface Props {
   /** Submitted answers, when locked. Used to render the chosen values. */
   lockedAnswers?: QuestionFormAnswers['answers'];
   onSubmit?: (answers: QuestionFormAnswers) => void;
+  /** Project path — only used by spec-approval forms to fetch .ogf/spec.md
+   *  for inline review. Other form ids ignore it. */
+  projectPath?: string;
 }
 
 function defaultValueFor(field: QuestionForm['fields'][number]): string | string[] {
@@ -58,6 +62,9 @@ export function QuestionFormCard(props: Props) {
         {props.locked && <span className="qform-locked-tag">submitted</span>}
       </div>
       {props.form.intro && <div className="qform-intro">{props.form.intro}</div>}
+      {props.form.id === 'spec-approval' && props.projectPath && (
+        <SpecViewer projectPath={props.projectPath} />
+      )}
       <div className="qform-fields">
         {props.form.fields.map((f) => (
           <FormFieldRow
@@ -209,4 +216,57 @@ function renderInput(
         />
       );
   }
+}
+
+/** Inline viewer for `.ogf/spec.md` — shown inside the spec-approval form so
+ *  the user can scan what they're approving without leaving the chat. Starts
+ *  collapsed (just a 'View spec' button + 1-line summary); click expands the
+ *  full markdown body. */
+function SpecViewer({ projectPath }: { projectPath: string }) {
+  const [content, setContent] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchFileContent(projectPath, '.ogf/spec.md')
+      .then((r) => {
+        if (cancelled) return;
+        setContent(r.content ?? '');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setError('spec.md not found yet — agent is still writing it');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectPath]);
+
+  if (error) {
+    return <div className="qform-spec-error">{error}</div>;
+  }
+  if (content === null) {
+    return <div className="qform-spec-loading">Loading spec…</div>;
+  }
+
+  // Pull the title (first H1) and phase count for the collapsed summary.
+  const titleMatch = /^#\s+(.+)$/m.exec(content);
+  const title = titleMatch ? titleMatch[1].trim() : 'spec.md';
+  const phaseCount = (content.match(/^- \[[ x]\] /gim) ?? []).length;
+
+  return (
+    <div className="qform-spec">
+      <button
+        type="button"
+        className="qform-spec-toggle"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? '▾' : '▸'} {title} · {phaseCount} phase{phaseCount === 1 ? '' : 's'}
+      </button>
+      {open && (
+        <pre className="qform-spec-body">{content}</pre>
+      )}
+    </div>
+  );
 }

@@ -20,6 +20,9 @@ export interface TurnProps {
   submittedForms?: Set<string>;
   /** Submit handler for question-forms emitted by the agent. */
   onSubmitForm?: (answers: QuestionFormAnswers) => void;
+  /** Project path — passed through so spec-approval forms can fetch
+   *  .ogf/spec.md for inline review. */
+  projectPath?: string;
 }
 
 export function Turn(props: TurnProps) {
@@ -47,6 +50,7 @@ export function Turn(props: TurnProps) {
             streaming={props.status === 'streaming'}
             submittedForms={props.submittedForms}
             onSubmitForm={props.onSubmitForm}
+            projectPath={props.projectPath}
           />
         ))}
 
@@ -75,11 +79,13 @@ function BlockView({
   streaming,
   submittedForms,
   onSubmitForm,
+  projectPath,
 }: {
   block: Block;
   streaming: boolean;
   submittedForms?: Set<string>;
   onSubmitForm?: (answers: QuestionFormAnswers) => void;
+  projectPath?: string;
 }) {
   if (block.kind === 'form') {
     const locked = submittedForms?.has(block.form.id) ?? false;
@@ -88,6 +94,7 @@ function BlockView({
         form={block.form}
         locked={locked}
         onSubmit={onSubmitForm}
+        projectPath={projectPath}
       />
     );
   }
