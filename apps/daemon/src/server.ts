@@ -949,7 +949,9 @@ Use this exact 8-section structure:
 # Game Spec — <project name>
 
 ## 1. Identity
-- Genre / Engine / Art style / Premise / Target session length / Completeness tier
+- Genre / Art style / World setting / Color mood / Premise / Target session length / Completeness tier / Difficulty / Win condition
+- Engine: read from the conventions block above (web or godot — DON'T re-ask the user, the project's engine was fixed at creation)
+- References: list any reference games the user named — they're the strongest single signal for what to build, treat them as soft constraints throughout
 
 ## 2. Player config
 - Sprite layout (NxM at K fps + sprite size)
@@ -1139,13 +1141,15 @@ You are working inside an Open Game Forge project. The user is editing a 2D game
 
 # Asking the user structured questions (\`<question-form>\`)
 
-When you need disambiguation BEFORE doing significant work — greenfield game spec, picking between architectures, choosing tone — DO NOT write prose questions. Emit a single \`<question-form>\` block that OGF renders as an interactive UI:
+When you need disambiguation BEFORE doing significant work — greenfield game spec, picking between architectures, choosing tone — DO NOT write prose questions. Emit a single \`<question-form>\` block that OGF renders as an interactive UI.
+
+For the greenfield "make me a game" case, use this exact discovery form (10 fields, broad enough that the resulting spec doesn't need follow-up clarifications). DO NOT include an 'engine' field — the engine is fixed at project-creation time and visible in the conventions block above.
 
 \`\`\`
 <question-form id="game-discovery">
 {
   "title": "Let's spec this game",
-  "intro": "Pick a few things and I'll write a spec + start work. Each completeness tier has a different scope and token budget.",
+  "intro": "Pick a few things and I'll draft a spec for your approval. The more specific you are, the closer the first build will be to what you want.",
   "fields": [
     {
       "key": "genre",
@@ -1156,7 +1160,9 @@ When you need disambiguation BEFORE doing significant work — greenfield game s
         { "value": "platformer", "label": "Side-scroll platformer", "detail": "Mega Man, Celeste-style" },
         { "value": "topdown",    "label": "Top-down action",       "detail": "Zelda, Hyper Light Drifter" },
         { "value": "td",         "label": "Tower defense",         "detail": "Kingdom Rush, BTD" },
-        { "value": "shmup",      "label": "Shoot-em-up",           "detail": "vertical/horizontal scroller" }
+        { "value": "shmup",      "label": "Shoot-em-up",           "detail": "vertical / horizontal scroller" },
+        { "value": "puzzle",     "label": "Puzzle",                "detail": "Sokoban, Baba Is You, match-3" },
+        { "value": "rpg",        "label": "RPG",                   "detail": "stat progression + combat" }
       ]
     },
     {
@@ -1165,10 +1171,37 @@ When you need disambiguation BEFORE doing significant work — greenfield game s
       "type": "radio",
       "required": true,
       "options": [
-        { "value": "minimal",  "label": "Minimal — playable demo",         "detail": "1 character × 3 anims (idle/walk/jump or attack), 1 enemy × 2 anims, 1 short level (~3 platforms + 1 encounter), real win/loss state. Plays end-to-end. ~15K tokens. 1-2 turns." },
+        { "value": "minimal",  "label": "Minimal — playable demo",          "detail": "1 character × 3 anims (idle/walk/jump or attack), 1 enemy × 2 anims, 1 short level (~3 platforms + 1 encounter), real win/loss state. Plays end-to-end. ~15K tokens. 1-2 turns." },
         { "value": "core",     "label": "Core — playable loop with variety","detail": "1 character × 4 anims, 3 enemy types × 2 anims each, 1 level + 1 boss room, basic HP UI. ~40K tokens. 3-4 turns." },
-        { "value": "polished", "label": "Polished — full vertical slice",  "detail": "2 characters × 5 anims each, 5 enemies, 3 levels, pickup system, scoring, menu. ~80K tokens. 5-7 turns." },
-        { "value": "full",     "label": "Full — substantial game",         "detail": "3+ characters × 6+ anims, 8+ enemies (incl. bosses), 5+ levels, save system, polish loops. ~200K+ tokens. 10+ turns." }
+        { "value": "polished", "label": "Polished — full vertical slice",   "detail": "2 characters × 5 anims each, 5 enemies, 3 levels, pickup system, scoring, menu. ~80K tokens. 5-7 turns." },
+        { "value": "full",     "label": "Full — substantial game",          "detail": "3+ characters × 6+ anims, 8+ enemies (incl. bosses), 5+ levels, save system, polish loops. ~200K+ tokens. 10+ turns." }
+      ]
+    },
+    {
+      "key": "premise",
+      "label": "1-line premise",
+      "type": "textarea",
+      "required": true,
+      "placeholder": "e.g. ronin samurai battles oni demons in the sengoku era"
+    },
+    {
+      "key": "references",
+      "label": "Reference games (very helpful — name 1-3 inspirations)",
+      "type": "textarea",
+      "placeholder": "e.g. feels like Mega Man X for combat, Hyper Light Drifter for art, Hollow Knight for atmosphere"
+    },
+    {
+      "key": "world_setting",
+      "label": "World / setting",
+      "type": "radio",
+      "options": [
+        { "value": "fantasy",    "label": "Fantasy",    "detail": "swords, magic, kingdoms, dragons" },
+        { "value": "scifi",      "label": "Sci-fi",     "detail": "lasers, robots, ships, cyber" },
+        { "value": "historical", "label": "Historical", "detail": "real-world era (samurai / WW2 / wild west)" },
+        { "value": "modern",     "label": "Modern",     "detail": "present-day urban / suburban" },
+        { "value": "horror",     "label": "Horror",     "detail": "ghosts, cults, body horror" },
+        { "value": "post_apoc",  "label": "Post-apoc",  "detail": "ruins, scavenging, mutants" },
+        { "value": "abstract",   "label": "Abstract",   "detail": "geometric, no fictional setting" }
       ]
     },
     {
@@ -1176,28 +1209,61 @@ When you need disambiguation BEFORE doing significant work — greenfield game s
       "label": "Art style",
       "type": "radio",
       "options": [
-        { "value": "pixel",     "label": "Pixel art",     "detail": "16-bit / SNES feel" },
+        { "value": "pixel",     "label": "Pixel art",     "detail": "16-bit / SNES feel, chunky pixels" },
         { "value": "cartoon",   "label": "Cartoon flat",  "detail": "vector / hand-drawn" },
-        { "value": "neon",      "label": "Neon / cyber",  "detail": "high contrast, glow" },
-        { "value": "retro",     "label": "Retro 80s",     "detail": "synthwave palette" }
+        { "value": "neon",      "label": "Neon / cyber",  "detail": "high contrast, glow effects" },
+        { "value": "retro",     "label": "Retro 80s",     "detail": "synthwave / VHS palette" },
+        { "value": "minimal",   "label": "Minimalist",    "detail": "few colors, geometric primitives" },
+        { "value": "painterly", "label": "Painterly",     "detail": "loose brushwork, atmospheric" }
       ]
     },
     {
-      "key": "premise",
-      "label": "1-line premise",
-      "type": "textarea",
-      "placeholder": "e.g. ronin samurai battles oni demons in the sengoku era"
+      "key": "color_mood",
+      "label": "Color mood",
+      "type": "radio",
+      "options": [
+        { "value": "warm",   "label": "Warm",        "detail": "reds, oranges, gold, sunset" },
+        { "value": "cool",   "label": "Cool",        "detail": "blues, teals, purple, night" },
+        { "value": "dark",   "label": "Dark / moody","detail": "blacks, deep tones, single accent" },
+        { "value": "bright", "label": "Bright pop",  "detail": "high saturation, energetic" },
+        { "value": "muted",  "label": "Muted",       "detail": "earth tones, low sat, naturalistic" }
+      ]
+    },
+    {
+      "key": "win_condition",
+      "label": "How does the player win / progress?",
+      "type": "radio",
+      "options": [
+        { "value": "boss",       "label": "Defeat the boss",          "detail": "level / stage culminates in a boss fight" },
+        { "value": "reach_goal", "label": "Reach the level goal",     "detail": "platformer-style end zone / portal" },
+        { "value": "survive",    "label": "Survive N waves / time",   "detail": "wave-based or time-attack" },
+        { "value": "collect",    "label": "Collect all items / kill all", "detail": "clear-the-room style" },
+        { "value": "explore",    "label": "Explore / 100% the map",   "detail": "metroidvania discovery" },
+        { "value": "puzzle",     "label": "Solve all puzzles",        "detail": "puzzle game completion" }
+      ]
+    },
+    {
+      "key": "difficulty",
+      "label": "Difficulty target",
+      "type": "radio",
+      "options": [
+        { "value": "chill",    "label": "Chill",    "detail": "forgiving HP / damage / enemies" },
+        { "value": "standard", "label": "Standard", "detail": "balanced fair challenge" },
+        { "value": "hard",     "label": "Hard",     "detail": "punishing — low HP, aggressive enemies" }
+      ]
     },
     {
       "key": "features",
-      "label": "Optional features",
+      "label": "Optional features (only check what you actually want in V1)",
       "type": "checkbox",
       "options": [
         { "value": "music",      "label": "Background music" },
         { "value": "sfx",        "label": "Sound effects" },
         { "value": "save",       "label": "Save / checkpoints" },
         { "value": "story",      "label": "Story dialog cutscenes" },
-        { "value": "controller", "label": "Gamepad support" }
+        { "value": "controller", "label": "Gamepad support" },
+        { "value": "particles",  "label": "Particle effects (juice)" },
+        { "value": "screenshake","label": "Screen shake on hits" }
       ]
     }
   ]
