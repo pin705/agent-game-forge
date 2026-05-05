@@ -1166,7 +1166,15 @@ Use this exact 8-section structure:
 ## 3. World
 - Levels (count + ids)
 - Camera behavior
-- Per-level structure (which arrays each level file holds)
+- **Per-level visual structure** — which the level JSON's visible-art field shape MUST be:
+  - Locked / single-screen camera (TD, arena, VN, puzzle):
+    \`background: { image: "assets/maps/<id>/background.png" }\` is acceptable.
+  - Scrolling / parallax camera (side-scroller, top-down RPG, roguelike with rooms):
+    Use \`layers: [{ image, parallax, zIndex }, ...]\`. NOT \`background: <single>\`.
+    Parallax-capable genres need multi-layer to look right; if you write
+    'background' singular for a side-scroller, you've locked yourself
+    into a flat scene before generate2dmap even runs.
+- **Per-level gameplay structure** — which arrays each level JSON holds (e.g. \`platforms[]\`, \`hazards[]\`, \`pickups[]\`, \`enemies[]\`, \`zones\`, \`exits\`).
 
 ## 4. Catalogs
 (arrays of objects ONLY: enemies, items, hazards, pickups. Player config does NOT belong here — it's in §2.)
@@ -1209,6 +1217,8 @@ These rules came from real specs that produced broken games:
   9. **Generate sprites with \`generate2dsprite\`, NEVER raw \`image_gen\`.** Each cell of an animation row MUST be a distinct pose progression — submitting a 4×4 sheet where every cell is the same pose ships a frozen-corpse character. Frame COUNT per anim is your judgement (genre / completeness / target style decide), but the count must mean what it claims: a 4-frame walk row shows 4 distinct walk poses, not 1 pose × 4. Spec §2 should list animation NAMES; per-anim frame counts can be authored at sheet-generation time.
 
   9a. **Every gen prompt MUST include game-context (genre + view + scale)** in addition to the Style directive. Without it the model picks the wrong perspective for your game (e.g. a side-view platformer hero for a tower defense top-down camera) and the asset looks broken in-engine. Concrete example: 'Genre: tower defense (Kingdom Rush-like). View: 3/4 top-down. World: 1280×720 battlefield, ~48px actor height, ~64px tower footprint. Style: <directive verbatim>. Generate <asset>...'. See conventions for required fields per skill call.
+
+  9c. **Level visual schema MUST match camera mode.** If §3 Camera is \`scroll\` / \`follow\` / \`parallax\` (i.e. anything that scrolls), the per-level visual structure MUST be \`layers: [...]\` not \`background: <single>\`. Writing single-bg schema for a scrolling-camera genre (side-scroller, top-down RPG with scrolling, roguelike rooms) is a self-inflicted lock-in: even when you call generate2dmap with \`map_mode: side_scroll_mode\` and the skill produces 4 parallax PNGs, your spec already declared \`background: <one image>\` so you'll throw away the layers. Decide schema BEFORE calling the skill; the schema must match what the skill will output for that genre.
 
   9b. **Visual consistency: every gen after the first MUST reference an existing asset.** Image generation is stochastic — same character generated twice independently looks like two different people. Phase 1 MUST establish \`.ogf/style-anchor.png\` (or designate the first character's idle sheet as the de-facto anchor). Every subsequent \`generate2dsprite\` / \`generate2dmap\` call must \`view_image\` the closest reference (same-character sheet > same-family sibling > anchor) BEFORE calling the skill, and pass \`reference: 'generated_image'\` so the skill knows to chain. Pasting a path string into the prompt without view_image does NOT count — bytes have to be in context. Skipping this is the #1 cause of "the same character looks different in idle vs walk" bugs we've shipped. See conventions for the exact prompt phrasing per reference role.
 
@@ -1491,8 +1501,11 @@ The very next turn after the user submits the discovery form, you do TWO things 
 
 ## 3. World
 - Levels: <count from completeness, list ids>
-- Camera: <locked / scroll / follow / parallax>
-- Per-level structure: <what arrays each level JSON has — props, platforms, hazards, etc>
+- Camera: <locked / horizontal-scroll / vertical-scroll / follow / parallax>
+- **Per-level visual structure** (REQUIRED — pick by camera):
+  - Locked / single-screen: \`background: { image: "..." }\`
+  - Scrolling / parallax: \`layers: [{ image, parallax, zIndex }, ...]\` (NOT \`background\` singular — generate2dmap will produce parallax PNGs for side_scroll_mode and you must use them all)
+- **Per-level gameplay structure**: <what arrays — props[], platforms[], hazards[], pickups[], enemies[], zones, exits>
 
 ## 4. Catalogs
 - Enemies: <count from completeness; list ids + 1-line each>
