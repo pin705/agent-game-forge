@@ -341,6 +341,20 @@ export function App() {
       });
   }, []);
 
+  // While a turn is running, refresh the file tree periodically as a
+  // safety net. The subscribeRun loop schedules debounced refreshes on
+  // Edit / image_gen events, but a long shell command can write files
+  // (mv / cp / generate2dsprite Python output) without surfacing as an
+  // Edit event. 5s is slow enough not to thrash the daemon and fast
+  // enough that the user sees new files appearing as the agent works.
+  useEffect(() => {
+    if (!running || !project) return;
+    const id = window.setInterval(() => {
+      void refreshTree(project);
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [running, project, refreshTree]);
+
   // Web only: read data/levels.json and remember which file paths are levels.
   // The Sengoku layout has data/<scene>-collision-map.json next to data/
   // catalogs (enemies.json, items.json, ...). Only the level files should
@@ -652,6 +666,20 @@ export function App() {
 
       const turnChanged = new Set<string>();
 
+      // Debounce file-tree refresh during a run. Edit / image_gen events
+      // can fire dozens of times per turn (every saved sprite, every JSON
+      // tweak); we don't want a tree fetch per event. 600ms gives enough
+      // grace for a burst of writes to settle, and feels live to the user.
+      let treeRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+      const scheduleTreeRefresh = () => {
+        if (!project) return;
+        if (treeRefreshTimer) clearTimeout(treeRefreshTimer);
+        treeRefreshTimer = setTimeout(() => {
+          treeRefreshTimer = null;
+          void refreshTree(project);
+        }, 600);
+      };
+
       subscribeRun(r.runId, (e) => {
         if (e.type === 'agent') {
           if (e.data.type === 'tool_use' && e.data.name === 'Edit') {
@@ -662,6 +690,13 @@ export function App() {
                 if (rel) turnChanged.add(rel);
               }
             }
+            scheduleTreeRefresh();
+          }
+          // Synthetic image_gen events from the daemon's filesystem watcher
+          // also signal new files on disk — refresh the tree so the
+          // generated PNGs appear under assets/ without waiting for end.
+          if (e.data.type === 'tool_use' && e.data.name === 'image_gen') {
+            scheduleTreeRefresh();
           }
           appendEventToLastTurn(e.data);
         } else if (e.type === 'error') {
