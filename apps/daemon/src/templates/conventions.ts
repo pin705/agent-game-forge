@@ -87,8 +87,28 @@ array-of-objects with a recognized time field.
 
 ## Image generation skill (Codex)
 
-OGF projects use TWO Codex skills for visual assets. Pick the right
-one based on what you're making — **never raw \`image_gen\`**.
+**These two skills — \`generate2dsprite\` and \`generate2dmap\` — are OGF's
+core asset pipeline.** OGF's data model is designed to consume their
+output as canonical. Whatever pipeline the skill picks based on the
+genre (baked image / layered raster / tilemap / parallax layers /
+prop pack), OGF treats as the source of truth.
+
+Two corollaries:
+
+- **Don't second-guess the skill's pipeline choice.** If you're making
+  a side-scroller and \`generate2dmap\` picks \`side_scroll_mode\` with
+  parallax layers (4-5 PNGs + a metadata JSON), let it. Don't ask it
+  to "just give me one flat background instead" because OGF's editor
+  is still catching up — the user can still play the game in Play tab,
+  and OGF's editor will render whatever subset it currently supports.
+- **Don't bypass the skill for "simpler" output.** If \`generate2dmap\`
+  outputs a tilemap + props pack and you think "ugh, OGF can only show
+  the preview not the tilemap", that's OGF's gap to close in a future
+  phase, not a reason to downgrade to a flat baked image. The game
+  needs the right asset; OGF's preview is secondary.
+
+Pick the right skill based on what you're making — **never raw
+\`image_gen\` for game art**.
 
 ### Which skill? — explicit decision rule
 
@@ -100,10 +120,10 @@ one based on what you're making — **never raw \`image_gen\`**.
 | An impact / explosion / FX | \`generate2dsprite\` | Discrete frame sequence |
 | An item / pickup / icon (single) | \`generate2dsprite\` | Discrete sprite |
 | A UI button / cursor / decoration sprite | \`generate2dsprite\` | Discrete sprite |
-| A level background / battlefield scene | \`generate2dmap\` | Whole-scene composition |
+| A level scene / battlefield / map | \`generate2dmap\` | Whole-scene composition (output may be 1 baked image OR layered / tilemap / parallax — skill picks based on genre) |
 | A tileset (grass / wall / floor tiles) | \`generate2dmap\` | Multi-tile pack with layout |
 | A prop pack / decoration set (rocks, bushes, trees) | \`generate2dmap\` | Collection of related set-dressings |
-| Parallax background layers | \`generate2dmap\` | Scene-level visual |
+| Parallax background layers | \`generate2dmap\` | Scene-level visual, multi-PNG output |
 | A walkable map / dungeon room | \`generate2dmap\` | Spatial level art |
 
 **Quick rule of thumb**:
@@ -121,12 +141,20 @@ one based on what you're making — **never raw \`image_gen\`**.
   If it's pure set-dressing in a forest scene → \`generate2dmap\` as
   part of a prop pack.
 - **A battlefield with embedded prop slots** (Kingdom-Rush-style
-  build pads + path + scenery): generate the BACKGROUND with
-  \`generate2dmap\`, then generate each TOWER (the unit going on the
-  pads) with \`generate2dsprite\`. Two skill calls.
+  build pads + path + scenery): generate the SCENE/MAP with
+  \`generate2dmap\` (skill picks \`scene_mode\` — usually a baked
+  layout or layered raster), then generate each TOWER (the unit going
+  on the pads) with \`generate2dsprite\`. Two skill calls.
 - **A boss with a unique arena**: BOSS sprite via
-  \`generate2dsprite\`; arena background via \`generate2dmap\`. Don't
+  \`generate2dsprite\`; arena scene via \`generate2dmap\`. Don't
   try to fit both in one skill.
+- **A side-scrolling level** (Mega Man / Hollow Knight style):
+  \`generate2dmap\` will pick \`side_scroll_mode\` with parallax_layers —
+  output is several PNG layers (sky / mid / fg / occluder) + a
+  collision metadata JSON. Use them all — don't tell the skill to
+  flatten to one image because OGF currently shows only one. Each
+  PLATFORM / ENEMY / PLAYER on top is a separate \`generate2dsprite\`
+  call.
 
 When in doubt, ask: "is this thing a single in-game object the
 player interacts with?" Yes → sprite. No → map.
@@ -253,13 +281,31 @@ height, towers occupy ~64px footprint slots. Style: <full Style
 directive verbatim>. Generate <asset_type>: <id>, <action>...
 \`\`\`
 
-Example for a generate2dmap call:
+Example for a generate2dmap call (TD — single-screen baked):
 \`\`\`
 Genre: tower defense (Kingdom Rush-like). View: 3/4 top-down route
 defense camera, locked. World: 1280×720 single-screen battlefield
 with one winding enemy path. Style: <full Style directive verbatim>.
-Generate the background: <description>...
+map_mode: scene_mode. Generate the battlefield with build-pad slots
+along the path...
 \`\`\`
+
+Example for a generate2dmap call (side-scroller — parallax):
+\`\`\`
+Genre: side-scrolling action platformer (Mega Man X-like).
+View: pure side view, scrolling camera. World: 320×180 logical
+viewport, ~48px actor, ~16px tile grid. Style: <full Style
+directive verbatim>. map_mode: side_scroll_mode. Generate parallax
+layers (sky / midground mountains / nearground foliage / foreground
+occluders) plus a collision metadata JSON for the platform geometry.
+\`\`\`
+
+Pass \`map_mode\` explicitly when you know the genre so the skill
+doesn't have to guess. The skill will still pick the lower-level axes
+(visual_model, runtime_object_model, collision_model) — those are
+implementation details. Letting the skill pick its own pipeline based
+on \`map_mode\` is correct; overriding to "just one image" because
+OGF's editor preview is simpler is NOT correct.
 
 Without genre + view, you get sprites in the wrong perspective for
 the game (top-down character rendered as a side-view platformer hero,
@@ -882,12 +928,15 @@ export function summarizeConventions(): string {
 - Shapes use canonical fields: { x, y } / { x, y, w, h } / { x, y, radius } /
   { points: [[x,y]...] }. No variants.
 - One level per JSON file.
-- Visual assets go through ONE OF TWO Codex skills, NEVER raw \`image_gen\`:
+- **Visual assets go through OGF's two core skills, NEVER raw \`image_gen\`**:
   - \`generate2dsprite\` for any DISCRETE in-game object (character /
     enemy / tower / projectile / FX / single prop / UI sprite). One
     asset = one skill call.
-  - \`generate2dmap\` for the WORLD itself (level backgrounds /
-    tilesets / parallax layers / prop packs as set-dressing).
+  - \`generate2dmap\` for the WORLD/SCENE (level maps / tilesets /
+    parallax layers / prop packs). Pass \`map_mode\` based on genre
+    (\`scene_mode\` for TD, \`side_scroll_mode\` for platformer,
+    \`tile_mode\` for RPG, etc.). Skill picks pipeline; don't downgrade
+    to "just one image" because OGF's editor preview is simpler.
   Quick rule: "is this a single thing the player interacts with?"
   Yes → sprite. No (it's the scene) → map.
 - Every gen call after the project's first MUST view_image a prior

@@ -1349,7 +1349,14 @@ function composePrompt(
 
   return `# Open Game Forge — agent run
 
-You are working inside an Open Game Forge project. The user is editing a 2D game in this directory. Edit files on disk in the cwd. **For game-visible art (sprites, characters, enemies, towers, props, FX): you MUST call the \`generate2dsprite\` skill — never raw \`image_gen\`. For backgrounds / maps / tilesets: call \`generate2dmap\`.** One asset = one skill call; never pack multiple distinct assets into a single mega-atlas. See "Asset / map generation skills" below for the strict rules. Place generated files under \`assets/\`. Report changed files at the end.
+You are working inside an Open Game Forge project. The user is editing a 2D game in this directory. Edit files on disk in the cwd.
+
+**OGF's two core skills are \`generate2dsprite\` and \`generate2dmap\`. Every visual asset goes through one of them — never raw \`image_gen\`.**
+
+- **Sprite-like things** (character / enemy / tower / projectile / item / FX / single prop / UI sprite) → \`generate2dsprite\`. One asset = one skill call.
+- **Scene-like things** (level map / tileset / parallax layers / prop pack / battlefield) → \`generate2dmap\` with \`map_mode\` matching the genre (\`scene_mode\` for TD, \`side_scroll_mode\` for platformer, \`tile_mode\` for RPG, etc.). The skill picks its own output pipeline (single image / layered / tilemap / parallax) — don't second-guess it; let the skill output what the genre needs.
+
+Never pack multiple distinct assets into a single \`image_gen\` mega-atlas. See "Asset / map generation skills" below for the strict rules. Place generated files under \`assets/\`. Report changed files at the end.
 
 # Asking the user structured questions (\`<question-form>\`)
 
@@ -1541,9 +1548,15 @@ These are not "preferred" — they are **required** for any game-visible art:
   prop sprites and animation sheets. Decide asset_type / action / view /
   sheet layout from the user's request; the skill handles image_gen +
   chroma key + frame alignment + transparent export.
-- **\`generate2dmap\`** — for level backgrounds, prop packs, tilesets,
-  parallax layers. The skill picks the right pipeline (baked / layered /
-  tilemap / parallax) and emits engine-native files.
+- **\`generate2dmap\`** — for level scenes / maps. Pass \`map_mode\` explicitly
+  based on genre (\`scene_mode\` for TD/arena/single-screen battlefields,
+  \`side_scroll_mode\` for platformer/Mega-Man-style with parallax,
+  \`tile_mode\` for top-down RPG with grid, \`grid_mode\` for tactics,
+  \`room_chunk_mode\` for roguelikes, \`baked_scene_mode\` for static
+  battle backgrounds / VN scenes). The skill then picks the lower-level
+  pipeline (single image / layered / tilemap / parallax-layers) — let
+  it. Don't override to "just one image" because OGF's editor preview
+  is simpler; the GAME needs the right asset, OGF preview is secondary.
 
 ## Hard rules
 
