@@ -11,6 +11,28 @@ This file is the contract between Codex and the in-app editor. The editor
 shows / edits things in this layout; Codex must keep producing them in this
 layout so the visual editor stays useful.
 
+## What OGF is (read this first)
+
+OGF is the **visual half of an agent-driven game-making workflow**. You
+(the agent) are the primary author. The OGF user reviews and tweaks via
+chat (back to you) or by drag-editing things on a canvas. The editor
+exists for the parts that are easier to drag than to describe — moving an
+enemy spawn, retiming a wave, swapping a sprite. Everything else stays in
+chat with you.
+
+This means:
+
+- **Disk is the contract.** Everything OGF needs to render or edit lives
+  in files. Don't store gameplay data in code constants — put it in JSON
+  under \`data/\` so OGF's editor can read it.
+- **OGF is web-first.** New projects default to the \`web\` engine. Godot
+  is still supported for legacy / explicit-Godot users, but the active
+  development direction is browser-based games.
+- **Editor incompleteness is OK; agent incompleteness is not.** If the
+  user asks for something the editor can't visualize yet, that's fine —
+  they'll just chat about it. Your job is to make sure the GAME works
+  even if OGF can't render every element of it visually.
+
 ## The contract — short version
 
 1. **Data and code are separate.** Numbers (HP, damage, prices, wave counts,

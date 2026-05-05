@@ -24,7 +24,10 @@ export function FolderPickerModal(props: Props) {
   const [manualPath, setManualPath] = useState('');
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
-  const [newEngine, setNewEngine] = useState<'godot' | 'web'>('godot');
+  // Default engine = 'web' since the JS-first pivot. Godot still works
+  // (existing projects auto-detected) but new projects start as web games
+  // by default — that's where OGF's agent + editor coupling is best.
+  const [newEngine, setNewEngine] = useState<'godot' | 'web'>('web');
 
   useEffect(() => {
     let cancelled = false;
