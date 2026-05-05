@@ -106,11 +106,13 @@ function BlockView({
         locked={locked}
         onSubmit={onSubmitForm}
         projectPath={projectPath}
-        // Demo-friendly fallback: if the user doesn't engage within 30s,
-        // auto-submit with the defaults so the agent isn't stuck waiting.
-        // QuestionFormCard cancels the timer on any interaction and skips
-        // when required fields would still be empty.
-        autoSubmitSeconds={locked ? undefined : 30}
+        // Demo-friendly fallback: if the user doesn't engage within
+        // 5 minutes, auto-submit with the defaults so the agent isn't
+        // stuck waiting. 30s was too aggressive — users actually
+        // reading a spec ran out of time before they could pick.
+        // QuestionFormCard cancels the timer on any interaction and
+        // skips when required fields would still be empty.
+        autoSubmitSeconds={locked ? undefined : 300}
       />
     );
   }

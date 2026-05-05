@@ -1352,18 +1352,25 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
   justify-content: center;
 }
 
-/* Auto-submit countdown hint — sits in the form head, ghost styling so
- * it reads as advisory not a button. Click anywhere on the form
- * (capture-phase) cancels the timer. */
+/* Auto-submit countdown — pill-shaped button in the form head. Click
+ * to cancel the timer. Any other interaction with form fields also
+ * cancels (capture-phase listener). */
 .qform-auto-hint {
   margin-left: auto;
   font-family: var(--font-mono);
   font-size: 10.5px;
-  color: var(--ink-3);
-  padding: 2px 8px;
+  color: var(--ink-2);
+  padding: 3px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--bg-2);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.qform-auto-hint:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-line);
 }
 .qform-title {
   font-weight: 600;

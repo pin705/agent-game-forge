@@ -132,9 +132,17 @@ export function QuestionFormCard(props: Props) {
         <span className="qform-title">{props.form.title}</span>
         {props.locked && <span className="qform-locked-tag">submitted</span>}
         {autoActive && !props.locked && (
-          <span className="qform-auto-hint" title="Auto-submits if you don't respond">
-            auto-submit in {secondsLeft}s · click to cancel
-          </span>
+          <button
+            type="button"
+            className="qform-auto-hint"
+            title="Cancel the auto-submit timer — keep this form open until you submit it manually"
+            onClick={(e) => {
+              e.stopPropagation();
+              setAutoActive(false);
+            }}
+          >
+            auto-submit in {formatCountdown(secondsLeft)} · cancel
+          </button>
         )}
       </div>
       {!isCollapsed && (
@@ -373,4 +381,14 @@ function SpecViewer({ projectPath }: { projectPath: string }) {
       )}
     </div>
   );
+}
+
+/** Format remaining seconds as 'mm:ss' when ≥ 60s, plain '<n>s' below.
+ *  Used by the auto-submit countdown hint — '4:23' reads cleaner than
+ *  '263s' for the 5-minute default we now use. */
+function formatCountdown(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
