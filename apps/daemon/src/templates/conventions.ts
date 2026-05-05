@@ -65,15 +65,53 @@ array-of-objects with a recognized time field.
 
 ## Image generation skill (Codex)
 
-For sprite / animation assets, USE the **\`generate2dsprite\`** Codex skill.
-It handles image_gen + chroma key + frame slicing. Don't roll your own.
+OGF projects use TWO Codex skills for visual assets. Pick the right
+one based on what you're making — **never raw \`image_gen\`**.
 
-For maps and tiles / props, USE the **\`generate2dmap\`** skill. It picks the
-right pipeline (baked / layered / tilemap) and writes sliced sprite files
-under \`assets/\` plus a metadata JSON under \`data/\`.
+### Which skill? — explicit decision rule
+
+| You're making… | Use this skill | Why |
+|----------------|----------------|-----|
+| A character / enemy / NPC / hero | \`generate2dsprite\` | Discrete actor, animation rows, transparent BG |
+| A tower / turret / building (single asset) | \`generate2dsprite\` | Discrete game object, often animated (idle / fire) |
+| A projectile / missile / arrow | \`generate2dsprite\` | Discrete in-game thing |
+| An impact / explosion / FX | \`generate2dsprite\` | Discrete frame sequence |
+| An item / pickup / icon (single) | \`generate2dsprite\` | Discrete sprite |
+| A UI button / cursor / decoration sprite | \`generate2dsprite\` | Discrete sprite |
+| A level background / battlefield scene | \`generate2dmap\` | Whole-scene composition |
+| A tileset (grass / wall / floor tiles) | \`generate2dmap\` | Multi-tile pack with layout |
+| A prop pack / decoration set (rocks, bushes, trees) | \`generate2dmap\` | Collection of related set-dressings |
+| Parallax background layers | \`generate2dmap\` | Scene-level visual |
+| A walkable map / dungeon room | \`generate2dmap\` | Spatial level art |
+
+**Quick rule of thumb**:
+- If the asset is **ONE discrete in-game object** (something the
+  player can target, click, fight, collect, equip, or stand on as
+  an individual entity) → \`generate2dsprite\`.
+- If the asset is **the world itself** (the backdrop, the tile grid,
+  the set of decorations meant to populate a scene together) →
+  \`generate2dmap\`.
+
+### Edge cases
+
+- **A single tree / rock / barrel on a map**: if it's an interactive
+  object (chop the tree, smash the barrel) → \`generate2dsprite\`.
+  If it's pure set-dressing in a forest scene → \`generate2dmap\` as
+  part of a prop pack.
+- **A battlefield with embedded prop slots** (Kingdom-Rush-style
+  build pads + path + scenery): generate the BACKGROUND with
+  \`generate2dmap\`, then generate each TOWER (the unit going on the
+  pads) with \`generate2dsprite\`. Two skill calls.
+- **A boss with a unique arena**: BOSS sprite via
+  \`generate2dsprite\`; arena background via \`generate2dmap\`. Don't
+  try to fit both in one skill.
+
+When in doubt, ask: "is this thing a single in-game object the
+player interacts with?" Yes → sprite. No → map.
 
 When the user asks "make me a slime", reach for these skills before writing
-custom image_gen prompts.
+custom image_gen prompts — never compose your own image_gen prompt for
+game art (see the hard rules below).
 
 ### These skills are MANDATORY for visual assets — no shortcuts
 
@@ -113,8 +151,10 @@ batching is more efficient. Specifically:
   can grid-cut). The exact count is your judgement call — pick what suits
   the genre / style / completeness tier (a chunky NES-style walk reads at
   2 frames; a fluid Hollow-Knight-style walk wants 6+).
-- ✅ Backgrounds + props go through \`generate2dmap\` regardless of whether
-  you "could just" \`image_gen\` a single image.
+- ✅ Backgrounds + tilesets + prop PACKS (set-dressing collections) go
+  through \`generate2dmap\`. Individual interactive props (a tower, a
+  treasure chest, a barrel that breaks) go through
+  \`generate2dsprite\`. See the 'Which skill?' table above when in doubt.
 
 #### Cost vs. correctness
 
@@ -777,8 +817,17 @@ export function summarizeConventions(): string {
 - Shapes use canonical fields: { x, y } / { x, y, w, h } / { x, y, radius } /
   { points: [[x,y]...] }. No variants.
 - One level per JSON file.
-- For sprites use the \`generate2dsprite\` Codex skill; for maps use
-  \`generate2dmap\`. They handle image_gen + post-processing.
+- Visual assets go through ONE OF TWO Codex skills, NEVER raw \`image_gen\`:
+  - \`generate2dsprite\` for any DISCRETE in-game object (character /
+    enemy / tower / projectile / FX / single prop / UI sprite). One
+    asset = one skill call.
+  - \`generate2dmap\` for the WORLD itself (level backgrounds /
+    tilesets / parallax layers / prop packs as set-dressing).
+  Quick rule: "is this a single thing the player interacts with?"
+  Yes → sprite. No (it's the scene) → map.
+- Every gen call after the project's first MUST view_image a prior
+  asset and pass \`reference: 'generated_image'\` for visual
+  consistency. See full conventions for the four-step pattern.
 - Generating ≠ done. After the skill writes assets, you MUST edit the
   level / catalog JSON to reference them, or the user sees nothing. The
   \`*-prop-pack.json\` metadata file is NOT the gameplay data.
