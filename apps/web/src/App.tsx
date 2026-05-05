@@ -557,6 +557,14 @@ export function App() {
         if (project) {
           void refreshTree(project);
           void refreshPending(project);
+          // The agent commonly writes data/levels.json (the level
+          // registry) mid-run. Without this re-load, OGF's
+          // webLevelFiles stays empty and the user clicks a freshly
+          // generated level file but it opens in Assets tab instead
+          // of Scenes — because the routing fallback regex doesn't
+          // match agent's semantic file names ('moonlit_ridge.json'
+          // doesn't contain 'level' or 'collision-map').
+          void loadWebLevelRegistry(project);
           bumpMetadataRev();
           setSceneReloadKey((n) => n + 1);
         }
@@ -792,6 +800,11 @@ export function App() {
           if (project) {
             void refreshTree(project);
             void refreshPending(project);
+            // Re-read data/levels.json — the agent often writes /
+            // updates the level registry during the turn. Without this,
+            // newly-generated level JSONs route to Assets instead of
+            // Scenes when clicked.
+            void loadWebLevelRegistry(project);
             // Bump metadataRev so FileEditor re-fetches sidecar metadata
             // (slicing JSON, .ogf/regen/<relPath> staging probe, etc).
             // Without this, a regenerate completed during the turn won't
