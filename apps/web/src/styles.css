@@ -1243,6 +1243,48 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
   gap: 8px;
   margin-bottom: 6px;
 }
+.spec-progress-head-clickable {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+}
+.spec-progress-head-clickable:hover .spec-progress-title { color: var(--accent); }
+.spec-progress-chev {
+  color: var(--ink-3);
+  font-size: 11px;
+  width: 12px;
+  display: inline-flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.spec-progress.collapsed { padding: 8px 12px; }
+.spec-progress.collapsed .spec-progress-bar { margin-bottom: 0; }
+/* When collapsed, show only the active phase as a single line so the
+ * user still sees what's happening without burning 14 phases of
+ * vertical space. */
+.spec-progress-active-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  /* Truncate long phase descriptions on one line. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.spec-progress-active-line .spec-progress-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .spec-progress-title {
   font-weight: 600;
   color: var(--ink-0);
@@ -1272,6 +1314,11 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
 }
 .spec-progress-phases {
   list-style: none;
+  /* 14-phase specs are common — cap height so the chat scrollback
+   * stays usable. Internal scroll for long lists. */
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   margin: 0;
   padding: 0;
   display: flex;

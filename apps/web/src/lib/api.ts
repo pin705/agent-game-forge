@@ -330,12 +330,42 @@ export async function fileToBase64(file: File): Promise<string> {
 }
 
 // Runs
-export const createRun = (req: CreateRunRequest) =>
-  jsonFetch<CreateRunResponse>('/api/runs', {
+/** createRun returns the new run normally, but if the server detects an
+ *  active run for the same conversation it returns 409 with the existing
+ *  runId. Caller should check `existingRunId` and re-subscribe to that
+ *  run's SSE stream instead of creating a duplicate codex spawn. */
+export interface CreateRunDuplicate {
+  duplicate: true;
+  existingRunId: string;
+  startedAt: number;
+}
+export async function createRun(
+  req: CreateRunRequest,
+): Promise<CreateRunResponse | CreateRunDuplicate> {
+  const r = await fetch('/api/runs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
   });
+  if (r.status === 409) {
+    const data = (await r.json()) as { existingRunId: string; startedAt: number };
+    return { duplicate: true, existingRunId: data.existingRunId, startedAt: data.startedAt };
+  }
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`/api/runs: ${r.status} ${t}`);
+  }
+  return r.json() as Promise<CreateRunResponse>;
+}
+
+export async function fetchActiveRun(conversationId: string): Promise<
+  | { active: false }
+  | { active: true; runId: string; status: string; startedAt: number; lastActivity: number }
+> {
+  return jsonFetch(
+    `/api/conversations/${encodeURIComponent(conversationId)}/active-run`,
+  );
+}
 
 export async function cancelRun(runId: string): Promise<void> {
   await fetch(`/api/runs/${runId}/cancel`, { method: 'POST' });

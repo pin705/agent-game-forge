@@ -383,6 +383,10 @@ export function mapCodexEvent(raw: CodexJsonEvent): AgentEvent | null {
 export interface JsonlParserCallbacks {
   onEvent: (e: AgentEvent) => void;
   onThreadId?: (id: string) => void;
+  /** Heartbeat: fired on every line received (parsed or unparsed).
+   *  Used by the stall watchdog to detect runs whose stdout went silent
+   *  for too long. */
+  onActivity?: () => void;
 }
 
 export function createJsonlParser(cb: JsonlParserCallbacks) {
@@ -391,6 +395,7 @@ export function createJsonlParser(cb: JsonlParserCallbacks) {
   function consume(line: string) {
     if (!line) return;
     debugLogLine(line);
+    cb.onActivity?.();
     try {
       const obj = JSON.parse(line) as CodexJsonEvent;
       const tid = extractThreadId(obj);

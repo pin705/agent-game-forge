@@ -23,6 +23,7 @@ import {
   fetchFileContent,
   fetchFileTree,
   fetchMessages,
+  fetchActiveRun,
   fetchPendingSlices,
   fetchProjects,
   fetchRefs,
@@ -489,12 +490,79 @@ export function App() {
     [refreshTree],
   );
 
-  const selectConversation = useCallback(async (id: string) => {
+  // NOT useCallback — needs to read latest project / refreshTree etc via
+  // closure (same reason send() is a regular function).
+  async function selectConversation(id: string) {
     setConversationId(id);
     localStorage.setItem(LS_CONVERSATION, id);
-    const r = await fetchMessages(id);
-    setTurns(messagesToTurns(r.messages));
-  }, []);
+    const [r, active] = await Promise.all([
+      fetchMessages(id),
+      fetchActiveRun(id).catch(() => ({ active: false }) as { active: false }),
+    ]);
+    setTurns(messagesToTurns(r.messages, active.active === true));
+    if (active.active) {
+      // Resume the in-flight run after refresh / conversation switch.
+      // The user's last message has no agent reply yet because the
+      // codex hasn't closed; we already marked that turn as 'streaming'
+      // via messagesToTurns(active=true) above.
+      setRunId(active.runId);
+      setRunning(true);
+      subscribeToRun(active.runId);
+    }
+  }
+
+  /** Wires up the SSE handler for a running codex. Used by both send()
+   *  (after createRun spawns a fresh codex) and selectConversation
+   *  (after reconnect-on-refresh discovers an active run). The frontend
+   *  appends events to the last turn, finalizes on end/error, and
+   *  triggers tree / spec refresh on completion.
+   *
+   *  Capture-phase note: the last turn that events flow into is the
+   *  most recent turn in `turns` state. messagesToTurns + send() both
+   *  ensure that's the right placeholder. */
+  function subscribeToRun(runId: string) {
+    subscribeRun(runId, (e) => {
+      if (e.type === 'agent') {
+        appendEventToLastTurn(e.data);
+        // Schedule a debounced tree refresh on Edit / image_gen events
+        // so newly-generated files appear in the sidebar live.
+        if (
+          e.data.type === 'tool_use' &&
+          (e.data.name === 'Edit' || e.data.name === 'image_gen') &&
+          project
+        ) {
+          // Coarse: just refresh after a short delay. The send() path
+          // has a fancier debounce; reconnect can stay simple.
+          window.setTimeout(() => void refreshTree(project), 800);
+        }
+      } else if (e.type === 'error') {
+        const msg =
+          (e.data as { reason?: string }).reason === 'stalled'
+            ? 'Run stalled — agent stopped emitting events for 5+ minutes.'
+            : e.data.message;
+        finalizeLastTurn('failed', msg);
+        setRunning(false);
+        setRunId(null);
+      } else if (e.type === 'end') {
+        const status: TurnStatus =
+          e.data.status === 'succeeded'
+            ? 'done'
+            : e.data.status === 'canceled'
+              ? 'canceled'
+              : 'failed';
+        finalizeLastTurn(status);
+        setRunning(false);
+        setRunId(null);
+        setLastRunAt(Date.now());
+        if (project) {
+          void refreshTree(project);
+          void refreshPending(project);
+          bumpMetadataRev();
+          setSceneReloadKey((n) => n + 1);
+        }
+      }
+    });
+  }
 
   const newConversation = useCallback(async () => {
     if (!project) return;
@@ -654,6 +722,17 @@ export function App() {
         reasoning,
         refImagePaths: refs.length > 0 ? refs.map((x) => x.relPath) : undefined,
       });
+
+      // Daemon detected a duplicate — same conversation already has an
+      // active run. Reuse it instead of creating a fork. This shouldn't
+      // normally happen since the UI disables Send while running, but
+      // if a refresh / reconnect race leaves the frontend without runId,
+      // the daemon catches it and we recover.
+      if ('duplicate' in r) {
+        setRunId(r.existingRunId);
+        subscribeToRun(r.existingRunId);
+        return;
+      }
       setRunId(r.runId);
 
       if (!conversationId || conversationId !== r.conversationId) {
@@ -1858,7 +1937,7 @@ function NewFileModal(props: { onCancel: () => void; onSubmit: (relPath: string)
 
 // ===================== Helpers =====================
 
-function messagesToTurns(messages: Message[]): UiTurn[] {
+function messagesToTurns(messages: Message[], hasActiveRun = false): UiTurn[] {
   const turns: UiTurn[] = [];
   let pendingUser: { text: string; createdAt: number } | null = null;
 
@@ -1890,14 +1969,19 @@ function messagesToTurns(messages: Message[]): UiTurn[] {
     }
   }
   if (pendingUser) {
+    // Trailing user message with no agent reply yet. If the daemon
+    // tells us a run is still active for this conversation, show the
+    // turn as STREAMING (events will pour in via reconnect SSE) instead
+    // of FAILED. The 'No agent response recorded' fallback was wrong
+    // for the common 'user refreshed mid-run' case.
     turns.push({
       id: `t-pending`,
       userText: pendingUser.text,
       events: [],
-      status: 'failed',
+      status: hasActiveRun ? 'streaming' : 'failed',
       startedAt: pendingUser.createdAt,
-      endedAt: Date.now(),
-      error: 'No agent response recorded.',
+      endedAt: hasActiveRun ? undefined : Date.now(),
+      error: hasActiveRun ? undefined : 'No agent response recorded.',
     });
   }
   return turns;

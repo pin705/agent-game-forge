@@ -812,6 +812,23 @@ export function createServer() {
     res.json({ messages } satisfies MessagesResponse);
   });
 
+  // Refresh-resume: when the page reloads we lose React state including
+  // runId. This endpoint lets the frontend ask the daemon "is there a
+  // codex still running for this conversation?" so it can resubscribe
+  // to the SSE stream + show a 'still working' state instead of the
+  // misleading 'No agent response recorded' fallback.
+  app.get('/api/conversations/:id/active-run', (req, res) => {
+    const active = runs.activeRunForConversation(req.params.id);
+    if (!active) return res.json({ active: false });
+    res.json({
+      active: true,
+      runId: active.id,
+      status: active.status,
+      startedAt: active.createdAt,
+      lastActivity: active.lastActivity,
+    });
+  });
+
   // -------------------- Runs --------------------
 
   app.post('/api/runs', (req, res) => {
@@ -839,6 +856,20 @@ export function createServer() {
       conversationId = conv.id;
     }
 
+    // Dedupe: don't spawn a second codex when one is already running for
+    // this conversation. test-platfromer3 hit a 'two codex same thread'
+    // race when the user clicked continue after the first run silently
+    // stalled. Returning 409 here lets the frontend reuse the existing
+    // runId via SSE reconnect instead of forking the work.
+    const existing = runs.activeRunForConversation(conv.id);
+    if (existing) {
+      return res.status(409).json({
+        error: 'Conversation already has an active run',
+        existingRunId: existing.id,
+        startedAt: existing.createdAt,
+      });
+    }
+
     const cwd = path.resolve(conv.project_path);
     try {
       mkdirSync(cwd, { recursive: true });
@@ -855,13 +886,16 @@ export function createServer() {
       if (guess) setConversationTitle(conv.id, guess);
     }
 
-    const run = runs.create({
-      agentId: body.agentId,
-      bin,
-      cwd,
-      model: body.model,
-      reasoning: body.reasoning,
-    });
+    const run = runs.create(
+      {
+        agentId: body.agentId,
+        bin,
+        cwd,
+        model: body.model,
+        reasoning: body.reasoning,
+      },
+      conv.id,
+    );
 
     runs.emit(run, 'start', {
       runId: run.id,
@@ -929,6 +963,10 @@ export function createServer() {
     let agentTextBuffer = '';
 
     const parser = createJsonlParser({
+      // Heartbeat: every line read from codex stdout resets this run's
+      // stall timer. The watchdog in runs.ts kills runs that go silent
+      // for 5+ minutes (image_gen hung, network blip, etc).
+      onActivity: () => runs.touch(run),
       onEvent: (rawEv) => {
         // Split agent text into prose + structured form events. Codex emits
         // <question-form id="..."> blocks in its plain text — we extract

@@ -1,4 +1,5 @@
 import type { ChildProcess } from 'node:child_process';
+import { spawn as spawnProcess } from 'node:child_process';
 import type { Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import type { AgentEvent, RunStatus } from '@ogf/contracts';
@@ -11,11 +12,20 @@ export interface RunEventRecord {
 
 export interface Run {
   id: string;
+  /** Conversation this run belongs to. Used for dedupe (only one active
+   *  run per conversation at a time) and for /api/conversations/:id/active-run. */
+  conversationId: string;
   status: RunStatus;
   events: RunEventRecord[];
   clients: Set<Response>;
   child?: ChildProcess;
   createdAt: number;
+  /** Timestamp of last stdout activity from codex. Updated on every line
+   *  the parser receives. Stall watchdog uses this to detect dead runs. */
+  lastActivity: number;
+  /** When set, the run was killed by the stall watchdog. Distinguishes
+   *  intentional cancel from forced termination. */
+  killReason?: 'stalled' | 'manual';
   meta: {
     agentId: string;
     bin: string;
@@ -26,17 +36,33 @@ export interface Run {
 }
 
 const MAX_EVENTS = 2000;
+/** A run is considered stalled if its last stdout activity is older
+ *  than this. 5 min is generous enough for image_gen + skill processing
+ *  while still catching genuinely dead runs in a reasonable time. */
+const STALL_THRESHOLD_MS = 5 * 60 * 1000;
+/** How often the watchdog scans for stalled runs. */
+const STALL_CHECK_INTERVAL_MS = 30 * 1000;
 
 export class RunManager {
   private runs = new Map<string, Run>();
+  private watchdog: NodeJS.Timeout | null = null;
 
-  create(meta: Run['meta']): Run {
+  constructor() {
+    // Start stall watchdog on first instantiation. Per-Run because the
+    // map is per-RunManager. Doesn't keep the process alive (unref'd).
+    this.watchdog = setInterval(() => this.scanForStalls(), STALL_CHECK_INTERVAL_MS);
+    this.watchdog.unref?.();
+  }
+
+  create(meta: Run['meta'], conversationId: string): Run {
     const run: Run = {
       id: randomUUID(),
+      conversationId,
       status: 'queued',
       events: [],
       clients: new Set(),
       createdAt: Date.now(),
+      lastActivity: Date.now(),
       meta,
     };
     this.runs.set(run.id, run);
@@ -45,6 +71,23 @@ export class RunManager {
 
   get(id: string): Run | undefined {
     return this.runs.get(id);
+  }
+
+  /** Find the active (still running) run for a conversation, if any.
+   *  Used by /api/runs to dedupe spawn requests and by
+   *  /api/conversations/:id/active-run for refresh-resume. */
+  activeRunForConversation(conversationId: string): Run | undefined {
+    for (const run of this.runs.values()) {
+      if (run.conversationId !== conversationId) continue;
+      if (run.status === 'queued' || run.status === 'running') return run;
+    }
+    return undefined;
+  }
+
+  /** Touch the run — called on every parsed stdout line. Resets the stall
+   *  timer. Cheap (just updates a timestamp). */
+  touch(run: Run): void {
+    run.lastActivity = Date.now();
   }
 
   emit(run: Run, event: RunEventRecord['event'], data: unknown) {
@@ -85,10 +128,57 @@ export class RunManager {
 
   finish(run: Run, status: RunStatus, code: number | null, signal: NodeJS.Signals | null) {
     run.status = status;
-    this.emit(run, 'end', { code, signal, status });
+    this.emit(run, 'end', {
+      code,
+      signal,
+      status,
+      // Pass through the kill reason if any, so frontend can show
+      // 'Stalled' instead of generic 'Failed'.
+      reason: run.killReason,
+    });
     for (const client of run.clients) client.end();
     run.clients.clear();
     run.child = undefined;
+  }
+
+  /** Watchdog pass: kill runs whose lastActivity is older than threshold.
+   *  Codex CLI sometimes hangs silently — image_gen request stuck on
+   *  OpenAI side, network blip never recovered, etc. — without ever
+   *  exiting on its own. Without this watchdog the run sits forever
+   *  and the user can't tell anything is wrong. */
+  private scanForStalls(): void {
+    const now = Date.now();
+    for (const run of this.runs.values()) {
+      if (run.status !== 'queued' && run.status !== 'running') continue;
+      if (!run.child || run.child.killed) continue;
+      if (now - run.lastActivity < STALL_THRESHOLD_MS) continue;
+
+      run.killReason = 'stalled';
+      this.emit(run, 'error', {
+        message: `Stalled — no codex output for ${Math.floor((now - run.lastActivity) / 1000)}s. Killing.`,
+        reason: 'stalled',
+      });
+      this.killProcessTree(run.child);
+      // Don't call finish() here — the child's own close handler in
+      // server.ts will fire when taskkill walks the tree. That handler
+      // calls runs.finish() with the actual exit code.
+    }
+  }
+
+  /** Kill a child + every grandchild it spawned. Same logic as
+   *  server.ts killProcessTree, duplicated here to avoid a circular
+   *  import. Win32-only path — POSIX kill doesn't walk descendants. */
+  private killProcessTree(child: ChildProcess | undefined): void {
+    if (!child || child.killed || !child.pid) return;
+    if (process.platform === 'win32') {
+      spawnProcess('taskkill', ['/F', '/T', '/PID', String(child.pid)], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      }).unref();
+    } else {
+      child.kill();
+    }
   }
 }
 

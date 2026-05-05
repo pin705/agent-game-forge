@@ -50,11 +50,22 @@ function parsePhases(content: string): { title: string | null; phases: Phase[] }
   return { title, phases };
 }
 
+const LS_COLLAPSED = 'ogf:specProgressCollapsed';
+
 export function SpecProgressCard(props: Props) {
   const [phases, setPhases] = useState<Phase[]>([]);
   const [title, setTitle] = useState<string | null>(null);
   const [exists, setExists] = useState(false);
   const lastFetchRef = useRef(0);
+  // Collapse state — when true, only the head row + bar shows, full
+  // phase list is hidden. Persists across reload (per-user preference,
+  // not per-project, since most users will have the same preference).
+  const [collapsed, setCollapsed] = useState<boolean>(
+    () => localStorage.getItem(LS_COLLAPSED) === '1',
+  );
+  useEffect(() => {
+    localStorage.setItem(LS_COLLAPSED, collapsed ? '1' : '0');
+  }, [collapsed]);
 
   // Single fetch helper. Shared by the conversation reset effect + streaming poll.
   async function refresh() {
@@ -110,33 +121,53 @@ export function SpecProgressCard(props: Props) {
     ? phases.findIndex((p) => !p.done)
     : -1;
 
+  // For 14-phase specs, the full list eats most of the chat viewport.
+  // When collapsed, show one-line summary of the active phase only.
+  const activePhase = activeIdx >= 0 ? phases[activeIdx] : null;
+
   return (
-    <div className="spec-progress">
-      <div className="spec-progress-head">
+    <div className={`spec-progress ${collapsed ? 'collapsed' : ''}`}>
+      <button
+        type="button"
+        className="spec-progress-head spec-progress-head-clickable"
+        onClick={() => setCollapsed((v) => !v)}
+        title={collapsed ? 'Expand phase list' : 'Collapse phase list'}
+      >
+        <span className="spec-progress-chev" aria-hidden>
+          {collapsed ? '▸' : '▾'}
+        </span>
         <span className="spec-progress-title">{title ?? 'Spec progress'}</span>
         <span className="spec-progress-stat">
           {done} / {phases.length} ({pct}%)
         </span>
-      </div>
+      </button>
       <div className="spec-progress-bar">
         <div
           className="spec-progress-bar-fill"
           style={{ width: `${pct}%` }}
         />
       </div>
-      <ol className="spec-progress-phases">
-        {phases.map((p, i) => (
-          <li
-            key={i}
-            className={`spec-progress-phase ${p.done ? 'done' : ''} ${i === activeIdx ? 'active' : ''}`}
-          >
-            <span className="spec-progress-icon">
-              {p.done ? '✓' : i === activeIdx ? '⏳' : '○'}
-            </span>
-            <span className="spec-progress-text">{p.text}</span>
-          </li>
-        ))}
-      </ol>
+      {collapsed && activePhase && (
+        <div className="spec-progress-active-line" title={activePhase.text}>
+          <span className="spec-progress-icon">⏳</span>
+          <span className="spec-progress-text">{activePhase.text}</span>
+        </div>
+      )}
+      {!collapsed && (
+        <ol className="spec-progress-phases">
+          {phases.map((p, i) => (
+            <li
+              key={i}
+              className={`spec-progress-phase ${p.done ? 'done' : ''} ${i === activeIdx ? 'active' : ''}`}
+            >
+              <span className="spec-progress-icon">
+                {p.done ? '✓' : i === activeIdx ? '⏳' : '○'}
+              </span>
+              <span className="spec-progress-text">{p.text}</span>
+            </li>
+          ))}
+        </ol>
+      )}
     </div>
   );
 }
