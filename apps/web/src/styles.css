@@ -2784,6 +2784,14 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
   border-left: 3px solid var(--accent);
   flex-shrink: 0;
 }
+/* Pack-pointer variant — taller, more readable, no apply/discard
+ * buttons (those live on the chip → modal flow). */
+.regen-actionbar.regen-actionbar-pack-pointer {
+  height: auto;
+  padding: 8px 14px;
+  font-size: 12px;
+  line-height: 1.4;
+}
 .regen-actionbar .btn-sm {
   height: 18px;
   padding: 0 8px;

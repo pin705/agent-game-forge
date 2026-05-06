@@ -82,6 +82,14 @@ export function FileEditor(props: Props) {
   const [regenBusy, setRegenBusy] = useState<'apply' | 'discard' | null>(null);
   const [regenNaturalW, setRegenNaturalW] = useState(0);
   const [regenNaturalH, setRegenNaturalH] = useState(0);
+  // True iff this file lives in a directory that has a staged
+  // pipeline-meta.json — i.e. it's part of a pending animation PACK,
+  // not a one-off single-file regen. When true we suppress the
+  // FileEditor's per-file diff banner so the user goes through the
+  // pack review flow (chip → PackReviewModal) instead. Otherwise the
+  // user clicks 'Use new' here and only sheet.png swaps while the
+  // other 10 staged files sit orphaned in .ogf/regen/.
+  const [inPendingPack, setInPendingPack] = useState(false);
 
   const segments = props.relPath.split('/').filter(Boolean);
   const dir = segments.slice(0, -1).join('/');
@@ -124,6 +132,7 @@ export function FileEditor(props: Props) {
     setRegenBusy(null);
     setRegenNaturalW(0);
     setRegenNaturalH(0);
+    setInPendingPack(false);
 
     fetchFileContent(props.projectPath, props.relPath)
       .then((r) => {
@@ -236,14 +245,30 @@ export function FileEditor(props: Props) {
   useEffect(() => {
     if (kind !== 'image') return;
     let cancelled = false;
-    fetchRegenStaging(props.projectPath, props.relPath)
-      .then((r) => {
+    // Probe BOTH the per-file staging AND the pack-meta marker in the
+    // same parent dir. If both staging and meta exist, this is a pack
+    // — set inPendingPack=true so the JSX hides the single-file banner.
+    const dir = props.relPath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
+    const metaRel = dir ? `${dir}/pipeline-meta.json` : 'pipeline-meta.json';
+    Promise.all([
+      fetchRegenStaging(props.projectPath, props.relPath),
+      fetchRegenStaging(props.projectPath, metaRel),
+    ])
+      .then(([selfR, metaR]) => {
         if (cancelled) return;
-        if (r.exists && r.base64) setRegenBase64(r.base64);
-        else setRegenBase64(null);
+        const isPack = selfR.exists && metaR.exists;
+        setInPendingPack(isPack);
+        if (selfR.exists && selfR.base64 && !isPack) {
+          setRegenBase64(selfR.base64);
+        } else {
+          setRegenBase64(null);
+        }
       })
       .catch(() => {
-        if (!cancelled) setRegenBase64(null);
+        if (!cancelled) {
+          setRegenBase64(null);
+          setInPendingPack(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -592,6 +617,16 @@ Show me the diff before applying.`;
               automaticLayout: true,
             }}
           />
+        </div>
+      )}
+
+      {isImage && imageUrl && inPendingPack && (
+        <div className="regen-actionbar regen-actionbar-pack-pointer">
+          <span className="regen-banner-icon">{I.refresh}</span>
+          <span>
+            This file is part of a pending animation pack — review and apply
+            via the <strong>Pack</strong> chip (bottom-right of the screen).
+          </span>
         </div>
       )}
 
