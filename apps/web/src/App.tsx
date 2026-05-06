@@ -1025,6 +1025,12 @@ export function App() {
               void refreshPending(project);
             }}
             metadataRev={metadataRev}
+            onOpenPackReview={() => setShowPackReview(true)}
+            onPackResolved={() => {
+              void refreshPendingPacks(project);
+              void refreshTree(project);
+              bumpMetadataRev();
+            }}
             canBack={navIndexRef.current > 0}
             canForward={navIndexRef.current < navStackRef.current.length - 1}
             onBack={navBack}
@@ -1260,6 +1266,8 @@ function EditorPane(props: {
   onAskCodex: (text: string) => void;
   onSlicingSaved?: () => void;
   metadataRev?: number;
+  onOpenPackReview?: () => void;
+  onPackResolved?: () => void;
   canBack: boolean;
   canForward: boolean;
   onBack: () => void;
@@ -1339,6 +1347,8 @@ function EditorPane(props: {
               onAskCodex={props.onAskCodex}
               onSlicingSaved={props.onSlicingSaved}
               metadataRev={props.metadataRev}
+              onOpenPackReview={props.onOpenPackReview}
+              onPackResolved={props.onPackResolved}
             />
           ) : (
             <ProjectWelcome project={props.project} />

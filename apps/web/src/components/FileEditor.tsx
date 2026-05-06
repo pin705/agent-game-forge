@@ -2,13 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import type { UsagesResponse } from '@ogf/contracts';
 import {
+  applyPack as apiApplyPack,
   applyRegen,
+  discardPack as apiDiscardPack,
   discardRegen,
   fetchFileContent,
   fetchRegenStaging,
   fetchUsages,
   writeFileContent,
 } from '../lib/api.js';
+import { useDialog } from '../lib/dialog.js';
 import { I } from './icons.js';
 import {
   RegenerateOptionsModal,
@@ -35,6 +38,13 @@ interface Props {
   onSlicingSaved?: () => void;
   /** Counter that bumps when sidecar metadata changes elsewhere — triggers re-fetch. */
   metadataRev?: number;
+  /** Open the global PackReviewModal (multi-pack browser). FileEditor
+   *  only handles "the pack this file belongs to"; the modal is for
+   *  switching between packs and seeing the layout diff table. */
+  onOpenPackReview?: () => void;
+  /** Called after a pack apply/discard so App can refresh pendingPacks
+   *  state + re-poll the file tree. */
+  onPackResolved?: () => void;
 }
 
 interface PipelineMeta {
@@ -52,6 +62,7 @@ interface PipelineMeta {
 }
 
 export function FileEditor(props: Props) {
+  const { confirm, notify } = useDialog();
   const [content, setContent] = useState<string | null>(null);
   const [base64, setBase64] = useState<string | null>(null);
   const [size, setSize] = useState(0);
@@ -258,11 +269,12 @@ export function FileEditor(props: Props) {
         if (cancelled) return;
         const isPack = selfR.exists && metaR.exists;
         setInPendingPack(isPack);
-        if (selfR.exists && selfR.base64 && !isPack) {
-          setRegenBase64(selfR.base64);
-        } else {
-          setRegenBase64(null);
-        }
+        // KEEP regenBase64 set even in pack mode — the canvas uses it
+        // for the Original vs New diff. The actionbar above the canvas
+        // chooses the right action set (per-file Use new / Keep original
+        // OR per-pack Apply pack / Discard pack / Review).
+        if (selfR.exists && selfR.base64) setRegenBase64(selfR.base64);
+        else setRegenBase64(null);
       })
       .catch(() => {
         if (!cancelled) {
@@ -299,6 +311,66 @@ export function FileEditor(props: Props) {
     try {
       await discardRegen(props.projectPath, props.relPath);
       setRegenBase64(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRegenBusy(null);
+    }
+  }
+
+  /** Apply the pack this file belongs to. Calls the same /apply-pack
+   *  endpoint the modal uses, with a confirm prompt — this is a
+   *  multi-file destructive op (replaces ~10 live files atomically). */
+  async function applyPackFromHere() {
+    const packDir = props.relPath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
+    if (!packDir) return;
+    const ok = await confirm({
+      title: 'Apply pack?',
+      body: `Replace all files in ${packDir}/ with the staged versions. Other animations of this entity won't be touched.`,
+      confirmLabel: 'Apply pack',
+    });
+    if (!ok) return;
+    setRegenBusy('apply');
+    try {
+      const r = await apiApplyPack({ projectPath: props.projectPath, packDir });
+      if (r.failed.length > 0) {
+        notify({
+          kind: 'warn',
+          title: 'Some files failed',
+          body: r.failed.slice(0, 5).map((f) => `${f.relPath}: ${f.err}`).join('\n'),
+        });
+      }
+      // Refresh local state — the file we're viewing now has fresh bytes.
+      setRegenBase64(null);
+      setInPendingPack(false);
+      setBase64(null);
+      const fresh = await fetchFileContent(props.projectPath, props.relPath);
+      if (fresh.kind === 'image') setBase64(fresh.base64 ?? '');
+      props.onPackResolved?.();
+      props.onSlicingSaved?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRegenBusy(null);
+    }
+  }
+
+  async function discardPackFromHere() {
+    const packDir = props.relPath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
+    if (!packDir) return;
+    const ok = await confirm({
+      title: 'Discard pack?',
+      body: `Delete the staged files in .ogf/regen/${packDir}/. The live folder is untouched.`,
+      confirmLabel: 'Discard',
+      danger: true,
+    });
+    if (!ok) return;
+    setRegenBusy('discard');
+    try {
+      await apiDiscardPack({ projectPath: props.projectPath, packDir });
+      setRegenBase64(null);
+      setInPendingPack(false);
+      props.onPackResolved?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -621,16 +693,42 @@ Show me the diff before applying.`;
       )}
 
       {isImage && imageUrl && inPendingPack && (
-        <div className="regen-actionbar regen-actionbar-pack-pointer">
-          <span className="regen-banner-icon">{I.refresh}</span>
-          <span>
-            This file is part of a pending animation pack — review and apply
-            via the <strong>Pack</strong> chip (bottom-right of the screen).
-          </span>
+        <div className="pack-actionbar">
+          <span className="pack-actionbar-icon">{I.refresh}</span>
+          <div className="pack-actionbar-text">
+            <strong>Pending animation pack</strong>
+            <span className="muted">
+              Review the original vs new sheet below. Apply will atomically
+              replace all files in <code>{props.relPath.replace(/\\/g, '/').split('/').slice(0, -1).join('/')}/</code>.
+            </span>
+          </div>
+          <button
+            className="btn btn-sm"
+            onClick={discardPackFromHere}
+            disabled={regenBusy !== null}
+          >
+            {regenBusy === 'discard' ? 'Discarding…' : 'Discard pack'}
+          </button>
+          {props.onOpenPackReview && (
+            <button
+              className="btn btn-sm"
+              onClick={props.onOpenPackReview}
+              title="Open the full pack browser (layout diff, multi-pack switch)"
+            >
+              Review details
+            </button>
+          )}
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={applyPackFromHere}
+            disabled={regenBusy !== null}
+          >
+            {regenBusy === 'apply' ? 'Applying…' : 'Apply pack'}
+          </button>
         </div>
       )}
 
-      {isImage && imageUrl && regenBase64 && (
+      {isImage && imageUrl && regenBase64 && !inPendingPack && (
         <div className="regen-actionbar">
           <span className="regen-banner-icon">{I.refresh}</span>
           <span>Pending regenerate — review before applying</span>

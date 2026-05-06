@@ -2792,6 +2792,54 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
   font-size: 12px;
   line-height: 1.4;
 }
+
+/* PROMINENT pack actionbar — replaces the thin pointer when a file in
+ * the editor is part of a pending pack. Big, accent-colored, can't be
+ * missed. Buttons (Discard / Review / Apply) live RIGHT HERE so the
+ * user doesn't need to hunt for the floating chip in the corner. */
+.pack-actionbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--accent-line);
+  border-left: 4px solid var(--accent);
+  font-size: 13px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+.pack-actionbar-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+  font-size: 18px;
+}
+.pack-actionbar-icon svg { width: 18px; height: 18px; }
+.pack-actionbar-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.pack-actionbar-text strong {
+  font-size: 13px;
+  color: var(--ink-0);
+  font-weight: 600;
+}
+.pack-actionbar-text .muted {
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+.pack-actionbar-text code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-2);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+}
 .regen-actionbar .btn-sm {
   height: 18px;
   padding: 0 8px;
