@@ -487,70 +487,81 @@ When done, just confirm the file was written to \`${regenPath}\` — DON'T edit 
       )}
 
       {isImage && imageUrl && regenBase64 && (
-        <div className="regen-banner">
-          <div className="regen-banner-head">
-            <span className="regen-banner-icon">{I.refresh}</span>
-            <span>Pending regenerate — review before applying</span>
-            <span className="regen-banner-spacer" />
-            <button
-              className="btn btn-sm btn-primary"
-              onClick={() => void applyRegenChange()}
-              disabled={regenBusy !== null}
-              title="Replace the original with the new image"
-            >
-              {regenBusy === 'apply' ? 'Applying…' : 'Use new'}
-            </button>
-            <button
-              className="btn btn-sm"
-              onClick={() => void discardRegenChange()}
-              disabled={regenBusy !== null}
-              title="Throw away the regenerated image, keep the original"
-            >
-              {regenBusy === 'discard' ? 'Discarding…' : 'Keep original'}
-            </button>
-          </div>
-          <div className="regen-compare">
-            <figure className="regen-side">
-              <figcaption>Original</figcaption>
-              <img src={imageUrl} alt="original" style={{ imageRendering: 'pixelated' }} />
-            </figure>
-            <figure className="regen-side regen-side-new">
-              <figcaption>New</figcaption>
-              <img
-                src={`data:${mime};base64,${regenBase64}`}
-                alt="regenerated"
-                style={{ imageRendering: 'pixelated' }}
-              />
-            </figure>
-          </div>
+        <div className="regen-actionbar">
+          <span className="regen-banner-icon">{I.refresh}</span>
+          <span>Pending regenerate — review before applying</span>
+          <span className="regen-banner-spacer" />
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={() => void applyRegenChange()}
+            disabled={regenBusy !== null}
+            title="Replace the original with the new image"
+          >
+            {regenBusy === 'apply' ? 'Applying…' : 'Use new'}
+          </button>
+          <button
+            className="btn btn-sm"
+            onClick={() => void discardRegenChange()}
+            disabled={regenBusy !== null}
+            title="Throw away the regenerated image, keep the original"
+          >
+            {regenBusy === 'discard' ? 'Discarding…' : 'Keep original'}
+          </button>
         </div>
       )}
 
       {isImage && imageUrl && (
         <div className="inspector-body" style={{ flex: 1, minHeight: 0 }}>
           <div className="canvas-area" style={{ position: 'relative' }}>
-            <img
-              src={imageUrl}
-              alt={props.relPath}
-              onLoad={(e) => {
-                setNaturalW(e.currentTarget.naturalWidth);
-                setNaturalH(e.currentTarget.naturalHeight);
-              }}
-              style={{
-                maxWidth: '100%',
-                maxHeight: '100%',
-                imageRendering: 'pixelated',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
-                transform: `scale(${zoom})`,
-                transformOrigin: 'center center',
-              }}
-            />
+            {regenBase64 ? (
+              <div className="regen-compare">
+                <figure className="regen-side">
+                  <figcaption>Original</figcaption>
+                  <img
+                    src={imageUrl}
+                    alt="original"
+                    onLoad={(e) => {
+                      setNaturalW(e.currentTarget.naturalWidth);
+                      setNaturalH(e.currentTarget.naturalHeight);
+                    }}
+                    style={{ imageRendering: 'pixelated' }}
+                  />
+                </figure>
+                <figure className="regen-side regen-side-new">
+                  <figcaption>New</figcaption>
+                  <img
+                    src={`data:${mime};base64,${regenBase64}`}
+                    alt="regenerated"
+                    style={{ imageRendering: 'pixelated' }}
+                  />
+                </figure>
+              </div>
+            ) : (
+              <img
+                src={imageUrl}
+                alt={props.relPath}
+                onLoad={(e) => {
+                  setNaturalW(e.currentTarget.naturalWidth);
+                  setNaturalH(e.currentTarget.naturalHeight);
+                }}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  imageRendering: 'pixelated',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+                  transform: `scale(${zoom})`,
+                  transformOrigin: 'center center',
+                }}
+              />
+            )}
 
-            <div className="canvas-toolbar">
-              <button className="ico" onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))} title="Zoom out">{I.zoomOut}</button>
-              <span className="zoom-val">{Math.round(zoom * 100)}%</span>
-              <button className="ico" onClick={() => setZoom((z) => Math.min(6, z + 0.25))} title="Zoom in">{I.zoomIn}</button>
-            </div>
+            {!regenBase64 && (
+              <div className="canvas-toolbar">
+                <button className="ico" onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))} title="Zoom out">{I.zoomOut}</button>
+                <span className="zoom-val">{Math.round(zoom * 100)}%</span>
+                <button className="ico" onClick={() => setZoom((z) => Math.min(6, z + 0.25))} title="Zoom in">{I.zoomIn}</button>
+              </div>
+            )}
           </div>
 
           <div className="meta-rail">
