@@ -658,6 +658,36 @@ environment tile / effect / UI element) in a single image, all in
 the project's locked palette and line weight. \`generate2dsprite\` can
 emit one with \`asset_type: 'style_anchor'\` if you ask.
 
+#### Regenerate workflow (OGF Editor → \`Regenerate\` button)
+
+When the user clicks Regenerate on a sprite (e.g. \`scout_attack.png\`)
+the OGF Editor builds a prompt and stages the result to
+\`.ogf/regen/<original-path>\` — DON'T overwrite the original. The
+biggest failure mode for regenerate is the new sprite drifts away
+from the rest of the character (different face, palette, body
+proportions). Avoid it:
+
+1. **List sibling sprites first.** Run \`ls\` on the target's parent
+   dir. Every other PNG in that folder is another animation of the
+   SAME entity (\`scout_idle.png\`, \`scout_walk.png\`, \`scout_death.png\`
+   when regenerating \`scout_attack.png\`). These are non-negotiable
+   references.
+2. **\`view_image\` each sibling** so the bytes enter context. Path
+   strings in the prompt are not enough.
+3. **Use the "Same character, new animation" reference role** (Step 3
+   above) — preserve identity, change the action only.
+4. **If layout changed** (different cols/rows/fps from the original):
+   write the regen + WAIT for the user to apply the swap. Once
+   applied, in the SAME turn or the next, update the slicing fields
+   in code/data wherever the original sprite was loaded (cols, rows,
+   fps, frameW, frameH — whichever names the project uses).
+   Don't pre-edit code before the swap is applied; the user might
+   discard the regenerate and the code change would be left dangling.
+5. **Don't widen scope.** Regenerate touches one sprite + the swap
+   plumbing. Don't also retune stats, replace other sprites, or
+   restructure data files just because you noticed something while
+   reading them. Stay focused.
+
 ### Generating ≠ done — you MUST wire it into game data
 
 Both skills produce ASSETS only. The generated \`assets/\*\` files are

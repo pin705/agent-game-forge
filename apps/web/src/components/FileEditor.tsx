@@ -10,6 +10,7 @@ import {
   writeFileContent,
 } from '../lib/api.js';
 import { I } from './icons.js';
+import { RegenerateOptionsModal, type RegenerateOptions } from './RegenerateOptionsModal.js';
 import { SpriteSlicerModal, type SliceMetadata } from './SpriteSlicerModal.js';
 import { TableEditor } from './TableEditor.js';
 
@@ -64,6 +65,7 @@ export function FileEditor(props: Props) {
   const [pipelineMeta, setPipelineMeta] = useState<PipelineMeta | null>(null);
   const [sliceSource, setSliceSource] = useState<'ogf-slice' | 'pipeline-meta' | 'none'>('none');
   const [showSlicer, setShowSlicer] = useState(false);
+  const [showRegenOpts, setShowRegenOpts] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [usages, setUsages] = useState<UsagesResponse['hits'] | null>(null);
   const [usagesLoading, setUsagesLoading] = useState(false);
@@ -331,34 +333,92 @@ Show me the diff before applying.`;
     props.onAskCodex(prompt);
   }
 
-  function askCodexToRegenerate() {
+  function openRegenerateOptions() {
     if (!props.onAskCodex) return;
-    const usagesText =
-      usages && usages.length > 0
-        ? '\n\nThis sprite is referenced in:\n' +
-          usages.map((u) => `- ${u.file}:${u.line}  ${u.snippet}`).join('\n')
-        : '';
-    const sliceText = slice
-      ? `\n- Match the existing slicing layout: **${slice.cols}×${slice.rows}** frames @ ${slice.fps} fps, anchor ${slice.anchor}.`
-      : '';
-    const dimsText =
-      naturalW > 0 && naturalH > 0
-        ? `\n- Output dimensions should match: ${naturalW}×${naturalH} px.`
-        : '';
+    setShowRegenOpts(true);
+  }
+
+  function submitRegenerate(opts: RegenerateOptions, siblings: string[]) {
+    setShowRegenOpts(false);
+    if (!props.onAskCodex) return;
+
     const regenPath = `.ogf/regen/${props.relPath.replace(/\\/g, '/')}`;
-    const prompt = `Regenerate the sprite asset \`${props.relPath}\` using the \`generate2dsprite\` skill, writing the result to a STAGING path so the user can compare it against the original before applying.
+    const lines: string[] = [];
 
-Hard constraints:
-- USE the \`generate2dsprite\` skill (NOT raw image_gen — this is a hard rule, see project conventions).
-- INCLUDE the Style directive from \`.ogf/spec.md\` §1 verbatim in the prompt argument.
-- DO NOT overwrite the original at \`${props.relPath}\`. The user will review and apply the swap themselves.
-- Write the new sprite to \`${regenPath}\` (create the directory if needed). OGF will detect this side-by-side file and show a comparison UI in the editor.${sliceText}${dimsText}${usagesText}
+    lines.push(
+      `Regenerate the sprite at \`${props.relPath}\` via the \`generate2dsprite\` skill. Write the new sheet to STAGING at \`${regenPath}\` (don't overwrite the original — the user reviews + applies it).`,
+    );
+    lines.push('');
+    lines.push('## What the user picked');
 
-What should change about this sprite? (edit the line below before sending — leave it blank to just regenerate a fresh take with the same intent)
->
+    // Aspect / dimensions — soft, not enforced pixel sizes
+    if (opts.aspectRatio === 'same' && naturalW > 0 && naturalH > 0) {
+      lines.push(`- Aspect ratio: keep current (${naturalW}:${naturalH}). Pixel size can change if it makes the sprite look better.`);
+    } else if (opts.aspectRatio === 'free') {
+      lines.push('- Aspect ratio: free — pick whatever fits the animation best.');
+    } else {
+      lines.push(`- Aspect ratio: ${opts.aspectRatio}. Don't enforce exact pixel dimensions; pick a sensible size.`);
+    }
 
-When done, just confirm the file was written to \`${regenPath}\` — DON'T edit any other file. The user controls when (or if) the swap happens.`;
-    props.onAskCodex(prompt);
+    // Frame layout
+    lines.push(`- Frame layout: **${opts.frames} frames** in a **${opts.cols}×${opts.rows}** grid (cols × rows).`);
+    lines.push(`- Animation FPS: ${opts.fps}.`);
+
+    if (opts.hint) {
+      lines.push(`- Change request: ${opts.hint}`);
+    }
+
+    // Visual consistency — the meat of preventing drift
+    lines.push('');
+    lines.push('## Consistency (CRITICAL — must read as the SAME character)');
+    lines.push('1. Read `.ogf/style-anchor.png` if it exists — that is the canonical look.');
+    lines.push('2. Read `.ogf/spec.md` §1 (Style) and include the directive verbatim in the `generate2dsprite` `prompt` argument.');
+
+    if (opts.matchSiblingStyle && siblings.length > 0) {
+      lines.push('3. Read these existing sprites of the SAME character/folder before generating, and pass them as image references in the `generate2dsprite` call (the skill supports a references arg). Match their proportions, color palette, line weight, and silhouette so the new frames feel like one cycle:');
+      for (const s of siblings) {
+        lines.push(`   - \`${s}\``);
+      }
+    } else if (opts.matchSiblingStyle) {
+      const dir = props.relPath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
+      lines.push(`3. List PNGs under \`${dir}/\` (other animations of the same entity). Pass them as image references in the \`generate2dsprite\` call so the new frames match proportions / palette / silhouette.`);
+    }
+
+    // Code-update plan — only if user asked AND layout changed
+    const layoutChanged =
+      !slice ||
+      opts.cols !== slice.cols ||
+      opts.rows !== slice.rows ||
+      opts.fps !== slice.fps;
+
+    lines.push('');
+    if (opts.updateCodeIfChanged && layoutChanged) {
+      lines.push('## After the user applies the swap');
+      if (slice) {
+        lines.push(
+          `Slicing changed from ${slice.cols}×${slice.rows} @ ${slice.fps}fps → ${opts.cols}×${opts.rows} @ ${opts.fps}fps. Once the user applies the swap (the original PNG gets replaced), update the slicing config in code/data so the engine renders the new layout correctly:`,
+        );
+      } else {
+        lines.push(`New slicing: ${opts.cols}×${opts.rows} @ ${opts.fps}fps. Update the slicing config in code/data accordingly:`);
+      }
+      if (usages && usages.length > 0) {
+        lines.push('References to update:');
+        for (const u of usages) {
+          lines.push(`  - \`${u.file}:${u.line}\` — ${u.snippet}`);
+        }
+      } else {
+        lines.push('Search the project for references to this sprite path; update cols/rows/fps fields wherever it is loaded.');
+      }
+      lines.push('**Do NOT edit code yet** — wait until the user applies the swap. For now, just write the regenerated sprite.');
+    } else {
+      lines.push('## After the regenerate');
+      lines.push("Don't edit any other files. Just write the new sprite to the staging path.");
+    }
+
+    lines.push('');
+    lines.push(`When done, confirm the file was written to \`${regenPath}\`. The user controls when (or if) the swap happens.`);
+
+    props.onAskCodex(lines.join('\n'));
   }
 
   const isImage = kind === 'image' && base64;
@@ -415,8 +475,8 @@ When done, just confirm the file was written to \`${regenPath}\` — DON'T edit 
           {isImage && props.onAskCodex && (
             <button
               className="btn btn-sm"
-              onClick={askCodexToRegenerate}
-              title="Ask Codex to regenerate this sprite via generate2dsprite"
+              onClick={openRegenerateOptions}
+              title="Regenerate this sprite — set frames / grid / aspect / hint"
             >
               {I.refresh} Regenerate
             </button>
@@ -732,6 +792,22 @@ When done, just confirm the file was written to \`${regenPath}\` — DON'T edit 
             props.onSlicingSaved?.();
           }}
           onAskCodex={props.onAskCodex ? askCodexToApplySlicing : undefined}
+        />
+      )}
+
+      {showRegenOpts && isImage && (
+        <RegenerateOptionsModal
+          projectPath={props.projectPath}
+          relPath={props.relPath}
+          initial={{
+            cols: slice?.cols,
+            rows: slice?.rows,
+            fps: slice?.fps,
+            naturalW,
+            naturalH,
+          }}
+          onCancel={() => setShowRegenOpts(false)}
+          onSubmit={submitRegenerate}
         />
       )}
     </div>

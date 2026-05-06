@@ -2239,6 +2239,99 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
 .modal-foot .grow { flex: 1; }
 .modal-foot .info { color: var(--ink-2); font-family: var(--font-mono); font-size: 11px; }
 
+/* Narrow modal variant for option-picker style dialogs (e.g. regenerate
+ * options). The default .modal is 1100px × 720px which is way too big
+ * for a small form. */
+.modal.modal-narrow {
+  width: min(520px, 100%);
+  height: auto;
+  max-height: 90vh;
+  grid-template-rows: 56px 1fr 56px;
+}
+.modal.modal-narrow .modal-foot {
+  justify-content: flex-end;
+}
+
+/* Regenerate options form. Single-column rows: label | control. */
+.regen-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 13px;
+}
+.regen-form-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: 10px;
+}
+.regen-form-row > span:first-child {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.regen-form-row select,
+.regen-form-row input[type="number"],
+.regen-form-row input[type="text"],
+.regen-form-row textarea {
+  padding: 4px 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-0);
+}
+.regen-form-row textarea {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  resize: vertical;
+  min-height: 56px;
+}
+.regen-form-row-stack {
+  grid-template-columns: 1fr;
+  align-items: stretch;
+}
+.regen-frame-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.regen-form-divider {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.regen-form-warn {
+  font-size: 11.5px;
+  color: var(--accent);
+  margin-left: 120px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.regen-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink-1);
+  cursor: pointer;
+}
+.regen-checkbox input { margin-top: 3px; }
+.regen-siblings {
+  margin: 4px 0 0 26px;
+  padding: 6px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--ink-2);
+  list-style: none;
+  max-height: 120px;
+  overflow: auto;
+}
+.regen-siblings li { padding: 1px 0; }
+
 .utility-row {
   display: flex; gap: 6px; align-items: center;
 }
