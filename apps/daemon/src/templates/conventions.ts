@@ -129,6 +129,141 @@ Archer has 2 animations → 2 calls (idle / attack each own 2x2).
 calls. Fits in 1-2 phases (≤8 image_gen / phase). Bosses with 4+ anims
 get their own phase.
 
+### Inline vs catalog — when each pattern applies
+
+OGF has TWO patterns for entity definitions, picked by entity complexity:
+
+**INLINE** — entity definition lives in the level JSON's array directly:
+\`\`\`json
+"hazards": [
+  {
+    "id": "spikes_01",
+    "x": 539, "y": 618, "w": 72, "h": 28,
+    "image": "assets/sprites/bamboo_spikes/single/sheet.png",
+    "frameW": 128, "frameH": 128,
+    "damage": 1
+  }
+]
+\`\`\`
+
+Use INLINE for **single-action / static** entities:
+- Hazards (spikes, fire pits — usually static or 1-loop animation)
+- Pickups (health, coins — single sprite or short loop)
+- Projectiles (arrow, bullet — usually 1-frame or 2-frame loop)
+- Checkpoints / flags / banners (static sprite + interaction zone)
+- Static decorative props (a barrel, a sign post)
+
+**CATALOG** — entity definition in \`data/<plural>.json\`, level references by \`type\`:
+\`\`\`json
+// data/enemies.json
+[
+  {
+    "id": "ashigaru_spearman",
+    "kind": "melee",
+    "stats": { ... },
+    "animations": { "idle": {...}, "walk": {...}, "attack": {...} }
+  }
+]
+// data/<level>.json
+"enemies": [
+  { "id": "spearman_01", "type": "ashigaru_spearman",
+    "x": 1110, "y": 511, "patrol": { "left": 995, "right": 1300 } }
+]
+\`\`\`
+
+Use CATALOG for **multi-animation / re-usable** entities:
+- Player / hero (4+ animations, used everywhere)
+- Enemies (multi-anim, may appear in many levels)
+- NPCs (idle + dialog poses)
+- Bosses (4+ anims, single-instance but rich behavior)
+
+The level entry only carries placement (\`x, y\`) + per-instance overrides
+(\`patrol\`, \`facing\`, \`hp\` overrides). The animation / stats / catalog
+data lives once in \`data/<plural>.json\`.
+
+### Animation hint shape — don't write empty fps
+
+When you DO need to express animation timing inline:
+
+\`\`\`json
+// Static (1 frame, no animation):
+{ "frames": 1 }                     // OR omit entirely
+
+// Animated (loop):
+{ "frames": 4, "fps": 8 }
+\`\`\`
+
+DON'T write \`{ "frames": 1, "fps": 0 }\` — it's noise. \`fps\` only
+matters when \`frames > 1\`.
+
+For catalog \`animations\` objects (multi-anim entities), every entry
+ALWAYS gets \`frames\` and \`fps\` because they're meaningful per
+animation row.
+
+### Three sizes — display vs source vs collision
+
+Multi-anim entities (player / enemies / bosses) have THREE distinct
+size fields, each meaning something different:
+
+| Field | What it is | Example | Where used |
+|-------|-----------|---------|------------|
+| \`frameW / frameH\` | Source PNG cell size from skill output | 128×128 | Slicer, sprite-sheet rendering |
+| \`displayW / displayH\` | Runtime visual size on screen | 96×96 | Render scale (smaller than source) |
+| \`collision: { w, h }\` | Hitbox for damage / movement / blocking | 38×72 | Physics, AABB tests |
+
+The hitbox is **typically smaller and narrower** than the visual sprite —
+the player is forgiving (rectangles around the body, not the sword arc),
+the enemy is precise (not the floppy banner waving above its head).
+
+When wiring runtime: render at displayW × displayH, collide at
+collision.w × collision.h, slice the source sheet at frameW × frameH.
+
+For inline entities (hazards / pickups), \`w\` and \`h\` typically equal
+the collision rect AND the display rect — they're simple. Optionally
+add \`displayW/displayH\` if you want the visual bigger than collision
+(e.g. pickup glow).
+
+### \`platforms[].solid\` is OBSOLETE — use \`colliders[]\` instead
+
+Old (pre-v1): \`platforms[]\` entries had \`solid: true\` to mean
+"player can't pass". Runtime had to scan platforms[] for that flag.
+
+Now: platforms[] is **purely visual**. All collision goes in the
+separate \`colliders[]\` array. Don't write \`solid: true\` on a
+platform; it's ignored by runtime and confusing to readers.
+
+\`\`\`json
+// ✅ CORRECT
+"platforms": [
+  { "id": "ground_01", "x": 0, "y": 600, "w": 640, "h": 96,
+    "image": "...", "kind": "stone_rampart_segment" }
+],
+"colliders": [
+  { "id": "col_ground_01", "type": "platform", "shape": "rect",
+    "x": 0, "y": 600, "w": 640, "h": 4,
+    "oneWay": false, "links": "ground_01" }
+]
+
+// ❌ WRONG — still works for OGF render, but dual source of truth
+{ "id": "ground_01", "x": 0, "y": 600, "w": 640, "h": 96,
+  "image": "...", "solid": true }    // ← drop this flag
+\`\`\`
+
+Runtime collision MUST read \`level.colliders[]\`, not platform flags.
+
+### \`props[]\` — purely decorative
+
+\`props\` is the bucket for entities that have NO gameplay role —
+foreground bushes, hanging banners, drifting clouds. They render but
+don't trigger / collide / get picked up.
+
+If your entity has any gameplay (collision, damage, pickup, trigger),
+use the appropriate named array (\`platforms\`, \`hazards\`, \`pickups\`,
+\`enemies\`, \`checkpoints\`, etc) — NOT \`props\`.
+
+If a level has nothing decorative, \`"props": []\` is fine — or omit
+the field entirely.
+
 Top-level array OR wrapped in \`{ "<plural>": [...] }\` are both fine; OGF
 detects either.
 
