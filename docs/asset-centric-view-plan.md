@@ -291,6 +291,106 @@ This is a multi-week effort. Order matters — each step ships value independent
 
 **Ship gate:** Regenerate Scout pack with hint "more aggressive" → 4 new anims diff side-by-side → apply all → catalog updates → game looks consistently more aggressive.
 
+#### How the pack flows end to end
+
+The user wanted three guarantees:
+
+1. **Keep all the work, not just one file.** Staging is already a tree mirror at `.ogf/regen/<relPath>` — adding more paths is free. Agent generates N files into the mirror in one turn.
+2. **Atomic swap when confirmed.** "Apply pack" does N copies + N unlinks in one server call; partial failure leaves the staging file behind so user can retry or discard.
+3. **Code follows assets.** Right after apply, if dimensions/grid changed for any file, fire a follow-up agent turn that patches catalog entries + source references. User reviews this patch through the existing diff flow.
+
+Concrete pieces needed (extending today's per-file regen, not replacing it):
+
+```
+DAEMON
+  GET  /api/files/regen/list?projectPath=…
+       → { pending: [{ relPath, size, mtimeMs }] }
+       Walks .ogf/regen/ for any staged file.
+
+  POST /api/files/regen/apply-pack
+       body: { projectPath, relPaths: string[] }
+       → { applied: string[], failed: { relPath, err }[] }
+       Wraps the existing per-file copy+unlink in a loop. Failures
+       leave staging in place so user retries; never mid-state-rolls
+       back successful copies (target may already be live).
+
+  POST /api/files/regen/discard-pack
+       body: { projectPath, relPaths: string[] }
+       → { discarded: string[] }
+
+  POST /api/runs (existing)
+       Used to fire the follow-up code-update turn after apply.
+       Prompt body assembled client-side from the pre-vs-post-apply
+       dimension comparison (computed before apply runs).
+
+CLIENT
+  PendingRegenBar (always-visible top bar when staging non-empty)
+    "N files pending review · [Open]"
+    Open → PendingRegenPanel modal/drawer.
+
+  PendingRegenPanel
+    Lists every staged file grouped by entity dir.
+    Each row: thumbnail diff (Original / New side-by-side) +
+              animated preview pair (today's regen-compare).
+    Footer:
+      [Discard pack]              [Apply pack]
+      [☑] Auto-update code after apply
+      "If layouts changed, the agent will be asked to patch
+       catalog + code references in a follow-up turn."
+
+  After apply:
+    1. Compute layout-diff per file (cols/rows/fps/dimensions
+       comparing the regen-meta we asked the agent to report
+       against the slice metadata for the original).
+    2. If ANY file changed layout AND auto-update was checked:
+       POST /api/runs with a focused prompt — see below.
+    3. Otherwise just close the panel.
+
+AGENT FOLLOW-UP PROMPT (auto-fired after apply when layouts changed)
+  ────────────────────────────────────────────────────────────
+  The user just applied a regenerate pack for entity `scout`.
+  These files now have new layouts on disk:
+
+    - assets/sprites/scout/idle.png
+        was 4×2 @ 8 fps (90×90 frames)
+        now 4×2 @ 8 fps (96×96 frames)         ← only display size
+    - assets/sprites/scout/attack.png
+        was 4×1 @ 9 fps (96×96 frames)
+        now 6×1 @ 9 fps (128×96 frames)        ← grid + frame size
+
+  Update wherever this slicing is referenced so the engine renders
+  the new layout correctly:
+    - data/enemies.json#scout (displayW/displayH/animations.attack
+      .frameW/frameH/frames)
+    - src/enemies.js:142     (cols/rows/fps for scout sheet)
+    - data/levels/*.json     (no change expected — placement coords
+      are by anchor, not size — but check)
+
+  Stay focused on the slicing patch. Don't restyle the catalog,
+  don't tune stats, don't touch unrelated entities. Show the diff
+  for review.
+  ────────────────────────────────────────────────────────────
+
+  This prompt is built CLIENT-SIDE from the regen metadata, not
+  asked of the agent — the agent already reported the layout when
+  it staged the pack (the "When done" section of the regen prompt
+  asks for it). We just feed the comparison back.
+
+EDGE CASES
+  - User regens single file, then regens another while first is
+    still pending → both accumulate in .ogf/regen/. Pack panel
+    shows both. They don't have to be from the same entity.
+  - User opens FileEditor on a file with staging → existing single-
+    file diff banner still works (unchanged). Pack panel is
+    additive, not replacement.
+  - Apply mid-failure (e.g. target file got moved by user mid-
+    operation) → that file's row marks failed in the panel,
+    remaining files still applied. User can investigate or discard.
+  - Agent didn't report layout dimensions on regen → we skip the
+    follow-up turn and surface a one-line warning. Manual code
+    edit available via existing FileEditor flow.
+```
+
 ### Phase 4 — Refactor existing project (2 weeks, riskier)
 
 - [ ] Open Project modal: third option "Refactor existing JS game"
