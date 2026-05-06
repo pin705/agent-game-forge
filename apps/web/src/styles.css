@@ -836,15 +836,24 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
 }
 
 /* =============== INSPECTOR =============== */
+/* Switched from `grid-template-rows: 56px 1fr` (2 explicit rows) to
+ * flex-column. The grid version forced the SECOND child into the 1fr
+ * row, so when a sibling was inserted between crumbs and inspector-body
+ * (e.g. .regen-actionbar) it stretched to fill remaining height,
+ * leaving a giant gap above the body. Flex-column lets each child
+ * size itself; flex: 1 on the main content rows takes remaining
+ * space without requiring a fixed schema. */
 .inspector {
-  display: grid;
-  grid-template-rows: 56px 1fr;
+  display: flex;
+  flex-direction: column;
   min-width: 0; min-height: 0;
   background: var(--bg-0);
 }
 .crumbs {
   display: flex; align-items: center; gap: 8px;
   padding: 0 24px;
+  height: 56px;
+  flex-shrink: 0;
   font-size: 13px;
   color: var(--ink-2);
   border-bottom: 1px solid var(--line);
@@ -868,6 +877,7 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
   display: grid;
   grid-template-columns: 1fr 280px;
   min-height: 0;
+  flex: 1;
 }
 .canvas-area {
   position: relative;
