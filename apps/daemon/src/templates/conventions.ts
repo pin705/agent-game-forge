@@ -859,6 +859,56 @@ array-of-pairs form is silently dropped.
 Multiple paths in one level (e.g. branching enemy routes) are fine —
 just add more entries to the array. Each path needs at least 2 points.
 
+### Background dimensions MUST equal level.mapSize
+
+OGF's Scene editor uses level.mapSize as the world coordinate system —
+entities are placed at \`x, y\` in that coordinate space. The game's
+runtime canvas also draws at mapSize. **Both renders must agree on what
+"the world" looks like at those coordinates.**
+
+If \`generate2dmap\` outputs a background PNG at a different size than
+\`mapSize\` declares (skill picks dimensions based on its own prompt
+math, often 1672×941 or similar), Play tab will stretch the PNG to
+mapSize but Scene tab will display it at native size — same entity
+\`x/y\` lands at different visual positions. Everything looks misaligned.
+
+**Mandatory step after every \`generate2dmap\` call:**
+
+\`\`\`
+1. Read the skill's output PNG natural size.
+2. If size != level.mapSize, deterministic-resize via Pillow:
+     from PIL import Image
+     im = Image.open(bg_path)
+     if im.size != (mapSize.width, mapSize.height):
+         im = im.resize((mapSize.width, mapSize.height), Image.LANCZOS)
+         im.save(bg_path)
+3. JSON.parse the level file; verify the bg path exists at mapSize.
+\`\`\`
+
+This applies to:
+- Single backgrounds (TD, arena, locked-camera scenes)
+- Each layer in a parallax \`layers[]\` array (side-scrollers)
+
+Layer dimensions: each parallax layer should be at the **mapSize of
+the layer's expected scroll extent**, not the viewport. A near-ground
+layer with parallax 0.9 covers most of the world; sky with parallax
+0.1 covers a tiny fraction. Pick layer w/h to match those expectations
+or leave at full mapSize (simplest — agent doesn't need to compute
+per-layer extent).
+
+**Phase verification check** (Node-side, headless):
+
+\`\`\`js
+// Read PNG header to get size without decoding pixels
+const fs = require('node:fs');
+const buf = fs.readFileSync(bgPath);
+// PNG IHDR is at offset 16 + 24 byte signature
+const w = buf.readUInt32BE(16);
+const h = buf.readUInt32BE(20);
+console.assert(w === mapSize.width && h === mapSize.height,
+  \`bg \${bgPath} is \${w}×\${h}, expected \${mapSize.width}×\${mapSize.height}\`);
+\`\`\`
+
 ### Build pads / placement zones — rect, not circle
 
 TD build pads, RPG interaction zones, generic placement targets — all

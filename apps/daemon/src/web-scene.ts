@@ -133,19 +133,36 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
   const notes: string[] = [];
   let counter = 0;
 
+  // mapSize is the level's declared world coordinate system. Both Scene
+  // editor and Play tab agree on placing entities at coords in this
+  // space. When the background PNG's natural size differs from mapSize
+  // (skill output mismatch), we still want Scene editor to render the
+  // bg at mapSize so entity positions align — same as what Play tab
+  // does via canvas scaling. Pass mapSize through SceneBackground/Layer
+  // width+height so the editor uses declared size, not PNG natural.
+  const declaredMap =
+    typeof data.mapSize === 'object' && data.mapSize
+      ? {
+          w: Number((data.mapSize as { width?: unknown }).width ?? 0),
+          h: Number((data.mapSize as { height?: unknown }).height ?? 0),
+        }
+      : null;
+  const mapW = declaredMap && declaredMap.w > 0 ? declaredMap.w : undefined;
+  const mapH = declaredMap && declaredMap.h > 0 ? declaredMap.h : undefined;
+
   // ---- Background — single-image (TD / arena / locked-camera) ----
   let background: SceneBackground | null = null;
   const bgPath = typeof data.background === 'string' ? data.background : '';
   if (bgPath) {
     const bgRel = bgPath.replace(/^\.?\//, '');
-    background = { relPath: bgRel, source: 'image' };
+    background = { relPath: bgRel, source: 'image', width: mapW, height: mapH };
     referenced.add(bgRel);
   } else {
     // Some games store background as { image: "..." } object.
     const bgObj = (data.background as { image?: unknown } | null) ?? null;
     const bgImg = typeof bgObj?.image === 'string' ? bgObj.image.replace(/^\.?\//, '') : '';
     if (bgImg) {
-      background = { relPath: bgImg, source: 'image' };
+      background = { relPath: bgImg, source: 'image', width: mapW, height: mapH };
       referenced.add(bgImg);
     }
   }
@@ -166,7 +183,16 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
       const id = String(l.id ?? `layer_${idx}`);
       const zIndex = typeof l.zIndex === 'number' ? l.zIndex : idx;
       const parallax = typeof l.parallax === 'number' ? (l.parallax as number) : undefined;
-      out.push({ id, relPath: img, zIndex, parallax });
+      // Layer-specific w/h override; otherwise use the level's mapSize.
+      const layerW =
+        typeof l.width === 'number' && (l.width as number) > 0
+          ? (l.width as number)
+          : mapW;
+      const layerH =
+        typeof l.height === 'number' && (l.height as number) > 0
+          ? (l.height as number)
+          : mapH;
+      out.push({ id, relPath: img, zIndex, parallax, width: layerW, height: layerH });
       referenced.add(img);
     });
     if (out.length > 0) {

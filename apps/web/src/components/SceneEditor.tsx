@@ -353,15 +353,22 @@ export function SceneEditor(props: Props) {
     ctx.translate(-camera.panX, -camera.panY);
 
     // Background — multi-layer (parallax) takes priority when present;
-    // otherwise fall back to the legacy single background. v1 doesn't
-    // simulate camera-scroll parallax in the editor — layers draw stacked
-    // by zIndex (back-to-front) at their natural top-left position.
+    // otherwise fall back to the legacy single background.
+    //
+    // SIZE RESOLUTION: prefer DECLARED width/height (from level.mapSize,
+    // populated by the loader) over the PNG's natural pixel size. This
+    // makes the editor coord-system agree with Play tab even when the
+    // skill outputs an asset at a different resolution than mapSize
+    // declares. The PNG gets sample-stretched to mapSize same as Play
+    // does via canvas — entity x/y land at the same visual position
+    // in both renders.
     if (scene.layers && scene.layers.length > 0) {
       for (const layer of scene.layers) {
         const img = bank.imgs.get(layer.relPath);
         const size =
+          (layer.width && layer.height ? { w: layer.width, h: layer.height } : null) ??
           bank.sizes.get(layer.relPath) ??
-          (layer.width && layer.height ? { w: layer.width, h: layer.height } : null);
+          null;
         if (img && size) {
           ctx.drawImage(img, 0, 0, size.w, size.h);
         }
@@ -369,10 +376,11 @@ export function SceneEditor(props: Props) {
     } else if (scene.background) {
       const img = bank.imgs.get(scene.background.relPath);
       const size =
-        bank.sizes.get(scene.background.relPath) ??
         (scene.background.width && scene.background.height
           ? { w: scene.background.width, h: scene.background.height }
-          : null);
+          : null) ??
+        bank.sizes.get(scene.background.relPath) ??
+        null;
       if (img && size) {
         ctx.drawImage(img, 0, 0, size.w, size.h);
         if (scene.background.source === 'tilemap-preview') {
