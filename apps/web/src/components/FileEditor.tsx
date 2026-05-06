@@ -343,80 +343,70 @@ Show me the diff before applying.`;
     if (!props.onAskCodex) return;
 
     const regenPath = `.ogf/regen/${props.relPath.replace(/\\/g, '/')}`;
+    const dir = props.relPath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
     const lines: string[] = [];
 
+    // Lead with the goal in one sentence — what we want, not how to do it.
     lines.push(
-      `Regenerate the sprite at \`${props.relPath}\` via the \`generate2dsprite\` skill. Write the new sheet to STAGING at \`${regenPath}\` (don't overwrite the original — the user reviews + applies it).`,
+      `Remake the sprite at \`${props.relPath}\` via \`generate2dsprite\`. Write the new sheet to STAGING at \`${regenPath}\` — DON'T overwrite the original. The user reviews + applies the swap.`,
     );
-    lines.push('');
-    lines.push('## What the user picked');
-
-    // Aspect / dimensions — soft, not enforced pixel sizes
-    if (opts.aspectRatio === 'same' && naturalW > 0 && naturalH > 0) {
-      lines.push(`- Aspect ratio: keep current (${naturalW}:${naturalH}). Pixel size can change if it makes the sprite look better.`);
-    } else if (opts.aspectRatio === 'free') {
-      lines.push('- Aspect ratio: free — pick whatever fits the animation best.');
-    } else {
-      lines.push(`- Aspect ratio: ${opts.aspectRatio}. Don't enforce exact pixel dimensions; pick a sensible size.`);
-    }
-
-    // Frame layout
-    lines.push(`- Frame layout: **${opts.frames} frames** in a **${opts.cols}×${opts.rows}** grid (cols × rows).`);
-    lines.push(`- Animation FPS: ${opts.fps}.`);
 
     if (opts.hint) {
-      lines.push(`- Change request: ${opts.hint}`);
+      lines.push('');
+      lines.push(`**What should change:** ${opts.hint}`);
+    } else {
+      lines.push('');
+      lines.push('**What should change:** fresh take with the same intent — same character, refreshed.');
     }
 
-    // Visual consistency — the meat of preventing drift
+    // Consistency is the only HARD rule. Everything else is the agent's call.
     lines.push('');
-    lines.push('## Consistency (CRITICAL — must read as the SAME character)');
-    lines.push('1. Read `.ogf/style-anchor.png` if it exists — that is the canonical look.');
-    lines.push('2. Read `.ogf/spec.md` §1 (Style) and include the directive verbatim in the `generate2dsprite` `prompt` argument.');
-
+    lines.push('## Visual consistency (the only hard rule)');
+    lines.push('This must read as the SAME character as the existing sprites — silhouette, palette, face/eye features, costume marks, accessories, body proportions all preserved. Only the action changes.');
+    lines.push('');
+    lines.push('Before generating, do this in order:');
+    lines.push('1. `view_image .ogf/style-anchor.png` (if it exists)');
     if (opts.matchSiblingStyle && siblings.length > 0) {
-      lines.push('3. Read these existing sprites of the SAME character/folder before generating, and pass them as image references in the `generate2dsprite` call (the skill supports a references arg). Match their proportions, color palette, line weight, and silhouette so the new frames feel like one cycle:');
+      lines.push(`2. \`view_image\` each of these sibling sprites — they are OTHER animations of the SAME entity:`);
       for (const s of siblings) {
         lines.push(`   - \`${s}\``);
       }
     } else if (opts.matchSiblingStyle) {
-      const dir = props.relPath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
-      lines.push(`3. List PNGs under \`${dir}/\` (other animations of the same entity). Pass them as image references in the \`generate2dsprite\` call so the new frames match proportions / palette / silhouette.`);
+      lines.push(`2. \`ls ${dir}/\` then \`view_image\` each PNG — they are OTHER animations of the same entity.`);
     }
+    lines.push("3. In the `generate2dsprite` call, use the \"Same character, new animation\" reference role from conventions (`reference: 'generated_image'` after view_image).");
 
-    // Code-update plan — only if user asked AND layout changed
-    const layoutChanged =
-      !slice ||
-      opts.cols !== slice.cols ||
-      opts.rows !== slice.rows ||
-      opts.fps !== slice.fps;
-
+    // Mode-specific guidance
     lines.push('');
-    if (opts.updateCodeIfChanged && layoutChanged) {
-      lines.push('## After the user applies the swap');
-      if (slice) {
-        lines.push(
-          `Slicing changed from ${slice.cols}×${slice.rows} @ ${slice.fps}fps → ${opts.cols}×${opts.rows} @ ${opts.fps}fps. Once the user applies the swap (the original PNG gets replaced), update the slicing config in code/data so the engine renders the new layout correctly:`,
-        );
-      } else {
-        lines.push(`New slicing: ${opts.cols}×${opts.rows} @ ${opts.fps}fps. Update the slicing config in code/data accordingly:`);
-      }
-      if (usages && usages.length > 0) {
-        lines.push('References to update:');
-        for (const u of usages) {
-          lines.push(`  - \`${u.file}:${u.line}\` — ${u.snippet}`);
-        }
-      } else {
-        lines.push('Search the project for references to this sprite path; update cols/rows/fps fields wherever it is loaded.');
-      }
-      lines.push('**Do NOT edit code yet** — wait until the user applies the swap. For now, just write the regenerated sprite.');
+    if (opts.mode === 'auto') {
+      lines.push('## Layout & dimensions — your call');
+      lines.push("Pick whatever frame count, grid (cols × rows), fps, and pixel dimensions make this action read best. Don't try to match the original layout if a different one fits better — an attack swing often wants more frames or wider cells than idle. Don't force a square aspect on a non-square action; that squashes the sprite. Trust your judgment.");
     } else {
-      lines.push('## After the regenerate');
-      lines.push("Don't edit any other files. Just write the new sprite to the staging path.");
+      // Manual — user explicitly set values, pass them through
+      lines.push('## Layout & dimensions (user-specified)');
+      lines.push(`- Frames: **${opts.frames}** in a **${opts.cols}×${opts.rows}** grid`);
+      lines.push(`- FPS: **${opts.fps}**`);
+      if (opts.aspectRatio === 'same' && naturalW > 0 && naturalH > 0) {
+        lines.push(`- Aspect ratio: keep close to current (${naturalW}:${naturalH}). Pixel size can change.`);
+      } else if (opts.aspectRatio === 'free') {
+        lines.push('- Aspect ratio: free.');
+      } else {
+        lines.push(`- Aspect ratio: ${opts.aspectRatio} per cell.`);
+      }
+      lines.push("If the chosen layout would force squashing the character (e.g. forcing 1:1 cells when the action is wider), say so and ask before generating — don't squash silently.");
     }
 
+    // Reporting — keep it short. Don't pre-edit code.
     lines.push('');
-    lines.push(`When done, confirm the file was written to \`${regenPath}\`. The user controls when (or if) the swap happens.`);
+    lines.push('## When done');
+    lines.push(`- Confirm the staging file path: \`${regenPath}\`.`);
+    lines.push('- Report the actual layout used: frames, grid (cols × rows), fps, frame dimensions.');
+    if (slice) {
+      lines.push(`- If your layout differs from the existing slicing (${slice.cols}×${slice.rows} @ ${slice.fps}fps), say so. The user will apply the swap first; ONLY THEN, in a follow-up turn, update slicing config in code/data. DO NOT pre-edit code now.`);
+    } else {
+      lines.push('- DO NOT edit other files. Just write the staged sprite.');
+    }
+    lines.push('- Stay focused. Regenerate touches one sprite + the staging file, nothing else.');
 
     props.onAskCodex(lines.join('\n'));
   }

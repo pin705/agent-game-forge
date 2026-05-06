@@ -4,19 +4,21 @@ import { fetchFileTree } from '../lib/api.js';
 import { I } from './icons.js';
 
 export interface RegenerateOptions {
-  /** 'same' = keep current dims, 'free' = let model decide, otherwise w:h. */
+  /** 'auto' = trust agent (default). 'manual' = use the numeric fields below. */
+  mode: 'auto' | 'manual';
+  /** Free-form change request — what should be different about this sprite. */
+  hint: string;
+  /** Auto-discover sibling sprites and ask agent to view_image each as character reference. */
+  matchSiblingStyle: boolean;
+  /** Manual-only: aspect ratio override. 'same' = keep current dims, 'free' = let model pick. */
   aspectRatio: 'same' | 'free' | '1:1' | '4:3' | '3:4' | '16:9' | '9:16';
-  /** Total frame count (cols × rows). 0 means "don't enforce". */
+  /** Manual-only: total frame count. */
   frames: number;
+  /** Manual-only: grid layout. */
   cols: number;
   rows: number;
+  /** Manual-only: animation fps. */
   fps: number;
-  /** Free-form change request. */
-  hint: string;
-  /** Tell agent to also patch slicing config (cols/rows/fps in code) AFTER user applies the swap. */
-  updateCodeIfChanged: boolean;
-  /** Auto-discover sibling sprites in the same dir and ask agent to use them as visual reference. */
-  matchSiblingStyle: boolean;
 }
 
 interface Props {
@@ -56,14 +58,20 @@ function suggestGrid(frames: number): { cols: number; rows: number } {
 
 export function RegenerateOptionsModal(props: Props) {
   const initialFrames = (props.initial?.cols ?? 0) * (props.initial?.rows ?? 0) || 4;
+  // Quick (auto) is the default — agent decides frame count / grid / aspect /
+  // fps based on the action. Forcing a layout was causing the agent to
+  // squash sprites to fit non-square cells when the requested aspect
+  // didn't match what the action naturally needed.
+  const [mode, setMode] = useState<'auto' | 'manual'>('auto');
+  const [hint, setHint] = useState('');
+  const [matchSiblingStyle, setMatchSiblings] = useState(true);
+
   const [aspectRatio, setAspectRatio] = useState<RegenerateOptions['aspectRatio']>('same');
   const [frames, setFrames] = useState(initialFrames);
   const [cols, setCols] = useState(props.initial?.cols ?? 4);
   const [rows, setRows] = useState(props.initial?.rows ?? 1);
   const [fps, setFps] = useState(props.initial?.fps ?? 8);
-  const [hint, setHint] = useState('');
-  const [updateCodeIfChanged, setUpdateCode] = useState(true);
-  const [matchSiblingStyle, setMatchSiblings] = useState(true);
+
   const [siblings, setSiblings] = useState<string[]>([]);
   const [siblingsLoading, setSiblingsLoading] = useState(true);
 
@@ -127,24 +135,20 @@ export function RegenerateOptionsModal(props: Props) {
   function submit() {
     props.onSubmit(
       {
+        mode,
+        hint: hint.trim(),
+        matchSiblingStyle,
         aspectRatio,
         frames,
         cols,
         rows,
         fps,
-        hint: hint.trim(),
-        updateCodeIfChanged,
-        matchSiblingStyle,
       },
       siblings,
     );
   }
 
   const gridMismatch = cols * rows !== frames;
-  const layoutChanged =
-    cols !== (props.initial?.cols ?? -1) ||
-    rows !== (props.initial?.rows ?? -1) ||
-    fps !== (props.initial?.fps ?? -1);
 
   return (
     <div className="modal-scrim" onClick={props.onCancel}>
@@ -158,94 +162,17 @@ export function RegenerateOptionsModal(props: Props) {
 
         <div className="modal-body" style={{ display: 'block', padding: 16, overflow: 'auto' }}>
           <div className="regen-form">
-            <label className="regen-form-row">
-              <span>Aspect ratio</span>
-              <select
-                value={aspectRatio}
-                onChange={(e) => setAspectRatio(e.target.value as RegenerateOptions['aspectRatio'])}
-              >
-                {ASPECTS.map((a) => (
-                  <option key={a.value} value={a.value}>
-                    {a.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="regen-form-row">
-              <span>Frames</span>
-              <div className="regen-frame-controls">
-                <input
-                  type="number"
-                  min={1}
-                  value={frames}
-                  onChange={(e) => applyFrames(Number(e.target.value))}
-                  style={{ width: 64 }}
-                />
-                <span className="regen-form-divider">in</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={cols}
-                  onChange={(e) => setCols(Math.max(1, Number(e.target.value) || 1))}
-                  style={{ width: 56 }}
-                />
-                <span className="regen-form-divider">×</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={rows}
-                  onChange={(e) => setRows(Math.max(1, Number(e.target.value) || 1))}
-                  style={{ width: 56 }}
-                />
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  onClick={autoSuggest}
-                  title="Suggest a grid that matches frame count"
-                >
-                  auto
-                </button>
-              </div>
-            </div>
-            {gridMismatch && (
-              <div className="regen-form-warn">
-                {I.warn} cols × rows ({cols * rows}) doesn't match frames ({frames}).
-              </div>
-            )}
-
-            <label className="regen-form-row">
-              <span>FPS</span>
-              <input
-                type="number"
-                min={1}
-                max={60}
-                value={fps}
-                onChange={(e) => setFps(Math.max(1, Math.min(60, Number(e.target.value) || 8)))}
-                style={{ width: 64 }}
-              />
-            </label>
-
+            {/* The two things that actually matter for most regenerates:
+                what should change, and which sibling sprites to match. */}
             <label className="regen-form-row regen-form-row-stack">
               <span>What should change?</span>
               <textarea
                 value={hint}
                 onChange={(e) => setHint(e.target.value)}
-                placeholder="Optional. Leave blank for a fresh take with the same intent."
+                placeholder="Optional. e.g. 'more aggressive — bigger swings'. Leave blank for a fresh take with the same intent."
                 rows={3}
+                autoFocus
               />
-            </label>
-
-            <label className="regen-checkbox">
-              <input
-                type="checkbox"
-                checked={updateCodeIfChanged}
-                onChange={(e) => setUpdateCode(e.target.checked)}
-              />
-              <span>
-                Patch code/data slicing (cols / rows / fps) <strong>after</strong> I apply the swap
-                {layoutChanged && <span className="pill" style={{ marginLeft: 6 }}>layout changed</span>}
-              </span>
             </label>
 
             <label className="regen-checkbox">
@@ -263,15 +190,111 @@ export function RegenerateOptionsModal(props: Props) {
                 )}
               </span>
             </label>
+
             {matchSiblingStyle && siblings.length > 0 && (
               <ul className="regen-siblings">
-                {siblings.slice(0, 8).map((s) => (
+                {siblings.slice(0, 6).map((s) => (
                   <li key={s} className="mono">{s}</li>
                 ))}
-                {siblings.length > 8 && (
-                  <li className="muted mono">… and {siblings.length - 8} more</li>
+                {siblings.length > 6 && (
+                  <li className="muted mono">… and {siblings.length - 6} more</li>
                 )}
               </ul>
+            )}
+
+            {/* Mode toggle — auto trusts the agent. Manual unlocks the
+                numeric controls. Default = auto because over-constraining
+                was causing the agent to squash sprites trying to fit
+                forced aspects/grids. */}
+            <div className="regen-mode-toggle">
+              <button
+                type="button"
+                className={`regen-mode-btn ${mode === 'auto' ? 'active' : ''}`}
+                onClick={() => setMode('auto')}
+              >
+                Quick
+                <span className="muted">agent decides layout</span>
+              </button>
+              <button
+                type="button"
+                className={`regen-mode-btn ${mode === 'manual' ? 'active' : ''}`}
+                onClick={() => setMode('manual')}
+              >
+                Manual
+                <span className="muted">I'll set frames / grid / fps</span>
+              </button>
+            </div>
+
+            {mode === 'manual' && (
+              <div className="regen-manual-block">
+                <label className="regen-form-row">
+                  <span>Aspect ratio</span>
+                  <select
+                    value={aspectRatio}
+                    onChange={(e) => setAspectRatio(e.target.value as RegenerateOptions['aspectRatio'])}
+                  >
+                    {ASPECTS.map((a) => (
+                      <option key={a.value} value={a.value}>
+                        {a.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="regen-form-row">
+                  <span>Frames</span>
+                  <div className="regen-frame-controls">
+                    <input
+                      type="number"
+                      min={1}
+                      value={frames}
+                      onChange={(e) => applyFrames(Number(e.target.value))}
+                      style={{ width: 64 }}
+                    />
+                    <span className="regen-form-divider">in</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={cols}
+                      onChange={(e) => setCols(Math.max(1, Number(e.target.value) || 1))}
+                      style={{ width: 56 }}
+                    />
+                    <span className="regen-form-divider">×</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={rows}
+                      onChange={(e) => setRows(Math.max(1, Number(e.target.value) || 1))}
+                      style={{ width: 56 }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={autoSuggest}
+                      title="Suggest a grid that matches frame count"
+                    >
+                      auto
+                    </button>
+                  </div>
+                </div>
+                {gridMismatch && (
+                  <div className="regen-form-warn">
+                    {I.warn} cols × rows ({cols * rows}) doesn't match frames ({frames}).
+                  </div>
+                )}
+
+                <label className="regen-form-row">
+                  <span>FPS</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={fps}
+                    onChange={(e) => setFps(Math.max(1, Math.min(60, Number(e.target.value) || 8)))}
+                    style={{ width: 64 }}
+                  />
+                </label>
+              </div>
             )}
           </div>
         </div>

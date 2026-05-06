@@ -2332,6 +2332,56 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
 }
 .regen-siblings li { padding: 1px 0; }
 
+/* Quick / Manual mode toggle. Two pill buttons side-by-side. Quick is
+ * the default — agent decides everything technical. */
+.regen-mode-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 4px;
+}
+.regen-mode-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-1);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s, background 0.12s;
+}
+.regen-mode-btn:hover {
+  border-color: var(--line-strong, var(--ink-3));
+}
+.regen-mode-btn .muted {
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+.regen-mode-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--ink-0);
+}
+.regen-mode-btn.active .muted {
+  color: var(--ink-2);
+}
+.regen-manual-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
 .utility-row {
   display: flex; gap: 6px; align-items: center;
 }
