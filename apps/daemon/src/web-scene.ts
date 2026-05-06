@@ -226,6 +226,7 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
   const HANDLED_ARRAYS = new Set([
     'props',
     'blockers',
+    'colliders',         // ← collision rects, parsed as SceneCollider below
     'walkBounds',
     'spawn_points',
   ]);
@@ -296,6 +297,38 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
       name: id,
       kind: 'blocker',
       position: entryCenterPosition(b),
+      shape,
+      editable: shape.kind !== 'polygon',
+    });
+  });
+
+  // ---- Colliders (newer name; same SceneCollider shape) ----
+  // Side-scrollers commonly have a `colliders[]` array semantically
+  // distinct from `blockers[]`: each entry has type='platform' /
+  // 'wall' / 'ceiling' / 'hazard'. We parse them with the entry's
+  // type carried forward as `kind` so the editor can color-code by
+  // role (platform tops vs hazard zones look different).
+  const rawColliders = Array.isArray(data.colliders) ? (data.colliders as RectLike[]) : [];
+  rawColliders.forEach((c, idx) => {
+    const shape = inferShapeFromEntry(c);
+    if (!shape) return;
+    const id = String(c.id ?? `collider_${idx}`);
+    const kind =
+      typeof c.type === 'string'
+        ? (c.type as string)
+        : 'collider';
+    const ref: ColliderRef = {
+      backend: 'json',
+      relPath,
+      section: 'colliders',
+      id,
+    };
+    colliders.push({
+      uid: `web:colliders:${id}`,
+      ref,
+      name: id,
+      kind,
+      position: entryCenterPosition(c),
       shape,
       editable: shape.kind !== 'polygon',
     });
