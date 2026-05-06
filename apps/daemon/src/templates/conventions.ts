@@ -553,6 +553,73 @@ OGF writes the user's current scene state to \`.ogf/scene-context.json\` on
 every drag / select / scene change. When the user asks "this prop", "the
 selected zone", or refers to anything by visual position, read that file
 first.
+
+## Phase verification policy — you are headless; DON'T try to see
+
+Phase verification rows in \`.ogf/spec.md\` say things like 'open Play
+tab and see X', 'press jump and see player rise', 'move character into
+enemy and see HP drop'. **You (the agent) CANNOT actually open a
+browser or see visual output.** You are a CLI process with no GUI.
+
+Don't waste turn time on:
+
+- ❌ Spawning Chrome / Chromium / Edge / system browser
+- ❌ Calling \`puppeteer\` / \`playwright\` / \`chromium-headless\`
+- ❌ Starting a separate dev server outside OGF's own one just to "browse"
+- ❌ \`xdg-open\` / \`start chrome\` / \`open -a 'Google Chrome'\`
+- ❌ Taking screenshots — you have no eyes to look at them
+- ❌ Writing 'verified by visual inspection' or 'looks correct in browser' — those are user-facing words
+
+The user already has OGF's Play tab in their browser. Visual verification
+is THEIR job. They look, they confirm, they tell you if something's wrong.
+
+### What to verify instead — logic, not vision
+
+For COLLISION / PHYSICS deliverables:
+  Write a Node-side smoke test:
+  \`\`\`
+  // Import your collision module + minimal player state
+  // Simulate one fall step
+  // Assert: player.y after fall == platform_collider.y - player.h
+  \`\`\`
+  Run it via \`node -e '...'\` or a one-shot script. If the math
+  passes, you've satisfied your part. The user closes the loop in
+  the Play tab visually.
+
+For DATA / SCHEMA deliverables:
+  - JSON.parse every file you wrote — assert it parses.
+  - Assert required fields present (e.g. each level has
+    \`{id, mapSize, spawn}\` minimum).
+  - Cross-check references: every enemy's \`type\` exists in
+    \`enemies.json\`; every \`image\` path \`fs.existsSync\` returns true.
+
+For ASSET / FILE deliverables:
+  - \`fs.existsSync\` per expected output path.
+  - For sprites: load \`pipeline-meta.json\` next to the sheet and
+    confirm \`rows × cols × cell_size\` matches what you asked the skill
+    for.
+
+For RUNTIME LOGIC (movement, AI, spawning):
+  - Unit-test the pure functions where possible (no canvas needed).
+  - For canvas-coupled code, just assert the module exports the
+    expected functions / shapes; trust the user's Play tab for the
+    rest.
+
+### Phase completion checklist
+
+When you're about to flip a Phase \`- [ ]\` → \`- [x]\`:
+
+1. ✓ All file artifacts the phase promised exist (fs.existsSync each).
+2. ✓ All JSON parses cleanly.
+3. ✓ All cross-references resolve (no dangling sprite paths,
+   missing catalog ids, etc).
+4. ✓ Any pure-logic deliverable has a passing Node smoke test.
+5. **Then write a one-line note**: 'Phase X complete. User: open Play
+   tab and confirm <the user-visible thing>.'
+6. Flip the checkbox.
+
+This frees you to spend turn budget on actually building the game,
+not chasing browser ghosts.
 `;
 
 const GODOT = `## Godot 4 specifics
