@@ -282,8 +282,30 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
     if (editable.length === 0) continue;
     if (editable.length * 2 < arr.length) continue;
 
+    // Resolve `tile` reference against shared_platform_library (added in
+    // genre conventions for side-scroll). Each platform in three-piece /
+    // tile mode references a library key instead of carrying its own image
+    // — fall back to the library's `mid` image so the editor at least
+    // shows a recognizable texture (still stretches w/h for now; proper
+    // three-piece composition arrives in Schema v2 + renderer upgrade).
+    const library =
+      data.shared_platform_library && typeof data.shared_platform_library === 'object'
+        ? (data.shared_platform_library as Record<string, {
+            left?: { image?: string };
+            mid?: { image?: string };
+            right?: { image?: string };
+          }>)
+        : null;
+    function resolveTileImage(tileKey: unknown): string | null {
+      if (typeof tileKey !== 'string' || !library) return null;
+      const entry = library[tileKey];
+      return (entry?.mid?.image as string) ?? (entry?.left?.image as string) ?? null;
+    }
+
     editable.forEach((p, idx) => {
-      const image = typeof p.image === 'string' ? p.image : null;
+      const direct = typeof p.image === 'string' ? p.image : null;
+      const fromLibrary = direct ? null : resolveTileImage((p as { tile?: unknown }).tile);
+      const image = direct ?? fromLibrary;
       const w = Number(p.w);
       const h = Number(p.h);
       const id = String(p.id ?? `${section}_${idx}`);
