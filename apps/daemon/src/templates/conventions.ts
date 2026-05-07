@@ -22,22 +22,29 @@ chat with you.
 
 ## MANDATORY: read these before writing the spec
 
-OGF vendors the canonical skill rules into every project at
-\`.ogf/skills/\`. Before any of this:
+OGF vendors the canonical skill bundle (rules + Python scripts) into
+every project at \`.agents/skills/\`. This is the OpenAI Codex
+canonical project-local skill path — codex auto-discovers it walking
+up from CWD. **Skills run from this bundle, not from \`~/.codex/skills/\`**
+(closer-to-CWD wins codex's resolution order). OGF is therefore
+self-contained: \`git clone\` → scaffold → codex finds skills, no
+separate install.
+
+Before any of this:
 - writing or editing \`.ogf/spec.md\`
 - planning visual structure (parallax layers, prop packs, frame counts)
 - invoking \`generate2dmap\` or \`generate2dsprite\`
 
 …READ these files in this order:
 
-1. \`.ogf/skills/generate2dmap/agents/openai.yaml\` — distilled
+1. \`.agents/skills/generate2dmap/agents/openai.yaml\` — distilled
    invocation prompt with the current defaults baked in
    (\`stage_segment_count\`, \`platform_strategy\`, etc).
-2. \`.ogf/skills/generate2dmap/SKILL.md\` (+ its \`references/*.md\`)
-3. \`.ogf/skills/generate2dsprite/agents/openai.yaml\` — same role
+2. \`.agents/skills/generate2dmap/SKILL.md\` (+ its \`references/*.md\`)
+3. \`.agents/skills/generate2dsprite/agents/openai.yaml\` — same role
    for sprite generation (frame layout per action, body-only
    attack rules, \`scale_strategy\` defaults).
-4. \`.ogf/skills/generate2dsprite/SKILL.md\` (+ its \`references/*.md\`)
+4. \`.agents/skills/generate2dsprite/SKILL.md\` (+ its \`references/*.md\`)
 
 These contain the up-to-date rules for: side-scroll segment counts,
 platform strategies, parallax layer organization, prop pack vs strip
@@ -47,6 +54,27 @@ extraction, magenta cleanup, QC validation. **OGF defers to them.**
 If something in these vendored skill files contradicts something
 written in this conventions file, **the skill files win**. This file
 is the OGF process; those files are the asset rules.
+
+## Skill invocation precedence
+
+Skills have TWO components:
+- **Rules** — \`.agents/skills/<name>/{SKILL.md, agents/openai.yaml,
+  references/*.md}\`. Read at Phase 0 + every time you plan visuals.
+- **Scripts** — \`.agents/skills/<name>/scripts/*.py\`. Codex runs
+  these when you invoke the skill via \`$generate2dsprite\` /
+  \`$generate2dmap\`. **Don't run the scripts directly with \`python\`** —
+  go through the codex skill invocation so context (SKILL.md +
+  references) gets injected automatically.
+
+NEVER hand-roll the workflow. If you call \`image_gen\` directly and
+write your own postprocessing, you lose: chroma-key cleanup, frame
+extraction, edge-touch QC, anchor alignment, pipeline-meta.json
+output. The skills exist precisely so OGF assets are uniform.
+
+If \`$generate2dsprite\` invocation fails (skill registry missing,
+codex CLI doesn't see the bundle): STOP and report
+\`"this session lacks the codex skill registry — verify .agents/skills/
+exists in the project root"\` — don't fall back to ad-hoc \`image_gen\`.
 
 ## Spec authorship — describe WHAT, not HOW
 
@@ -340,7 +368,7 @@ Archer has 2 animations → 2 calls (idle / attack).
 **Frame layout per call** is decided by the skill, NOT prescribed here
 or in spec.md. The skill picks rows × cols based on action type
 (idle ≈ 2x2, walk ≈ 2x3 or 2x4, attack ≈ 2x3, etc. — see the
-vendored \`.ogf/skills/generate2dsprite/SKILL.md\` for the current
+vendored \`.agents/skills/generate2dsprite/SKILL.md\` for the current
 mapping). Don't pass a \`sheet\` parameter unless the user explicitly
 asked for a specific cell grid.
 

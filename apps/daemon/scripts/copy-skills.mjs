@@ -18,16 +18,21 @@ if (!existsSync(srcDir)) {
 }
 
 mkdirSync(path.dirname(dstDir), { recursive: true });
-// Copy .md (rules) and .yaml (invocation defaults) but skip .py (codex
-// runs scripts from its own ~/.codex/skills/, not from our copy) and
-// __pycache__. Directories must pass through so cpSync can recurse.
+// Copy .md (rules), .yaml (invocation defaults), AND .py (scripts that
+// codex spawns at invocation time). Skip __pycache__ (compile cache).
+// Directories pass through so cpSync can recurse.
+//
+// .py was previously skipped because we assumed codex always runs
+// scripts from ~/.codex/skills/. With Path-5 (project-local
+// .agents/skills/), codex runs scripts from there — so .py files are
+// load-bearing in the bundle, not decoration.
 cpSync(srcDir, dstDir, {
   recursive: true,
   filter: (src) => {
     if (src.includes('__pycache__')) return false;
     const ext = path.extname(src);
     if (!ext) return true; // directory
-    return ext === '.md' || ext === '.yaml';
+    return ext === '.md' || ext === '.yaml' || ext === '.py';
   },
 });
 console.log(`[copy-skills] copied ${srcDir} → ${dstDir}`);

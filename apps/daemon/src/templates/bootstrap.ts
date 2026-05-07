@@ -8,22 +8,35 @@ import { fileURLToPath } from 'node:url';
 import type { EngineKind } from '@ogf/contracts';
 import { godotConventions, webConventions } from './conventions.js';
 
-// Skill MDs are vendored under templates/skills/. We copy them into every
-// new project's `.ogf/skills/` folder so the spec-writer agent reads them
-// AT spec authorship time (not just when invoking a skill mid-run).
+// Skills are vendored under templates/skills/. We copy them into every
+// new project's `.agents/skills/` folder — the canonical OpenAI Codex
+// path (codex auto-discovers skills walking up from CWD to repo root).
+// See https://developers.openai.com/codex/skills .
 //
-// Owning the rules here means OGF's behavior is reproducible across
-// global ~/.codex/skills/ updates — a megaman-sango run today produces
-// the same shape as one tomorrow, regardless of upstream skill drift.
-// Re-vendor by re-running scripts/sync-skills (manual for now).
+// This makes OGF a SELF-CONTAINED PRODUCT: clone the repo, scaffold a
+// project, codex finds skills automatically. No `~/.codex/skills/`
+// install required, no `--skill-dir` flag needed. Closer-to-CWD wins
+// codex's resolution order, so the bundled skills override anything
+// the user has installed globally — guarantees reproducibility.
+//
+// Bundle EVERYTHING this time: .md (rules), .yaml (invocation
+// defaults), AND .py (scripts codex spawns at skill invocation).
+// Previous bundle skipped .py because we (incorrectly) assumed codex
+// always runs scripts from ~/.codex/skills/. Path-5 discovery means
+// codex runs scripts from .agents/skills/ when project-local — so .py
+// is now load-bearing, not decorative.
+//
+// Re-vendor: copy from ~/.codex/skills/ → templates/skills/ when
+// upstream skills have changes worth picking up.
 const SKILLS_SRC_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   'skills',
 );
 
 /** Walk the vendored skills tree and produce ScaffoldFile entries
- *  rooted at `.ogf/skills/`. Recursive so SKILL.md + references/* both
- *  end up in the right shape under the project. */
+ *  rooted at `.agents/skills/`. Recursive so SKILL.md + references/* +
+ *  scripts/*.py + agents/*.yaml all land at the right shape under
+ *  the project. */
 function vendoredSkillFiles(): ScaffoldFile[] {
   if (!existsSync(SKILLS_SRC_DIR)) return [];
   const out: ScaffoldFile[] = [];
@@ -32,18 +45,17 @@ function vendoredSkillFiles(): ScaffoldFile[] {
       const absChild = path.join(absDir, entry);
       const stat = statSync(absChild);
       if (stat.isDirectory()) {
+        // Skip __pycache__ — compile cache, never useful in a project.
+        if (entry === '__pycache__') continue;
         walk(absChild, [...relSegments, entry]);
         continue;
       }
       // Bundle:
-      //   .md  — SKILL.md, references/*.md (rules the agent reads)
-      //   .yaml— agents/openai.yaml (distilled invocation prompts)
-      // Skip:
-      //   .py  — scripts run by codex from its own ~/.codex/skills/, not
-      //          from .ogf/skills/. Vendoring would only confuse.
-      //   __pycache__ — compile cache, never useful in a project.
-      if (!/\.(md|yaml)$/.test(entry)) continue;
-      const projectRel = ['.ogf', 'skills', ...relSegments, entry].join('/');
+      //   .md   — SKILL.md, references/*.md (rules the agent reads)
+      //   .yaml — agents/openai.yaml (distilled invocation prompts)
+      //   .py   — scripts/* (codex runs these at invocation time)
+      if (!/\.(md|yaml|py)$/.test(entry)) continue;
+      const projectRel = ['.agents', 'skills', ...relSegments, entry].join('/');
       out.push({ rel: projectRel, body: readFileSync(absChild, 'utf8') });
     }
   };
