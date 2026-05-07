@@ -249,13 +249,6 @@ export function FolderPickerModal(props: Props) {
                 <label className="muted" style={{ fontSize: 11 }}>Engine</label>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <EngineRadio
-                    value="godot"
-                    label="Godot 4"
-                    sub=".tscn / .gd / data JSON"
-                    checked={newEngine === 'godot'}
-                    onSelect={() => setNewEngine('godot')}
-                  />
-                  <EngineRadio
                     value="web"
                     label="Web (Canvas 2D)"
                     sub="vanilla JS + JSON levels"
@@ -263,9 +256,17 @@ export function FolderPickerModal(props: Props) {
                     onSelect={() => setNewEngine('web')}
                   />
                   <EngineRadio
+                    value="godot"
+                    label="Godot 4"
+                    sub="coming soon"
+                    checked={false}
+                    onSelect={() => undefined}
+                    disabled
+                  />
+                  <EngineRadio
                     value="unity"
                     label="Unity"
-                    sub="not yet supported"
+                    sub="coming soon"
                     checked={false}
                     onSelect={() => undefined}
                     disabled
