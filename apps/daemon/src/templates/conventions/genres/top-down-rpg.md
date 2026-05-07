@@ -2,7 +2,11 @@
 
 Pokemon-style overworld + interior, Stardew Valley-ish exploration. Single-screen or scrolling map with NPCs, dialogue, simple movement.
 
-**Canonical reference**: [Mike Hadley's Modular Game Worlds in Phaser 3 — Tilemaps part 1](https://github.com/mikewesthad/phaser-3-tilemap-blog-posts/blob/master/posts/post-1/README.md). Canonical Pokemon-style top-down done right. Read it before phase 1.
+**Canonical reference**: [Mike Hadley's Modular Game Worlds in Phaser 3 — Tilemaps part 1](https://github.com/mikewesthad/phaser-3-tilemap-blog-posts/blob/master/posts/post-1/README.md). Canonical Pokemon-style top-down done right. Read it for the PATTERN.
+
+> ⚠️ **OGF projects do NOT use Phaser** — vanilla Canvas 2D only. References are pattern inspiration. See `runtime-patterns.md` for the Phaser → vanilla translation table.
+>
+> ⚠️ **OGF Scene editor support for top-down RPG is LIMITED**: object placement (NPCs, doors, triggers) is drag-editable; tile-layer editing is NOT. Treat the tilemap as a generated background image at editor time. If the user wants full tile-by-tile editing, push back — that's a future OGF feature.
 
 This file assumes you've read `runtime-patterns.md` (delta time, AABB, FSM, **Y-sort**, etc).
 

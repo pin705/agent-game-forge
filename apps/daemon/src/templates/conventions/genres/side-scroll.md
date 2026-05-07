@@ -2,9 +2,11 @@
 
 Mega Man X, Mario, Castlevania-style side-view action games.
 
-**Canonical reference**: [Mike Hadley's Phaser 3 tilemap series](https://github.com/mikewesthad/phaser-3-tilemap-blog-posts) — author of Phaser's tilemap API. The `posts/post-2/03-drawing-platformer/` example shows everything in one place. Read it once before the first phase.
+**Canonical reference**: [Mike Hadley's Phaser 3 tilemap series](https://github.com/mikewesthad/phaser-3-tilemap-blog-posts) — author of Phaser's tilemap API. The `posts/post-2/03-drawing-platformer/` example shows everything in one place. Read it for the PATTERN.
 
-This file assumes you've also read `runtime-patterns.md` (delta time, AABB, FSM, etc — those are universal).
+> ⚠️ **OGF projects do NOT use Phaser** — vanilla Canvas 2D only. References below are pattern inspiration. See `runtime-patterns.md` for the Phaser → vanilla translation table. The code samples in this file are already vanilla canvas; copy those, not Phaser snippets from the linked tutorials.
+
+This file assumes you've also read `runtime-patterns.md` (delta time, AABB, FSM, scroll factor, etc — those are universal).
 
 ## Camera — camera-window + lookahead, NOT raw lerp
 

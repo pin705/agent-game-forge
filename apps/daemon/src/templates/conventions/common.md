@@ -295,8 +295,24 @@ Don't pre-emptively split. Most game-jam-scale projects fit in 4-6 files in `src
 
 ## What NOT to do (project-wide)
 
-- ❌ WebGL / Three.js / heavy 3D libs for new projects (the editor can't visualize them well).
-- ❌ React / Vue / framework UI inside the game (the canvas IS the UI; HUD is direct ctx.fillText / fillRect).
+- ❌ **Import any game framework.** No `phaser`, no `pixi`, no `three`, no `kaboom`, no `excalibur`. OGF's editor parses your `data/*.json` files directly — it cannot read Phaser scene definitions, Pixi DisplayObject trees, or any framework's serialized state. Genre files cite Phaser tutorials for **pattern inspiration** (Phaser has the most-documented canonical 2D patterns); read them for the WHAT, write your code as plain Canvas 2D. See `runtime-patterns.md` for a Phaser → vanilla canvas translation table.
+- ❌ **Import Tiled / LDtk JSON at runtime.** OGF schema (platforms[], colliders[], paths[], etc.) is what the editor reads. If you want Tiled-style data, convert it to OGF schema at generation time.
+- ❌ WebGL / Three.js for new projects (3D in OGF's 2D editor doesn't visualize).
+- ❌ React / Vue / framework UI inside the game (the `<canvas>` IS the UI; HUD is direct `ctx.fillText` / `ctx.fillRect`).
 - ❌ Hardcoded gameplay numbers in source files (HP/damage/speed go in catalog JSON).
 - ❌ Asset paths with spaces (Windows + various tooling don't handle them well).
 - ❌ Inventing schema field names — use the canonical shapes (point/rect/circle/polygon).
+
+## OGF Scene editor support level by genre
+
+The Scene tab can drag-edit some genres better than others. Push back gracefully if user expects full editor support for limited genres:
+
+| Genre | Editor support | What's drag-editable |
+|---|---|---|
+| Side-scroll / platformer | **full** | layers, platforms, colliders, hazards, pickups, enemies, checkpoints, exits |
+| Tower defense | **full** | path waypoints, buildSpots, zones, enemies, exits |
+| Arena survivor | **partial** | spawn_points, boss_spawn, pickups, hazards. Wave timeline edit only via JSON. |
+| Top-down RPG | **limited** | placement objects + zones. Tile layers NOT drag-editable in V1 (treat tilemap as one big rendered image for editor purposes). |
+| Shmup | **limited** | spawn_points + zones. Wave script + paths only via JSON. |
+
+Side-scroll and TD are the best-supported genres. Other genres still WORK at runtime, but the user has less drag-edit power; they'll review via Play tab + edit JSON in the editor. Be honest about this in spec planning.

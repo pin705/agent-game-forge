@@ -4,6 +4,10 @@ Vampire Survivors, Brotato style. Open arena, camera follows player, enemies spa
 
 **Canonical reference**: [Emanuele Feronato's Phaser VS prototype](https://emanueleferonato.com/2024/11/29/quick-html5-prototype-of-vampire-survivors-built-with-phaser-like-the-original-game/) — single-file canonical implementation. Bigger: [yudinikita/rick-survival](https://github.com/yudinikita/rick-survival) (Phaser 3 + TS, MIT).
 
+> ⚠️ **OGF projects do NOT use Phaser** — vanilla Canvas 2D only. References are pattern inspiration. See `runtime-patterns.md` for the Phaser → vanilla translation table. Code samples below are vanilla canvas; copy those, not the linked Phaser code directly.
+>
+> ⚠️ **OGF Scene editor support for arena-survivor is PARTIAL**: spawn rings + boss spawn + pickups are drag-editable. Wave timeline is JSON-only in V1.
+
 This file assumes you've read `runtime-patterns.md` (delta time, AABB, **object pooling for projectiles + enemies**, FSM).
 
 ## Level data — custom JSON, NOT tilemap

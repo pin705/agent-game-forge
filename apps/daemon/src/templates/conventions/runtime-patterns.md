@@ -2,6 +2,33 @@
 
 These eight patterns appear in every 2D game. Don't reinvent them per project — they have decades of established practice. Genre files reference these by name; this file holds the canonical implementation.
 
+## ⚠️ READ FIRST: OGF runtime is vanilla Canvas 2D, NOT Phaser
+
+OGF web projects use **vanilla HTML5 Canvas 2D** — no framework. The reference repos cited in genre files (Phaser tilemap series, Phaser TD tutorial, Phaser VS prototype, etc.) are **for PATTERN inspiration, not API reference**.
+
+**DO NOT import any framework.** No `phaser`, no `three`, no `pixi`, no `react`. OGF projects ship as a single `index.html` + `src/*.js` + `<canvas>` element. The editor parses your `data/*.json` directly — it cannot read Phaser scene definitions, Tiled JSON, or LDtk JSON unless you translate them into OGF's schema.
+
+When you read a Phaser reference, mentally translate:
+
+| Phaser API | Vanilla canvas equivalent |
+|---|---|
+| `scene.cameras.main.startFollow(p)` | manual `camera.x = p.x + p.w/2 - viewport.w/2` each frame |
+| `cam.setBounds(0, 0, w, h)` | `camera.x = clamp(camera.x, 0, w - viewport.w)` after follow |
+| `cam.setDeadzone(80, 40)` | check player against deadzone rect, only update camera when escaping it |
+| `cam.setLerp(0.1)` | `camera.x += (target - camera.x) * 0.1 * (dt * 60)` |
+| `sprite.setScrollFactor(0.5)` | when drawing: `screenX = worldX - camera.x * 0.5` |
+| `setScrollFactor(0)` | when drawing HUD: `screenX = worldX` (ignore camera) |
+| `Phaser.Math.lerp(a, b, t)` | `a + (b - a) * t` |
+| `scene.physics.add.collider(a, b, cb)` | manual per-frame AABB check (see §3 below) |
+| `scene.anims.create({key, frames, frameRate})` | read from sheet's `pipeline-meta.json`, draw via §4 below |
+| `scene.add.tileSprite(x, y, w, h, key)` | draw your own tile loop (see genre files for parallax patterns) |
+| `scene.physics.moveToObject(e, target, speed)` | `dx = target.x - e.x; dy = target.y - e.y; len = hypot(dx,dy); e.vx = dx/len * speed; e.vy = dy/len * speed` |
+| `Phaser.Geom.Rectangle.RandomOutside(outer, inner)` | pick angle θ, place at `player + cos/sin θ × halfDiagonal` (see arena-survivor.md) |
+
+For Tiled / LDtk JSON files: do not load them at runtime. Convert their data into OGF schema (`platforms[]`, `colliders[]`, `paths[]`, etc.) at generation time. The Scene editor can then drag-edit; the runtime reads the OGF schema directly.
+
+If the user explicitly asks for "use Phaser" / "make it a Phaser project" — push back. OGF's editor doesn't support Phaser-shaped data. Suggest a vanilla canvas reimplementation OR a separate non-OGF Phaser project.
+
 ## 1. Frame-rate independence (delta time)
 
 Every position update uses elapsed time, not frame count:

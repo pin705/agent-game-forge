@@ -2,7 +2,11 @@
 
 Vertical or horizontal scrolling shooter. Background autoscrolls; player constrained to viewport; enemies fly in formations from the edges; bullets everywhere.
 
-**Canonical reference**: [Phaser official Coding Tips 7 — Shoot-em-up](https://phaser.io/tutorials/coding-tips-007). Plus [phaserjs/editor-example-shmup](https://github.com/phaserjs/editor-example-shmup) and the very rich [Chmood/shmup](https://github.com/Chmood/shmup) which has multiple shoot patterns (streams, lateral pods, auto-aim, homing).
+**Canonical reference**: [Phaser official Coding Tips 7 — Shoot-em-up](https://phaser.io/tutorials/coding-tips-007). Plus [phaserjs/editor-example-shmup](https://github.com/phaserjs/editor-example-shmup) and the very rich [Chmood/shmup](https://github.com/Chmood/shmup) which has multiple shoot patterns.
+
+> ⚠️ **OGF projects do NOT use Phaser** — vanilla Canvas 2D only. References are pattern inspiration. See `runtime-patterns.md` for the Phaser → vanilla translation table. Code samples below are vanilla canvas.
+>
+> ⚠️ **OGF Scene editor support for shmup is LIMITED**: spawn points + zones are drag-editable. Wave script + paths are JSON-only.
 
 This file assumes you've read `runtime-patterns.md` (delta time, AABB, **object pooling for bullets — mandatory**, FSM).
 

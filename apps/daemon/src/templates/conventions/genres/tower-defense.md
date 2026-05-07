@@ -2,7 +2,9 @@
 
 Kingdom Rush, Bloons-style. Path-based enemy waves, grid tower placement, single-screen camera (or limited scroll).
 
-**Canonical reference**: [Phaser official Tower Defense tutorial](https://gamedevacademy.org/how-to-make-tower-defense-game-with-phaser-3/) — covers grid + polyline path + wave + targeting in one file. For pathfinding theory if path becomes dynamic: [Red Blob Games](https://www.redblobgames.com/pathfinding/tower-defense/).
+**Canonical reference**: [Phaser official Tower Defense tutorial](https://gamedevacademy.org/how-to-make-tower-defense-game-with-phaser-3/) — covers grid + polyline path + wave + targeting in one file. Read it for the PATTERN. For pathfinding theory if path becomes dynamic: [Red Blob Games](https://www.redblobgames.com/pathfinding/tower-defense/).
+
+> ⚠️ **OGF projects do NOT use Phaser** — vanilla Canvas 2D only. References are pattern inspiration. See `runtime-patterns.md` for the Phaser → vanilla translation table. The code samples below are already vanilla canvas; copy those, not Phaser snippets from the linked tutorials.
 
 This file assumes you've read `runtime-patterns.md` (delta time, AABB, FSM, **object pooling** for projectiles).
 
