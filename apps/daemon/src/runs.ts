@@ -26,6 +26,9 @@ export interface Run {
   /** When set, the run was killed by the stall watchdog. Distinguishes
    *  intentional cancel from forced termination. */
   killReason?: 'stalled' | 'manual';
+  /** Set when finish() is called. Used by the GC sweep to evict the run
+   *  from memory after FINISHED_RUN_TTL_MS. */
+  finishedAt?: number;
   meta: {
     agentId: string;
     bin: string;
@@ -42,16 +45,33 @@ const MAX_EVENTS = 2000;
 const STALL_THRESHOLD_MS = 5 * 60 * 1000;
 /** How often the watchdog scans for stalled runs. */
 const STALL_CHECK_INTERVAL_MS = 30 * 1000;
+/** How long to keep a finished run's events around before evicting from
+ *  the in-memory Map. The frontend re-attaches via /events?after=N for
+ *  refresh-resume; once the run is finished and end has been delivered,
+ *  there's no client value in keeping the events past a short grace
+ *  period. Without this the daemon's heap grows unbounded — every
+ *  past run's tool_use payloads (incl. base64 image_gen blobs) sit
+ *  forever and eventually OOM the daemon (502 from web side). */
+const FINISHED_RUN_TTL_MS = 5 * 60 * 1000;
+/** How often to scan for finished runs to evict. */
+const GC_INTERVAL_MS = 60 * 1000;
 
 export class RunManager {
   private runs = new Map<string, Run>();
   private watchdog: NodeJS.Timeout | null = null;
+  private gcTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     // Start stall watchdog on first instantiation. Per-Run because the
     // map is per-RunManager. Doesn't keep the process alive (unref'd).
     this.watchdog = setInterval(() => this.scanForStalls(), STALL_CHECK_INTERVAL_MS);
     this.watchdog.unref?.();
+    // GC pass — drop finished runs after a TTL so the daemon's heap
+    // doesn't grow unbounded over a long session. Without this, every
+    // past run's events (including base64 image_gen tool_results) sit
+    // forever and the daemon eventually OOMs (502 from web side).
+    this.gcTimer = setInterval(() => this.gcFinishedRuns(), GC_INTERVAL_MS);
+    this.gcTimer.unref?.();
   }
 
   create(meta: Run['meta'], conversationId: string): Run {
@@ -139,6 +159,34 @@ export class RunManager {
     for (const client of run.clients) client.end();
     run.clients.clear();
     run.child = undefined;
+    run.finishedAt = Date.now();
+    // Strip large base64 payloads from finished events. The frontend
+    // already received them via SSE; refresh-resume re-attaches via
+    // /events?after=N which would resend everything — but tool_use
+    // results with image_gen base64 can be 100KB-1MB each. Keep the
+    // event shape but drop heavy fields.
+    for (const rec of run.events) {
+      if (rec.event !== 'agent') continue;
+      const ev = rec.data as { type?: string; result?: unknown };
+      if (ev?.type === 'tool_result' && typeof ev.result === 'string' && ev.result.length > 4096) {
+        ev.result = `[stripped ${ev.result.length} chars after run finished — full content available in transcript]`;
+      }
+    }
+  }
+
+  /** Evict finished runs whose TTL has expired. Called periodically. */
+  private gcFinishedRuns(): void {
+    const now = Date.now();
+    for (const [id, run] of this.runs) {
+      if (!run.finishedAt) continue;
+      if (now - run.finishedAt < FINISHED_RUN_TTL_MS) continue;
+      // Belt-and-suspenders: kill any lingering clients (refresh-resume
+      // shouldn't hold past TTL but if a misbehaving client is still
+      // attached, drop it now).
+      for (const client of run.clients) client.end();
+      run.clients.clear();
+      this.runs.delete(id);
+    }
   }
 
   /** Watchdog pass: kill runs whose lastActivity is older than threshold.

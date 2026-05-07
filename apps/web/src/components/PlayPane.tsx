@@ -65,6 +65,11 @@ export function PlayPane(props: Props) {
   const consoleRef = useRef<HTMLDivElement | null>(null);
   const stdoutBufferRef = useRef('');
   const stderrBufferRef = useRef('');
+  // Hold the unsubscribe closer for the active Godot SSE stream. Without
+  // this, attachToRun leaked an EventSource per run — the previous
+  // run's handler kept setLines alive and accumulated multiple stream
+  // sources writing to the same lines buffer.
+  const runUnsubRef = useRef<(() => void) | null>(null);
   const lastError = useMemo(
     () => [...lines].reverse().find((l) => l.level === 'error') ?? null,
     [lines],
@@ -160,10 +165,25 @@ export function PlayPane(props: Props) {
   }
 
   function attachToRun(id: string) {
+    if (runUnsubRef.current) {
+      runUnsubRef.current();
+      runUnsubRef.current = null;
+    }
     setRunId(id);
     setRunning(true);
-    subscribeGodotRun(id, handleStreamEvent);
+    runUnsubRef.current = subscribeGodotRun(id, handleStreamEvent);
   }
+
+  // Close the SSE on PlayPane unmount.
+  useEffect(
+    () => () => {
+      if (runUnsubRef.current) {
+        runUnsubRef.current();
+        runUnsubRef.current = null;
+      }
+    },
+    [],
+  );
 
   const handleStreamEvent = useCallback((e: GodotStreamEvent) => {
     if (e.type === 'stdout') {

@@ -41,14 +41,17 @@ export function PackReviewModal(props: Props) {
   }
 
   // Lazy-load sheet.png previews for the active pack.
+  // We DON'T cache previews across packs — each preview is two base64
+  // sheets which can be hundreds of KB. Caching them in state would
+  // accumulate megabytes when the user switches between packs in a
+  // session. Refetch is cheap (daemon serves a single PNG) and keeps
+  // the modal's memory footprint constant.
   useEffect(() => {
     if (!active) return;
-    if (previews[active.packDir]) return;
     let cancelled = false;
-    setPreviews((p) => ({
-      ...p,
+    setPreviews({
       [active.packDir]: { liveSheetUrl: null, stagingSheetUrl: null, loading: true },
-    }));
+    });
     (async () => {
       const livePath = `${active.packDir}/sheet.png`;
       const stagingPath = `.ogf/regen/${active.packDir}/sheet.png`;
@@ -63,10 +66,9 @@ export function PackReviewModal(props: Props) {
       };
       const [live, stage] = await Promise.all([toUrl(livePath), toUrl(stagingPath)]);
       if (cancelled) return;
-      setPreviews((p) => ({
-        ...p,
+      setPreviews({
         [active.packDir]: { liveSheetUrl: live, stagingSheetUrl: stage, loading: false },
-      }));
+      });
     })();
     return () => {
       cancelled = true;

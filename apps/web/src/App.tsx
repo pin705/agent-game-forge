@@ -155,6 +155,20 @@ export function App() {
   const [pendingPacks, setPendingPacks] = useState<import('@ogf/contracts').PendingPack[]>([]);
   const [showPackReview, setShowPackReview] = useState(false);
 
+  // Holds the unsubscribe closer for the most recent subscribeRun call.
+  // EventSource leaks if we discard this — every reconnect, conversation
+  // switch, or new send() would stack another live SSE connection
+  // holding closures over App state. Kill the previous one before
+  // starting a new one + on App unmount.
+  const runUnsubRef = useRef<(() => void) | null>(null);
+  function closeRunSub() {
+    if (runUnsubRef.current) {
+      runUnsubRef.current();
+      runUnsubRef.current = null;
+    }
+  }
+  useEffect(() => () => closeRunSub(), []);
+
   // Navigation history (back/forward through tab + file selection)
   type NavState = { tab: Tab; selectedFile: { relPath: string; fileKind?: FileNode['fileKind'] } | null };
   const navStackRef = useRef<NavState[]>([{ tab: 'assets', selectedFile: null }]);
@@ -515,6 +529,10 @@ export function App() {
   // NOT useCallback — needs to read latest project / refreshTree etc via
   // closure (same reason send() is a regular function).
   async function selectConversation(id: string) {
+    // Switching conversations: drop any active SSE stream from the old
+    // conversation. subscribeToRun below will re-open if there's an
+    // in-flight run on the new conversation.
+    closeRunSub();
     setConversationId(id);
     localStorage.setItem(LS_CONVERSATION, id);
     const [r, active] = await Promise.all([
@@ -543,7 +561,8 @@ export function App() {
    *  most recent turn in `turns` state. messagesToTurns + send() both
    *  ensure that's the right placeholder. */
   function subscribeToRun(runId: string) {
-    subscribeRun(runId, (e) => {
+    closeRunSub();
+    runUnsubRef.current = subscribeRun(runId, (e) => {
       if (e.type === 'agent') {
         appendEventToLastTurn(e.data);
         // Schedule a debounced tree refresh on Edit / image_gen events
@@ -789,7 +808,8 @@ export function App() {
         }, 600);
       };
 
-      subscribeRun(r.runId, (e) => {
+      closeRunSub();
+      runUnsubRef.current = subscribeRun(r.runId, (e) => {
         if (e.type === 'agent') {
           if (e.data.type === 'tool_use' && e.data.name === 'Edit') {
             const changes = (e.data.input as { changes?: { path?: string }[] })?.changes ?? [];
