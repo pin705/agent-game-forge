@@ -2815,6 +2815,50 @@ input, textarea, select { font: inherit; color: inherit; background: none; borde
   line-height: 1.4;
 }
 
+/* Refactor-existing-project card on the empty-project welcome screen.
+ * One-click conversion to OGF structure (sidecar mode — agent generates
+ * data/*.json catalogs without touching existing code). */
+.welcome-import-card {
+  margin-top: 28px;
+  padding: 16px 18px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  text-align: left;
+}
+.welcome-import-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-0);
+  margin-bottom: 6px;
+}
+.welcome-import-title svg {
+  color: var(--accent);
+  width: 14px;
+  height: 14px;
+}
+.welcome-import-body {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  margin: 0 0 10px;
+}
+.welcome-import-body code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-2);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+}
+.welcome-import-body strong {
+  color: var(--ink-1);
+}
+
 /* PROMINENT pack actionbar — replaces the thin pointer when a file in
  * the editor is part of a pending pack. Big, accent-colored, can't be
  * missed. Buttons (Discard / Review / Apply) live RIGHT HERE so the

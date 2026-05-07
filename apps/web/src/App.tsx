@@ -1371,7 +1371,7 @@ function EditorPane(props: {
               onPackResolved={props.onPackResolved}
             />
           ) : (
-            <ProjectWelcome project={props.project} />
+            <ProjectWelcome project={props.project} onAskCodex={props.onAskCodex} />
           )
         )}
         {props.tab === 'scenes' && (() => {
@@ -1422,7 +1422,13 @@ function EditorPane(props: {
   );
 }
 
-function ProjectWelcome({ project }: { project: Project }) {
+function ProjectWelcome({
+  project,
+  onAskCodex,
+}: {
+  project: Project;
+  onAskCodex?: (text: string) => void;
+}) {
   return (
     <div className="inspector">
       <div className="crumbs">
@@ -1430,7 +1436,7 @@ function ProjectWelcome({ project }: { project: Project }) {
         <span className="badge-dim">{project.engine}</span>
       </div>
       <div className="canvas-area">
-        <div style={{ textAlign: 'center', maxWidth: 360 }}>
+        <div style={{ textAlign: 'center', maxWidth: 480 }}>
           <div style={{ fontSize: 14, color: 'var(--ink-1)', marginBottom: 8 }}>
             {project.name}
           </div>
@@ -1440,10 +1446,87 @@ function ProjectWelcome({ project }: { project: Project }) {
           <p style={{ marginTop: 16, color: 'var(--ink-2)', fontSize: 12 }}>
             Pick a file on the left, or ask Codex to make one.
           </p>
+
+          {onAskCodex && (
+            <div className="welcome-import-card">
+              <div className="welcome-import-title">
+                {I.refresh} Have an existing JS game?
+              </div>
+              <p className="welcome-import-body">
+                One-click conversion to OGF structure. The agent reads your code,
+                generates <code>data/*.json</code> catalogs + <code>.ogf/spec.md</code>{' '}
+                describing what's already here. <strong>Sidecar mode</strong> —
+                your existing source code and assets stay untouched.
+              </p>
+              <button
+                className="btn btn-sm btn-primary"
+                onClick={() => onAskCodex(refactorPromptTemplate())}
+              >
+                Refactor to OGF structure
+              </button>
+              <div className="muted" style={{ fontSize: 10.5, marginTop: 8 }}>
+                Drops a prompt into the chat — review and click Send.
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
+}
+
+/** Pre-baked Codex prompt for the 'Refactor existing JS game' button.
+ *  Sidecar-mode only: the agent generates OGF metadata files (data/*.json,
+ *  .ogf/spec.md) WITHOUT modifying any existing source code or assets. */
+function refactorPromptTemplate(): string {
+  return `Refactor this project into OGF structure (**sidecar mode** — DON'T modify existing source code, asset files, or anything in the project except creating new \`data/*.json\` and \`.ogf/*\` files).
+
+Goal: produce JSON catalogs + project metadata that describe what's already here, so OGF's asset-centric tools (regenerate pack, scene editor, asset view) can browse this project. The existing game keeps running on its existing code.
+
+## Step 1 — Survey
+
+Identify the engine + entry point:
+- Look at: \`package.json\` scripts, \`index.html\`, \`main.js\` / \`game.js\` / \`src/\` structure.
+- Detect engine (vanilla canvas / Phaser / P5 / etc.) and report.
+
+Inventory assets:
+- Walk \`assets/\` (or wherever sprites / maps / audio live in this project).
+- For each PNG sheet that looks like a sprite, note: path, dimensions, suspected animation (idle / walk / attack / etc. from filename or sibling files).
+- For each map/background image, note path + dimensions.
+- For each audio file, note path + kind.
+
+Inventory entities + scenes:
+- Read source code. Identify enemy / hero / item / level definitions wherever they live (constants, classes, JSON data).
+- Note any level / scene definitions (literal map data, JSON levels, hardcoded coordinates).
+
+## Step 2 — Generate sidecars
+
+Write OGF-shaped JSON catalogs reflecting what you found. **Don't modify existing source code.**
+
+- \`data/enemies.json\` / \`data/heroes.json\` / \`data/towers.json\` etc. as appropriate. Each entry: \`{ id, displayW, displayH, anchor?, animations?, stats? }\` referencing existing sprite paths.
+- \`data/levels.json\` (registry) + \`data/<level_id>.json\` (per-level) IF you found level definitions. Mirror the existing data — don't redesign the level layout.
+- \`data/audio.json\` if audio files exist.
+
+The point of sidecar mode: the existing game still runs on its existing code. The new JSON files are ADDITIONAL — OGF reads them for the asset-centric view. Don't refactor the engine, don't move files, don't rename anything.
+
+## Step 3 — Project metadata
+
+\`.ogf/spec.md\` with:
+- Project goal (1-2 sentences inferred from code)
+- Engine + entry point
+- Style directive (palette, line weight, art style — inferred from looking at the art)
+- Key entities + their roles
+
+## Step 4 — Report
+
+Summarize:
+- Engine detected
+- N catalogs written (list paths)
+- M entities cataloged, K scenes cataloged
+- What you DIDN'T touch (the existing source code paths)
+- Anything ambiguous you guessed at and the user should review
+
+Stay focused on writing sidecars. **Do NOT modify existing source code. Do NOT delete or rename existing assets.** If unsure whether something is a sprite vs an icon, flag it in the report instead of guessing wrong.`;
 }
 
 function ScenePicker({
