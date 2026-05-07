@@ -87,6 +87,151 @@ You may briefly summarize what the skill chose in a "Decisions log"
 section of spec.md as an audit trail — but that is RECORD not
 PRESCRIPTION.
 
+## MANDATORY: discovery form must include these visual decisions
+
+Before writing spec.md, emit a \`<question-form>\` block. This is the
+ONE moment where structural visual decisions get captured — without
+it, the agent falls back to LLM priors (defaults to 4-frame walks,
+single-image platforms, etc.) and broken patterns reappear.
+
+The form's \`fields\` array MUST include at least these three keys.
+Add other fields (genre, palette, etc.) as needed:
+
+\`\`\`json
+{
+  "id": "discovery",
+  "title": "Project setup",
+  "fields": [
+    /* … your other discovery questions … */
+    {
+      "key": "animation_richness",
+      "label": "How smooth should character animations be?",
+      "type": "radio",
+      "default": "standard",
+      "options": [
+        { "value": "lite",     "label": "Lite",     "detail": "all 2×2 grids — fastest gen, retro look" },
+        { "value": "standard", "label": "Standard", "detail": "skill picks per-action: idle 2×2, walk 2×3-2×4, attack 2×3" },
+        { "value": "rich",     "label": "Rich",     "detail": "bigger grids: walk 2×4-2×6, attack 2×4, death 2×4 — slowest gen" }
+      ]
+    },
+    {
+      "key": "platform_visual_strategy",
+      "label": "How should platforms be drawn?",
+      "type": "radio",
+      "default": "tile_library",
+      "options": [
+        {
+          "value": "tile_library",
+          "label": "Tile library (recommended)",
+          "detail": "small repeating tile (32-128px) shared across all platforms; supports any width without distortion"
+        },
+        {
+          "value": "three_piece",
+          "label": "Three-piece",
+          "detail": "left-cap + middle tile + right-cap; good for ornamented platforms that need to scale"
+        },
+        {
+          "value": "set_pieces",
+          "label": "Set pieces",
+          "detail": "each platform is its own image at NATURAL size; level platform.w/h MUST match image dims; one image per variant"
+        }
+      ]
+    },
+    {
+      "key": "stage_segment_count",
+      "label": "How wide is the main stage?",
+      "type": "radio",
+      "default": "2",
+      "options": [
+        { "value": "1", "label": "1 segment",  "detail": "single screen — boss room, arena, fixed background" },
+        { "value": "2", "label": "2 segments", "detail": "standard playable level (~2 viewport widths)" },
+        { "value": "3", "label": "3 segments", "detail": "longer level" }
+      ]
+    }
+  ]
+}
+\`\`\`
+
+After submission, write the answers into spec.md §1 Identity as
+**Visual decisions** lines:
+
+\`\`\`
+- **Visual decisions**: animation_richness=standard, platform_visual_strategy=tile_library, stage_segment_count=2
+\`\`\`
+
+These three lines are the canonical record. Every subsequent phase
+reads them and must follow.
+
+## Visual strategy preferences
+
+These are OGF's preferences when the user doesn't override via the
+discovery form. They are NOT a copy of skill rules; the skill makes
+the final call. They are guidance for which skill option to invoke
+when the form answer doesn't pin one down.
+
+### Platforms — prefer tile library by default
+
+When the discovery form's \`platform_visual_strategy = tile_library\`
+(the default):
+- Generate ONE small platform tile (32-128px square or strip) via
+  \`generate2dsprite\` or via \`generate2dmap\`'s \`platform_strip\` /
+  \`shared platform library\` workflow.
+- The tile must be designed to repeat seamlessly horizontally — no
+  edge ornaments (lanterns at left, asymmetric features), no
+  decoration that breaks at tile borders.
+- Level data: every \`platforms[]\` entry references the SAME
+  shared tile via a stable id. The runtime tile-loops the prop
+  image to fill the platform's declared width. \`platform.w\` is
+  free; \`tile.w\` is fixed.
+- Catalog the library separately. Example shape (skill picks the
+  exact field names — don't pre-prescribe):
+  \`\`\`json
+  "shared_platform_library": {
+    "stone_tile":  { "image": "...", "tileW": 64, "tileH": 96 },
+    "wood_tile":   { "image": "...", "tileW": 48, "tileH": 32 }
+  },
+  "platforms": [
+    { "id": "ground_01", "x": 0, "y": 600, "w": 760, "h": 96, "tile": "stone_tile" },
+    { "id": "ledge_02",  "x": 820, "y": 520, "w": 320, "h": 32, "tile": "wood_tile", "oneWay": true }
+  ]
+  \`\`\`
+
+When the form picks \`three_piece\` or \`set_pieces\` instead, follow
+the corresponding skill workflow (skill knows these patterns; don't
+fall back to "platform.w/h arbitrary + image stretches").
+
+### NEVER stretch a platform image to fit arbitrary w/h
+
+The single biggest visual bug across past projects: a generated
+platform prop with natural size 512×512 (or any non-trivial size)
+gets dropped into level JSON with \`{ image, w: 760, h: 100 }\` and
+the runtime stretches the prop to fit, squashing the artwork. This
+is broken regardless of the skill's prop-pack rules.
+
+If the natural image size differs from the platform.w/h declared
+in level JSON, either:
+- (tile_library / three_piece) tile/composite the prop horizontally
+  to fill width — never single-stretch.
+- (set_pieces) override platform.w/h to MATCH image's natural
+  dimensions — never invent gameplay-driven w/h that conflicts
+  with the asset.
+
+OGF Scene editor flags this mismatch as a warning when it detects
+\`renderMode\` is unset and platform.w / image.naturalW differ by
+more than 20%.
+
+### Sprite frames — prefer skill defaults
+
+When \`animation_richness = standard\` (default), do NOT pass an
+explicit \`sheet\` parameter to \`generate2dsprite\`. Let the skill
+pick rows×cols based on action — its yaml has the canonical
+mapping (4 frames → 2×2, 6 → 2×3, 8 → 2×4 …). Only override when
+the form answer is \`lite\` (force 2×2) or \`rich\` (request more
+frames) or the user gave an explicit number.
+
+The agent's prior for "always 2×2" is wrong for action-rich games.
+Trust the skill.
+
 This means:
 
 - **Disk is the contract.** Everything OGF needs to render or edit lives
