@@ -309,18 +309,19 @@ export class GodotRunManager {
 
     for (const rec of run.events) {
       if (after !== undefined && rec.id <= after) continue;
-      writeSse(res, rec);
+      writeSseSafe(run, res, rec);
     }
 
     if (run.status !== 'running') {
-      res.end();
+      try { res.end(); } catch { /* dead */ }
       return;
     }
 
     run.clients.add(res);
-    res.on('close', () => {
-      run.clients.delete(res);
-    });
+    const cleanup = () => run.clients.delete(res);
+    res.on('close', cleanup);
+    res.on('error', cleanup);
+    res.socket?.on('error', cleanup);
   }
 
   cancel(runId: string): boolean {
@@ -343,7 +344,9 @@ export class GodotRunManager {
     const rec: GodotEvent = { id: run.events.length, type, data };
     run.events.push(rec);
     if (run.events.length > MAX_EVENTS) run.events.shift();
-    for (const client of run.clients) writeSse(client, rec);
+    // Snapshot the set + use safe write so a dropped SSE client can't
+    // crash the daemon via res.write throwing 'write EOF' / ECONNRESET.
+    for (const client of [...run.clients]) writeSseSafe(run, client, rec);
   }
 
   private finish(run: GodotRun, status: GodotRunStatus) {
@@ -365,6 +368,23 @@ function writeSse(res: Response, rec: GodotEvent) {
   res.write(`id: ${rec.id}\n`);
   res.write(`event: ${rec.type}\n`);
   res.write(`data: ${JSON.stringify(rec.data)}\n\n`);
+}
+
+/** Same crash-shield as runs.ts's writeSseSafe — dropped Godot SSE
+ *  clients had the same potential to crash the daemon via unhandled
+ *  write-EOF on the socket. Belt-and-suspenders even though we haven't
+ *  observed the Godot path crash specifically yet. */
+function writeSseSafe(run: GodotRun, res: Response, rec: GodotEvent): void {
+  if (res.writableEnded || res.destroyed) {
+    run.clients.delete(res);
+    return;
+  }
+  try {
+    writeSse(res, rec);
+  } catch {
+    run.clients.delete(res);
+    try { res.end(); } catch { /* already dead */ }
+  }
 }
 
 /** Resolve `res://...` paths to project-relative POSIX. */

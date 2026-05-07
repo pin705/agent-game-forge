@@ -115,8 +115,13 @@ export class RunManager {
     run.events.push(rec);
     if (run.events.length > MAX_EVENTS) run.events.shift();
 
-    for (const client of run.clients) {
-      writeSse(client, rec);
+    // Iterate over a snapshot — writeSseSafe may delete a dead client
+    // from the set mid-loop. Without the snapshot we mutate the live
+    // Set during iteration which is undefined behavior for some
+    // patterns (and skips real clients). With the snapshot, dead
+    // clients get pruned, live ones continue to receive events.
+    for (const client of [...run.clients]) {
+      writeSseSafe(run, client, rec);
     }
   }
 
@@ -132,18 +137,24 @@ export class RunManager {
 
     for (const rec of run.events) {
       if (after !== undefined && rec.id <= after) continue;
-      writeSse(res, rec);
+      writeSseSafe(run, res, rec);
     }
 
     if (run.status === 'succeeded' || run.status === 'failed' || run.status === 'canceled') {
-      res.end();
+      try { res.end(); } catch { /* client already gone */ }
       return;
     }
 
     run.clients.add(res);
-    res.on('close', () => {
-      run.clients.delete(res);
-    });
+    // Listen for BOTH 'close' (graceful disconnect) and 'error' (socket
+    // ECONNRESET / EOF) — without an 'error' listener Node would throw
+    // an unhandled 'error' event the next time emit() tries to write
+    // to this socket, which CRASHED THE WHOLE DAEMON. Symmetric with
+    // writeSseSafe below.
+    const cleanup = () => run.clients.delete(res);
+    res.on('close', cleanup);
+    res.on('error', cleanup);
+    res.socket?.on('error', cleanup);
   }
 
   finish(run: Run, status: RunStatus, code: number | null, signal: NodeJS.Signals | null) {
@@ -234,4 +245,25 @@ function writeSse(res: Response, rec: RunEventRecord) {
   res.write(`id: ${rec.id}\n`);
   res.write(`event: ${rec.event}\n`);
   res.write(`data: ${JSON.stringify(rec.data)}\n\n`);
+}
+
+/** Safe wrapper around writeSse: if the client socket is already dead
+ *  (ECONNRESET / write EOF when the browser closed the SSE before the
+ *  daemon flushed), catch the error and prune the client from the run.
+ *  Without this, ONE dropped SSE socket throws an unhandled 'error'
+ *  event from inside res.write() and crashes the whole daemon — which
+ *  is the bug that took the server offline mid-session. */
+function writeSseSafe(run: Run, res: Response, rec: RunEventRecord): void {
+  // Cheap pre-check — if the response/socket are obviously gone, skip
+  // the write attempt entirely.
+  if (res.writableEnded || res.destroyed) {
+    run.clients.delete(res);
+    return;
+  }
+  try {
+    writeSse(res, rec);
+  } catch {
+    run.clients.delete(res);
+    try { res.end(); } catch { /* already dead */ }
+  }
 }
