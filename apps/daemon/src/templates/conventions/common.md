@@ -38,6 +38,18 @@ These get decided at `generate2dmap` / `generate2dsprite` invocation time. Letti
 
 If the user explicitly requests a number ("I want 8-frame walk"), record it in spec section 2 as `walk frames: 8 (user-specified)` — but structural decisions stay with the skill defaults unless overridden.
 
+### Phase plan — expand multi-step pipelines per scene
+
+> ⚠️ Recurring failure: spec writer reads a genre file's pipeline phases ("Phase 2 = base, Phase 3 = reference, Phase 4..N = props") as **abstract pipeline labels**, then for an N-scene project writes "Phase 2 = scene_A base, Phase 3 = scene_B base" — collapsing N scenes into N base phases and skipping reference + props entirely. The agent dutifully generates clean bases, then moves to level data because reference + props phases are not in the plan. test-2d-rpg4 hit exactly this.
+
+When the genre file describes a multi-step pipeline (top-down-rpg image-bg, side-scroll parallax segments, etc.), **expand it per scene/level** in spec.md §7:
+
+- N scenes × M pipeline steps = N×M visual phases (plus 1 anchor + 1 wiring)
+- Do NOT flatten to "Phase A: scene_1 step_1, Phase B: scene_2 step_1" and stop there
+- Per-scene grouping: keep all of one scene's pipeline steps adjacent (scene_A base → scene_A reference → scene_A props → scene_B base → scene_B reference → scene_B props), so a phase failure can resume from the broken scene without redoing earlier scenes
+
+See the genre file's "Spec phase-plan expansion" section (e.g. `top-down-rpg.md`) for the exact pattern + examples for that genre.
+
 ## MANDATORY: discovery form must include `genre` and `animation_richness`
 
 Before writing spec.md, emit a `<question-form>` block. The form's `fields` array MUST include at least these two keys:

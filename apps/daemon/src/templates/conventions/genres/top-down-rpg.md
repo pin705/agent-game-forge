@@ -166,6 +166,33 @@ When you run `scripts/generate2dsprite.py process` on player / hero spirit / NPC
 - Without **reference map**: each prop is generated blind → mismatched style.
 - With both: the reference is the single source of visual truth. Every prop "extraction" produces something that fits because the model already saw it integrated.
 
+### Spec phase-plan expansion — REQUIRED for spec writing
+
+> ⚠️ Recurring failure: spec writer reads "Phase 2 = base, Phase 3 = reference, Phase 4..N = props" as **abstract pipeline labels**, then for a 2-scene project writes "Phase 2 = scene_A base, Phase 3 = scene_B base" and skips reference + props entirely. test-2d-rpg4 hit this: both scene bases got generated cleanly, then the spec moved straight to level data because reference + props phases were never in the plan.
+
+When writing `.ogf/spec.md` §7 phase plan for a top-down-rpg image-bg project, **expand the 3-step pipeline per scene**. Do NOT collapse two scenes into two base phases. Each scene gets its own base / reference / props phase trio.
+
+For a 2-scene project the visual phases should be roughly:
+
+```
+Phase 1: Visual anchor — generate .ogf/style-anchor.png
+Phase 2: <scene_A> base — terrain only, exclusion clause applied
+Phase 3: <scene_A> reference — view_image base + composite all props
+Phase 4: <scene_A> props extraction — one generate2dsprite call per prop, view_image reference each time
+Phase 5: <scene_B> base
+Phase 6: <scene_B> reference
+Phase 7: <scene_B> props extraction
+Phase 8: Level data + collision + map registry + scene wiring
+Phase 9: Player sprite + controller
+... (rest of phases — characters, battle, UI, etc.)
+```
+
+For a 3-scene project: 1 + (3 × 3) = 10 visual phases before level wiring. For a 1-scene project: 1 + 3 = 4 visual phases. Pattern: `1 anchor + N × (base, reference, props) + 1 wiring`.
+
+`Phase X props extraction` may consolidate small prop counts (e.g. 4 props) into one phase, or split per prop when a scene has many (e.g. 8+ props → split into 2 props phases). Each phase still must fit one codex turn (~6-8 image_gen calls).
+
+If the spec writer would otherwise collapse multiple scenes into a single "all bases" phase: don't. Keep per-scene grouping — when a phase fails, the user can resume from the failed scene without redoing earlier completed scenes.
+
 ### Schema for image-bg level
 
 ```jsonc
