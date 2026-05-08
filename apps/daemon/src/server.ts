@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
-import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { detectAgents, getAgentDef, resolveOnPath } from './agents.js';
 import { spawnCodex, createJsonlParser } from './codex.js';
@@ -183,6 +183,62 @@ export function createServer() {
     if (typeof p !== 'string') return res.status(400).json({ error: 'path query is required' });
     deleteProject(p);
     res.json({ ok: true });
+  });
+
+  /** Refactor existing JS game flow:
+   *   1. User opens a folder that's NOT yet an OGF project.
+   *   2. Click 'Refactor to OGF structure' → calls this endpoint.
+   *   3. We copy <sourcePath> → <destPath> (default: <sourcePath>-ogf
+   *      next to source).
+   *   4. Register the COPY as a project so the user works on the copy.
+   *   5. Original is untouched — user's existing repo / git state safe.
+   *
+   *   The actual `data/*.json` + `.ogf/spec.md` writes happen in a
+   *   subsequent agent turn driven by the refactor prompt template.
+   *   This endpoint only does the copy + register. */
+  app.post('/api/projects/refactor-copy', (req, res) => {
+    const { sourcePath, destPath } = req.body as { sourcePath?: string; destPath?: string };
+    if (!sourcePath) return res.status(400).json({ error: 'sourcePath required' });
+    const srcAbs = path.resolve(sourcePath);
+    if (!existsSync(srcAbs)) return res.status(404).json({ error: `source not found: ${srcAbs}` });
+
+    // Default destination: <source>-ogf next to source.
+    const computedDest = destPath
+      ? path.resolve(destPath)
+      : path.resolve(path.dirname(srcAbs), path.basename(srcAbs) + '-ogf');
+
+    if (existsSync(computedDest)) {
+      return res.status(409).json({
+        error: `destination already exists: ${computedDest}. Pick a different destination or delete it first.`,
+      });
+    }
+
+    try {
+      // Recursive copy. Skip .git (huge + carries source's history),
+      // node_modules (gigantic), and any existing .ogf in the source
+      // (clean slate for the new project's spec).
+      const skipDirs = new Set(['.git', 'node_modules', '.ogf', 'dist', 'build']);
+      const copyRec = (src: string, dst: string) => {
+        const stat = statSync(src);
+        if (stat.isDirectory()) {
+          mkdirSync(dst, { recursive: true });
+          for (const entry of readdirSync(src)) {
+            if (skipDirs.has(entry)) continue;
+            copyRec(path.join(src, entry), path.join(dst, entry));
+          }
+        } else {
+          copyFileSync(src, dst);
+        }
+      };
+      copyRec(srcAbs, computedDest);
+    } catch (err) {
+      return res.status(500).json({ error: `copy failed: ${err instanceof Error ? err.message : err}` });
+    }
+
+    // Register the COPY as the active project. The original stays where
+    // it is; OGF doesn't even know about it (no row in the projects table).
+    const row = upsertProject(computedDest);
+    res.json({ project: rowToProject(row), sourcePath: srcAbs, destPath: computedDest });
   });
 
   app.post('/api/projects/rename', (req, res) => {

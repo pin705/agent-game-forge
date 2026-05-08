@@ -158,17 +158,32 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
     background = { relPath: bgRel, source: 'image', width: mapW, height: mapH };
     referenced.add(bgRel);
   } else {
-    // background is an object — could be either:
+    // background is an object — could be:
     //   { image: "..." }                 — single backdrop (TD / arena locked)
+    //   { path: "..." } / { src: "..." } — common aliases when refactored from
+    //                                       existing JS games whose code used
+    //                                       different field names. We accept
+    //                                       any of image/path/src as an
+    //                                       alias for the same single-image
+    //                                       intent.
     //   { tile: "...", tileW, tileH }    — repeated tile (arena-survivor /
     //                                       Vampire Survivors infinite floor)
     // arena-survivor.md genre guide writes the tile shape; without this
     // recognition, the loader saw a non-string `background` and emitted
     // "no background" warning, leaving Scene tab visually empty.
     const bgObj =
-      (data.background as { image?: unknown; tile?: unknown; tileW?: unknown; tileH?: unknown } | null) ?? null;
-    const bgImg = typeof bgObj?.image === 'string' ? bgObj.image.replace(/^\.?\//, '') : '';
-    const bgTile = typeof bgObj?.tile === 'string' ? bgObj.tile.replace(/^\.?\//, '') : '';
+      (data.background as {
+        image?: unknown;
+        path?: unknown;
+        src?: unknown;
+        tile?: unknown;
+        tileW?: unknown;
+        tileH?: unknown;
+      } | null) ?? null;
+    const pickStr = (v: unknown) =>
+      typeof v === 'string' ? v.replace(/^\.?\//, '') : '';
+    const bgImg = pickStr(bgObj?.image) || pickStr(bgObj?.path) || pickStr(bgObj?.src);
+    const bgTile = pickStr(bgObj?.tile);
     if (bgImg) {
       background = { relPath: bgImg, source: 'image', width: mapW, height: mapH };
       referenced.add(bgImg);

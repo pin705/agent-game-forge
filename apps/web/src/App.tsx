@@ -1044,6 +1044,7 @@ export function App() {
               bumpMetadataRev();
               void refreshPending(project);
             }}
+            onSwitchToProject={(p) => void selectProject(p)}
             metadataRev={metadataRev}
             onOpenPackReview={() => setShowPackReview(true)}
             onPackResolved={() => {
@@ -1288,6 +1289,7 @@ function EditorPane(props: {
   metadataRev?: number;
   onOpenPackReview?: () => void;
   onPackResolved?: () => void;
+  onSwitchToProject?: (p: Project) => void;
   canBack: boolean;
   canForward: boolean;
   onBack: () => void;
@@ -1371,7 +1373,11 @@ function EditorPane(props: {
               onPackResolved={props.onPackResolved}
             />
           ) : (
-            <ProjectWelcome project={props.project} onAskCodex={props.onAskCodex} />
+            <ProjectWelcome
+              project={props.project}
+              onAskCodex={props.onAskCodex}
+              onSwitchToProject={props.onSwitchToProject}
+            />
           )
         )}
         {props.tab === 'scenes' && (() => {
@@ -1425,10 +1431,46 @@ function EditorPane(props: {
 function ProjectWelcome({
   project,
   onAskCodex,
+  onSwitchToProject,
 }: {
   project: Project;
   onAskCodex?: (text: string) => void;
+  onSwitchToProject?: (p: Project) => void;
 }) {
+  const { confirm: askConfirm, notify } = useDialog();
+  const [refactoring, setRefactoring] = useState(false);
+  const suggestedDest = project.path + '-ogf';
+
+  async function startRefactor() {
+    if (!onAskCodex || !onSwitchToProject) return;
+    const ok = await askConfirm({
+      title: 'Refactor to OGF structure?',
+      body:
+        `OGF will COPY this project to:\n\n  ${suggestedDest}\n\n` +
+        `Then switch to the copy + drop a refactor prompt in the chat.\n` +
+        `The agent will write data/*.json catalogs + .ogf/spec.md ` +
+        `describing what's there. Sidecar mode — source code stays.\n\n` +
+        `Original at "${project.path}" stays untouched.`,
+      confirmLabel: 'Copy + Refactor',
+    });
+    if (!ok) return;
+    setRefactoring(true);
+    try {
+      const r = await import('./lib/api.js').then((m) => m.refactorCopy({ sourcePath: project.path }));
+      onSwitchToProject(r.project);
+      // Drop the prompt after a short delay so the project switch settles.
+      window.setTimeout(() => onAskCodex(refactorPromptTemplate()), 400);
+    } catch (err) {
+      notify({
+        kind: 'error',
+        title: 'Refactor copy failed',
+        body: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setRefactoring(false);
+    }
+  }
+
   return (
     <div className="inspector">
       <div className="crumbs">
@@ -1447,25 +1489,29 @@ function ProjectWelcome({
             Pick a file on the left, or ask Codex to make one.
           </p>
 
-          {onAskCodex && (
+          {onAskCodex && onSwitchToProject && (
             <div className="welcome-import-card">
               <div className="welcome-import-title">
                 {I.refresh} Have an existing JS game?
               </div>
               <p className="welcome-import-body">
-                One-click conversion to OGF structure. The agent reads your code,
-                generates <code>data/*.json</code> catalogs + <code>.ogf/spec.md</code>{' '}
-                describing what's already here. <strong>Sidecar mode</strong> —
-                your existing source code and assets stay untouched.
+                One-click conversion to OGF structure. OGF first copies this
+                project to <code>{suggestedDest.split(/[\\/]/).pop()}</code> next to
+                the original (your repo stays untouched), switches to the copy,
+                then drops a refactor prompt in the chat. The agent generates{' '}
+                <code>data/*.json</code> catalogs + <code>.ogf/spec.md</code>{' '}
+                describing what's already there. <strong>Sidecar mode</strong> —
+                source code in the copy is also left alone.
               </p>
               <button
                 className="btn btn-sm btn-primary"
-                onClick={() => onAskCodex(refactorPromptTemplate())}
+                onClick={() => void startRefactor()}
+                disabled={refactoring}
               >
-                Refactor to OGF structure
+                {refactoring ? 'Copying…' : 'Refactor to OGF structure'}
               </button>
               <div className="muted" style={{ fontSize: 10.5, marginTop: 8 }}>
-                Drops a prompt into the chat — review and click Send.
+                Confirm dialog explains the copy step before anything happens.
               </div>
             </div>
           )}

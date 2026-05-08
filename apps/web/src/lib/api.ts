@@ -71,6 +71,19 @@ export const createProject = (req: CreateProjectRequest) =>
     body: JSON.stringify(req),
   });
 
+/** Refactor existing JS game: copy <sourcePath> → <destPath> (or
+ *  <source>-ogf next to source by default), register the copy as a
+ *  new project. Original folder is untouched. */
+export const refactorCopy = (req: { sourcePath: string; destPath?: string }) =>
+  jsonFetch<{ project: Project; sourcePath: string; destPath: string }>(
+    '/api/projects/refactor-copy',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    },
+  );
+
 export const fetchAnalyze = (projectPath: string) =>
   jsonFetch<AnalyzeResponse>(
     `/api/projects/analyze?projectPath=${encodeURIComponent(projectPath)}`,
