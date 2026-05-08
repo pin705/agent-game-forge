@@ -32,6 +32,10 @@ Phase 3+ (player walk, enemies — chain off existing same-character/family asse
 
 Skipping view_image → blind generation → degenerate output (palette drift, character identity inconsistent across animations).
 
+### Process strategy for character action sheets
+
+When you run `scripts/generate2dsprite.py process` on player / enemy / boss sheets, use **`--scale-strategy preserve --align feet`** for ALL their actions. Same character = same strategy across every sheet — never mix preserve with fit on one character (mixing produces 25-36% body-height drift between actions). `fit` is for: projectiles, pickups, XP orbs, hit-spark / muzzle-flash FX, UI sprites. See `common.md` and `generate2dsprite/SKILL.md` for the full strategy rule.
+
 ## Level data — custom JSON, NOT tilemap
 
 VS-style: arena is "infinite" (very large or wrapping). Brotato-style: arena is fixed bounded rectangle. Both share the same data shape:

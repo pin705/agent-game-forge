@@ -37,6 +37,10 @@ Phase 3+ (enemies, ship hit-frame — reference player ship for scale/style):
 
 Skipping view_image → blind generation → degenerate output, palette drift, segments don't tile, ship/enemy scale inconsistent.
 
+### Process strategy for ship / enemy action sheets
+
+When you run `scripts/generate2dsprite.py process` on ship / enemy / boss sheets, use **`--scale-strategy preserve --align feet`** for ALL their actions (idle, fly, attack, hurt, etc.). Same character = same strategy. `fit` is for: bullets, pickups, hit-spark FX, UI sprites. See `common.md` and `generate2dsprite/SKILL.md` for the full rule.
+
 > Note: "twin-stick shooter" (Enter the Gungeon-style) is a different genre — room-based with hand-crafted rooms stitched procedurally, much harder to template. OGF V1 only ships this scrolling shmup variant.
 
 ## Level data — wave script

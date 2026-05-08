@@ -36,6 +36,14 @@ Phase 4 (player anims — after first idle exists):
 
 Skipping view_image → blind generation → degenerate output (flat vector geometric shapes when "pixel art" requested, palette drift, character faces inconsistent across animations).
 
+### Process strategy for character action sheets
+
+When you run `scripts/generate2dsprite.py process` on player / enemy / boss action sheets, use **`--scale-strategy preserve --align feet`** for ALL their actions (idle, walk, jump, attack, hurt, etc.). This is the SKILL.md default — preserve keeps weapons, capes, slash arcs, and aura FX intact instead of vertically compressing wide attack poses.
+
+**Hard rule**: every action sheet for the same character uses the same strategy. Don't process idle with default fit and attack with preserve — the character will visibly shrink between animations (test-2d-gpg2 nobunaga: idle 139px / attack 102px = 27% drift). Pick preserve at the first action and stick with it.
+
+`fit` is for: projectiles, item pickups, hit-spark / muzzle-flash FX sheets, UI sprites — small grid-uniform assets where cell-fitting matters more than artistic preservation.
+
 ## Camera — camera-window + lookahead, NOT raw lerp
 
 Side-scrolling cameras have a small set of established patterns. Itay Keren catalogued them in [Scroll Back](https://www.gamedeveloper.com/design/scroll-back-the-theory-and-practice-of-cameras-in-side-scrollers). For OGF, the **canonical pattern is camera-window + lookahead + platform-snapping** (this is what Mega Man X uses):

@@ -29,6 +29,10 @@ Phase 3+ (towers, enemies — reference anchor for first; reference prior tower 
 
 Skipping view_image → blind generation → degenerate output, towers don't share a visual family, enemies clash with map palette.
 
+### Process strategy for tower / enemy / boss action sheets
+
+When you run `scripts/generate2dsprite.py process` on tower / enemy / boss sheets, use **`--scale-strategy preserve --align feet`** for ALL their actions. Same tower / enemy = same strategy across every sheet. `fit` is for: projectiles (arrows, cannon balls, magic bolts), hit-spark / impact FX, UI sprites. See `common.md` and `generate2dsprite/SKILL.md` for the full rule.
+
 ## Level data — hybrid: grid + polyline path
 
 TD doesn't fit Tiled/LDtk well — the path is a graph, not tiles. Use custom JSON:

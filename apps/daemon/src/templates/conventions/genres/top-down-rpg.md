@@ -156,6 +156,10 @@ Phase 4..N — INDIVIDUAL PROPS (one call per prop):
 
 **Common mistake**: writing `prompt: "...reference: project style anchor at .ogf/style-anchor.png..."` in text only, without the `view_image` tool_use. This generates BLIND. The skill's `prompt-used.txt` will show `reference: 'none'` (or absent), confirming the failure. Re-do with proper view_image.
 
+### Process strategy for player / hero spirit / NPC action sheets
+
+When you run `scripts/generate2dsprite.py process` on player / hero spirit / NPC sheets, use **`--scale-strategy preserve --align feet`** for ALL their actions (idle-up, idle-down, walk, channel, attack, hurt, etc.). Same character = same strategy across every sheet — never mix preserve with fit on one character. test-2d-gpg2 nobunaga (idle fit 139px / attack preserve 102px = 27% drift) is the canonical failure. Pick preserve at the first action and stick with it. `fit` is for: pickups (seal scrolls, tonics), hit-spark / spirit-flame FX, UI icons. See `common.md` and `generate2dsprite/SKILL.md` for the full rule.
+
 ### Why this 3-step matters
 
 - Without **base map**: every gen call fights for terrain space → inconsistent ground.
