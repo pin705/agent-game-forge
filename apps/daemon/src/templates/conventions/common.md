@@ -86,16 +86,52 @@ After form submission, write **Visual decisions** into spec.md §1 Identity:
 
 Then read `.ogf/conventions/genres/<chosen-genre>.md` for the genre-specific patterns the spec + later phases must follow.
 
-## Skill invocation precedence
+## How to invoke the skills (READ THIS — common misconception)
 
-Skills `generate2dmap` and `generate2dsprite` have TWO components:
+`generate2dsprite` and `generate2dmap` are **procedure bundles**, not standalone callable tools. There is no `$generate2dsprite` MCP tool, no `skill registry`, no separate CLI command to look up. Stop searching for one — you will not find it, and the absence is not a blocker.
 
-1. **Rules** — markdown files at `.agents/skills/<name>/{SKILL.md, agents/openai.yaml, references/*.md}`. Read at Phase 0 + every time you plan visuals.
-2. **Scripts** — Python files at `.agents/skills/<name>/scripts/*.py`. Codex spawns these when you invoke the skill via `$generate2dsprite` / `$generate2dmap`. **Don't run the scripts directly with `python`** — go through the codex skill invocation so context (SKILL.md + references) gets injected.
+The bundle has TWO components:
 
-NEVER hand-roll the workflow. If you call `image_gen` directly and write your own postprocess, you lose: chroma cleanup, frame extraction, edge-touch QC, anchor alignment, pipeline-meta.json output. The skills exist precisely so OGF assets are uniform.
+1. **SKILL.md + references** at `.agents/skills/<name>/{SKILL.md, agents/openai.yaml, references/*.md}` — these are **instructions** that Codex auto-loads into your context. Read SKILL.md at Phase 0 + every time you plan visuals.
+2. **Python scripts** at `.agents/skills/<name>/scripts/*.py` — `build-prompt`, `process`, `list-options`. You run these via `python` / `bash` like any other script.
 
-If `$generate2dsprite` invocation fails (skill registry missing, codex CLI doesn't see the bundle): STOP and report. Don't fall back to ad-hoc `image_gen`.
+### To "invoke the skill" means execute this 3-step procedure in your turn:
+
+```
+Step 1: Build the prompt manually following the template in SKILL.md /
+        references/prompt-rules.md. (Optional: shell out to
+        `python .agents/skills/<name>/scripts/<name>.py build-prompt ...`
+        for a starting draft, but you usually write it yourself.)
+
+Step 2: Call your built-in `image_gen` tool with that prompt.
+        ← image_gen IS the tool. Codex has it built in. Use it.
+
+Step 3: Postprocess by shelling out to the script:
+        `python .agents/skills/<name>/scripts/<name>.py process ...`
+        This does chroma-key cleanup, frame extraction, QC, anchor alignment,
+        transparent export, prompt-used.txt audit log.
+```
+
+That is the entire mechanism. SKILL.md is the manual; `image_gen` + the postprocess script are the tools.
+
+### "Never use raw image_gen" — what this actually means
+
+Earlier convention versions said "never raw image_gen" to stop agents from skipping the SKILL.md template + postprocess. **It does NOT mean image_gen is forbidden.** image_gen is REQUIRED — it's the only image-producing tool you have. The rule is about the wrapper, not the tool:
+
+- ❌ Wrong reading: "image_gen is banned, find another tool" → search for a non-existent `$generate2dsprite` tool, give up, declare environment broken.
+- ✅ Right reading: "image_gen must be used through the SKILL.md procedure" → build prompt per template, call image_gen, run postprocess script.
+
+If you cannot find a callable named `generate2dsprite` / `generate2dmap`: that is normal and expected. Proceed with image_gen + the script. Do **not** write a "skill registry missing" blocker into spec.md — there is no registry, just SKILL.md + scripts + image_gen, and all three are present in any OGF project.
+
+### When to actually stop
+
+Real blockers (these are rare):
+
+- `image_gen` tool genuinely missing from your tool list (not codex — escalate to user).
+- The `.agents/skills/<name>/scripts/<name>.py` file is missing or corrupted.
+- The script raises a Python error you cannot fix.
+
+In all other cases — including "I can't find a tool named generate2dsprite" — keep going.
 
 ## The contract — short version
 

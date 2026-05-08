@@ -1711,12 +1711,14 @@ function composePrompt(
 
 You are working inside an Open Game Forge project. The user is editing a 2D game in this directory. Edit files on disk in the cwd.
 
-**OGF's two core skills are \`generate2dsprite\` and \`generate2dmap\`. Every visual asset goes through one of them — never raw \`image_gen\`.**
+**OGF's two core skills are \`generate2dsprite\` and \`generate2dmap\`. Every visual asset goes through one of these procedures — wrap your \`image_gen\` calls in the skill's prompt template + postprocess script.**
 
-- **Sprite-like things** (character / enemy / tower / projectile / item / FX / single prop / UI sprite) → \`generate2dsprite\`. One asset = one skill call.
-- **Scene-like things** (level map / tileset / parallax layers / prop pack / battlefield) → \`generate2dmap\` with \`map_mode\` matching the genre (\`scene_mode\` for TD, \`side_scroll_mode\` for platformer, \`tile_mode\` for RPG, etc.). The skill picks its own output pipeline (single image / layered / tilemap / parallax) — don't second-guess it; let the skill output what the genre needs.
+- **Sprite-like things** (character / enemy / tower / projectile / item / FX / single prop / UI sprite) → \`generate2dsprite\` procedure. One asset = one skill cycle.
+- **Scene-like things** (level map / tileset / parallax layers / prop pack / battlefield) → \`generate2dmap\` procedure with \`map_mode\` matching the genre (\`scene_mode\` for TD, \`side_scroll_mode\` for platformer, \`tile_mode\` for RPG, etc.). The skill picks its own output pipeline (single image / layered / tilemap / parallax) — don't second-guess it; let the skill output what the genre needs.
 
-Never pack multiple distinct assets into a single \`image_gen\` mega-atlas. See "Asset / map generation skills" below for the strict rules. Place generated files under \`assets/\`. Report changed files at the end.
+The skills are PROCEDURES, not standalone tools — there is no \`$generate2dsprite\` MCP tool to look up. The procedure: read \`.agents/skills/<name>/SKILL.md\`, build a prompt per its template, call your built-in \`image_gen\` tool with that prompt, then shell out to \`python .agents/skills/<name>/scripts/<name>.py process ...\` for chroma cleanup / frame extraction / QC. If you cannot find a tool literally named \`generate2dsprite\` — that is normal. Proceed; do NOT write a "skill registry missing" blocker. See \`.ogf/conventions/common.md\` "How to invoke the skills" for the full mechanism.
+
+Never pack multiple distinct assets into a single \`image_gen\` mega-atlas. Place generated files under \`assets/\`. Report changed files at the end.
 
 # Asking the user structured questions (\`<question-form>\`)
 
