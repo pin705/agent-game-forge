@@ -10,6 +10,28 @@ Vampire Survivors, Brotato style. Open arena, camera follows player, enemies spa
 
 This file assumes you've read `runtime-patterns.md` (delta time, AABB, **object pooling for projectiles + enemies**, FSM).
 
+## Generation procedure — view_image + skill call as paired tool_uses
+
+EVERY `generate2dmap` / `generate2dsprite` call MUST be preceded by `view_image` of the closest existing reference, in the SAME message. See `common.md` "Visual consistency" for the canonical pattern + reasoning.
+
+```
+Phase 2 (background tile):
+  tool_use 1: view_image .ogf/style-anchor.png
+  tool_use 2: generate2dmap reference: 'generated_image'
+              prompt: "[STYLE...] [VIEW...] tileable arena ground..."
+
+Phase 3 (player idle, first sprite):
+  tool_use 1: view_image .ogf/style-anchor.png
+  tool_use 2: generate2dsprite reference: 'generated_image'
+
+Phase 3+ (player walk, enemies — chain off existing same-character/family asset):
+  tool_use 1: view_image assets/sprites/player/idle/sheet.png  ← prior animation
+  tool_use 2: generate2dsprite reference: 'generated_image'
+              prompt: "Same character, new animation: ..."
+```
+
+Skipping view_image → blind generation → degenerate output (palette drift, character identity inconsistent across animations).
+
 ## Level data — custom JSON, NOT tilemap
 
 VS-style: arena is "infinite" (very large or wrapping). Brotato-style: arena is fixed bounded rectangle. Both share the same data shape:

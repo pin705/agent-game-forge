@@ -8,6 +8,27 @@ Kingdom Rush, Bloons-style. Path-based enemy waves, grid tower placement, single
 
 This file assumes you've read `runtime-patterns.md` (delta time, AABB, FSM, **object pooling** for projectiles).
 
+## Generation procedure — view_image + skill call as paired tool_uses
+
+EVERY `generate2dmap` / `generate2dsprite` call MUST be preceded by `view_image` of the closest existing reference, in the SAME message. See `common.md` "Visual consistency" for the canonical pattern + reasoning.
+
+```
+Phase 2 (map background — single image with path painted in):
+  tool_use 1: view_image .ogf/style-anchor.png
+  tool_use 2: generate2dmap reference: 'generated_image'
+              prompt: "[STYLE...] [VIEW: top-down 3/4...] tower-
+                       defense map background with the enemy path
+                       visibly drawn (cobblestone road / dirt
+                       trail) following these waypoints: ..."
+
+Phase 3+ (towers, enemies — reference anchor for first; reference prior tower for tower family):
+  tool_use 1: view_image .ogf/style-anchor.png    ← first tower
+              (or assets/sprites/towers/archer/sprite.png ← later towers, same family)
+  tool_use 2: generate2dsprite reference: 'generated_image'
+```
+
+Skipping view_image → blind generation → degenerate output, towers don't share a visual family, enemies clash with map palette.
+
 ## Level data — hybrid: grid + polyline path
 
 TD doesn't fit Tiled/LDtk well — the path is a graph, not tiles. Use custom JSON:

@@ -10,6 +10,33 @@ Vertical or horizontal scrolling shooter. Background autoscrolls; player constra
 
 This file assumes you've read `runtime-patterns.md` (delta time, AABB, **object pooling for bullets — mandatory**, FSM).
 
+## Generation procedure — view_image + skill call as paired tool_uses
+
+EVERY `generate2dmap` / `generate2dsprite` call MUST be preceded by `view_image` of the closest existing reference, in the SAME message. See `common.md` "Visual consistency" for the canonical pattern + reasoning.
+
+```
+Phase 2 (first stage segment):
+  tool_use 1: view_image .ogf/style-anchor.png
+  tool_use 2: generate2dmap reference: 'generated_image'
+              prompt: "[STYLE...] tileable shmup stage segment 1
+                       of N, vertical (or horizontal) scroll..."
+
+Phase 2+ (later stage segments — reference segment-1 for cohesion):
+  tool_use 1: view_image assets/maps/stage1/segment-1.png
+  tool_use 2: generate2dmap reference: 'generated_image'
+              prompt: "Same stage continued, segment 2..."
+
+Phase 3 (player ship — first sprite):
+  tool_use 1: view_image .ogf/style-anchor.png
+  tool_use 2: generate2dsprite reference: 'generated_image'
+
+Phase 3+ (enemies, ship hit-frame — reference player ship for scale/style):
+  tool_use 1: view_image assets/sprites/player/idle.png
+  tool_use 2: generate2dsprite reference: 'generated_image'
+```
+
+Skipping view_image → blind generation → degenerate output, palette drift, segments don't tile, ship/enemy scale inconsistent.
+
 > Note: "twin-stick shooter" (Enter the Gungeon-style) is a different genre — room-based with hand-crafted rooms stitched procedurally, much harder to template. OGF V1 only ships this scrolling shmup variant.
 
 ## Level data — wave script

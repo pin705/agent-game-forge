@@ -8,6 +8,34 @@ Mega Man X, Mario, Castlevania-style side-view action games.
 
 This file assumes you've also read `runtime-patterns.md` (delta time, AABB, FSM, scroll factor, etc — those are universal).
 
+## Generation procedure — view_image + skill call as paired tool_uses
+
+EVERY `generate2dmap` / `generate2dsprite` call MUST be preceded by `view_image` of the closest existing reference, in the SAME message. See `common.md` "Visual consistency" for the canonical pattern + reasoning.
+
+```
+Phase 2 (parallax layers — first per-segment image):
+  tool_use 1: view_image .ogf/style-anchor.png
+  tool_use 2: generate2dmap reference: 'generated_image'
+              prompt: "[STYLE...] [VIEW...] side-scroll parallax
+                       <layer-name>, segment 1 of 2..."
+
+Phase 3 (platform tile pack):
+  tool_use 1: view_image .ogf/style-anchor.png
+  tool_use 2: generate2dmap (or generate2dsprite for tile pack)
+              reference: 'generated_image'
+
+Phase 4 (player anims — after first idle exists):
+  Phase 4a (idle, first time):
+    tool_use 1: view_image .ogf/style-anchor.png
+    tool_use 2: generate2dsprite reference: 'generated_image'
+  Phase 4b (walk, idle now exists — reference idle for character identity):
+    tool_use 1: view_image assets/sprites/player/idle/sheet.png
+    tool_use 2: generate2dsprite reference: 'generated_image'
+                prompt: "Same character, new animation: walk cycle..."
+```
+
+Skipping view_image → blind generation → degenerate output (flat vector geometric shapes when "pixel art" requested, palette drift, character faces inconsistent across animations).
+
 ## Camera — camera-window + lookahead, NOT raw lerp
 
 Side-scrolling cameras have a small set of established patterns. Itay Keren catalogued them in [Scroll Back](https://www.gamedeveloper.com/design/scroll-back-the-theory-and-practice-of-cameras-in-side-scrollers). For OGF, the **canonical pattern is camera-window + lookahead + platform-snapping** (this is what Mega Man X uses):

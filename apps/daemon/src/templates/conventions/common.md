@@ -249,16 +249,67 @@ The template is mechanical — copy spec.md §1 Style directive verbatim, append
 
 After every gen call, open `prompt-used.txt` next to the new asset and verify the saved prompt matches the template. If the saved prompt is short / missing style: the skill received your shortened version, the asset is degraded, regenerate with the full template.
 
-## Visual consistency — reference image workflow is MANDATORY
+## Visual consistency — view_image is a HARD procedural step
 
-Drift across generated assets (same character looking like 4 different people across animations) is the #1 quality-killer. Before every `generate2dsprite` / `generate2dmap` call after the first:
+> ⚠️ This is the #1 quality-killer when skipped. Read carefully.
 
-1. Pick the closest existing reference: same-character sheet > same-family sibling > project anchor (`.ogf/style-anchor.png`).
-2. `view_image` it so the bytes enter context.
-3. Pass `reference: 'generated_image'` to the skill.
-4. State the role explicitly: "Same character, new animation — preserve identity, change action only" OR "Same family, new asset — match palette/line/lighting, different subject".
+Past projects produced flat-vector geometric output when the user asked for "16-bit pixel art" — including a recent test-2d-rpg project where the map came back looking like a child's drawing. Why: the agent **mentioned** the style anchor in the prompt text but **never invoked `view_image`** to load it into context. The model generated blind, interpreted "pixel art" with no visual anchor as "flat vector shapes", and produced unusable output.
 
-Skipping this means the model generates blind and you get drift.
+**Mentioning a reference path in prompt text is NOT a substitute for view_image.** view_image is the only mechanism that loads asset bytes into the model's context. Text-only mentions read as "fyi this file exists" — the model can't see it.
+
+### MANDATORY procedure for every generate2dsprite / generate2dmap call
+
+In the SAME message that invokes the skill, you MUST emit TWO tool_uses in this order:
+
+1. **`view_image`** — load the chosen reference path into context.
+2. **`generate2dsprite` / `generate2dmap`** — call the skill with `reference: 'generated_image'`.
+
+Reference selection priority (pick the closest existing):
+
+```
+same-character sheet  >  same-family sibling  >  project anchor (.ogf/style-anchor.png)
+```
+
+Examples:
+
+```
+Phase 1 (style anchor — first ever gen, no prior reference exists):
+  tool_use 1: generate2dsprite asset_type='style_anchor' (no view_image, this IS the anchor)
+
+Phase 2 (first map gen — anchor now exists):
+  tool_use 1: view_image .ogf/style-anchor.png
+  tool_use 2: generate2dmap reference: 'generated_image' prompt: '...'
+
+Phase 4+ (player walk sheet — idle already exists):
+  tool_use 1: view_image assets/sprites/player/idle/sheet.png
+  tool_use 2: generate2dsprite reference: 'generated_image' prompt: '...'
+```
+
+### Forbidden patterns
+
+- ❌ "Reference: project style anchor at .ogf/style-anchor.png" (text only — model can't see it).
+- ❌ Sending the skill call alone in a message, view_image in a separate prior message — the bytes don't carry across messages reliably.
+- ❌ Calling generate2dmap with `reference: 'none'` for any phase after the first — explicit opt-out from anchoring is wrong unless this IS the very first asset.
+- ❌ Re-using a stale reference (e.g. view_image-ing an old idle sheet to generate the boss) — ALWAYS pick the closest matching one.
+
+### Repair if the asset comes back degenerate
+
+Symptoms of skipped view_image:
+- Map looks like flat vector shapes when "pixel art" was requested
+- Sprite palette doesn't match project palette
+- Character proportions / face / costume drift across animations
+
+Fix: re-do the generation with proper view_image. The skill's `prompt-used.txt` next to the asset will reveal whether reference was actually loaded — look for `reference: 'generated_image'` in the args (vs `'none'` or absent).
+
+### State the reference role explicitly in the prompt
+
+After view_image, the prompt to the skill must state how to USE the reference:
+
+- **Same character, new animation**: "Use the loaded image as the visual reference. PRESERVE the subject's identity exactly: silhouette, palette, face/eye features, costume marks, accessories, body proportions. Generate the SAME character in a different animation: <action>."
+- **Same family, sibling asset**: "Use the loaded image as a STYLE reference. Match: art style, palette, line weight, lighting, proportions. The new asset is a DIFFERENT subject (<id>) in the same world — do not copy the subject, only the rendering."
+- **Style anchor**: "Use the loaded image as a STYLE reference. Match: palette, line weight, overall aesthetic. The new asset is unrelated to the figure shown — only the rendering style must match."
+
+Pick one of these three phrasings; do not invent a fourth.
 
 ## Generating ≠ done — wire it into game data
 
