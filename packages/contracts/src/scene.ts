@@ -274,13 +274,44 @@ export interface MovePathPointOp {
   position: Vec2;
 }
 
+/** Append a new prop entry to a JSON-backed level file. Web only — for .tscn
+ *  scenes the agent must add nodes directly. The caller is responsible for
+ *  picking a unique `entry.id`; the writer will reject duplicates. */
+export interface AddPropOp {
+  kind: 'add-prop';
+  /** Project-relative path to the level JSON. */
+  relPath: string;
+  /** Top-level array key the prop lives in. Defaults to 'props' on writer. */
+  section?: string;
+  entry: {
+    id: string;
+    image: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    sortY?: number;
+  };
+}
+
+/** Remove a prop entry by id. Used as the inverse of AddPropOp for undo and
+ *  as the forward op for an explicit "delete prop" UI action. */
+export interface RemovePropOp {
+  kind: 'remove-prop';
+  relPath: string;
+  section?: string;
+  id: string;
+}
+
 export type SceneOp =
   | MovePropOp
   | ScalePropOp
   | MoveColliderOp
   | ResizeRectColliderOp
   | ResizeCircleColliderOp
-  | MovePathPointOp;
+  | MovePathPointOp
+  | AddPropOp
+  | RemovePropOp;
 
 export interface ApplySceneOpsRequest {
   projectPath: string;

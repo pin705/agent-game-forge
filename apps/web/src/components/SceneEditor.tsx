@@ -20,9 +20,12 @@ import {
   createCommentThread,
   deleteCommentThread,
   fetchComments,
+  fetchFileContent,
+  fetchFileTree,
   fetchScene,
   updateCommentThread,
 } from '../lib/api.js';
+import type { FileNode } from '@ogf/contracts';
 import { I } from './icons.js';
 
 type EditMode = 'props' | 'colliders' | 'zones' | 'paths' | 'comments';
@@ -154,6 +157,8 @@ export function SceneEditor(props: Props) {
   const [savingState, setSavingState] = useState<'idle' | 'saving' | 'error' | 'saved'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [camera, setCamera] = useState<Camera>({ scale: 0.5, panX: 0, panY: 0 });
+  // "+ Prop" picker modal — only meaningful for JSON-backed (web) scenes.
+  const [propPickerOpen, setPropPickerOpen] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -1301,6 +1306,97 @@ export function SceneEditor(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // -------- Add prop (from picker modal) --------
+  //
+  // Loads the chosen image to learn its natural size, drops it at camera
+  // center using the JSON web-prop convention (x, y = bottom-center / feet),
+  // commits an add-prop op, and seeds the local image bank so the new prop
+  // renders without waiting for a scene refetch.
+  async function addPropFromAsset(image: string): Promise<void> {
+    if (!scene) return;
+    const wrap = containerRef.current;
+    if (!wrap) return;
+
+    // 1) Load image bytes to read naturalWidth/Height. Without this the
+    //    placed prop has w/h = 0 and renders as nothing.
+    let img: HTMLImageElement;
+    try {
+      const res = await fetchFileContent(props.projectPath, image);
+      if (!res.base64) throw new Error('image content missing base64');
+      img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = () => reject(new Error('image decode failed'));
+        i.src = `data:image/png;base64,${res.base64}`;
+      });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+      setSavingState('error');
+      return;
+    }
+    const w = img.naturalWidth || 64;
+    const h = img.naturalHeight || 64;
+
+    // 2) Camera-center in world coords. Web prop convention puts (x,y) at
+    //    feet, so visual center y = entry.y - h/2. Place feet such that the
+    //    visual center sits at camera center.
+    const r = wrap.getBoundingClientRect();
+    const cx = r.width / 2 / camera.scale + camera.panX;
+    const cy = r.height / 2 / camera.scale + camera.panY;
+    const x = Math.round(cx);
+    const y = Math.round(cy + h / 2);
+
+    // 3) Unique id from the image basename + 6-char suffix. Suffix avoids
+    //    collisions when the same image appears twice in one scene.
+    const base = image.split('/').pop()?.replace(/\.png$/i, '') ?? 'prop';
+    const folder = image.split('/').slice(-2, -1)[0]; // prefer "...assets/props/<dir>/prop.png"
+    const stem = (folder && /^[a-z0-9_-]+$/i.test(folder) ? folder : base)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '') || 'prop';
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const id = `${stem}_${suffix}`;
+
+    const entry = { id, image, x, y, w, h, sortY: y };
+    const section = 'props';
+    const ref: ColliderRef = {
+      backend: 'json',
+      relPath: props.relPath,
+      section,
+      id,
+    };
+
+    // 4) Seed the bank so the new prop renders immediately.
+    setBank((prev) => {
+      const imgs = new Map(prev.imgs);
+      const sizes = new Map(prev.sizes);
+      imgs.set(image, img);
+      sizes.set(image, { w, h });
+      return { imgs, sizes };
+    });
+
+    // 5) Mirror the daemon insert in local SceneModel state, then commit.
+    const newProp: SceneProp = {
+      nodePath: `props/${id}`,
+      name: id,
+      position: { x, y },
+      spriteOffset: { x: 0, y: -h / 2 },
+      scale: { x: 1, y: 1 },
+      texture: image,
+      metadata: { sortY: String(y) },
+      displaySize: { x: w, y: h },
+      ref,
+    };
+    setScene((s) => (s ? { ...s, props: [...s.props, newProp] } : s));
+    commitOps(
+      [{ kind: 'add-prop', relPath: props.relPath, section, entry }],
+      [{ kind: 'remove-prop', relPath: props.relPath, section, id }],
+      `add ${id}`,
+    );
+    setSelectedNodePath(newProp.nodePath);
+    setPropPickerOpen(false);
+  }
+
   const pendingOpsRef = useRef<SceneOp[]>([]);
 
   async function flushSave() {
@@ -1402,6 +1498,16 @@ export function SceneEditor(props: Props) {
             onRedo={redo}
           />
           <ModeToggle mode={mode} setMode={setMode} />
+          {mode === 'props' && props.relPath.toLowerCase().endsWith('.json') && (
+            <button
+              className="btn btn-sm"
+              title="Add a prop to this scene (image picker)"
+              onClick={() => setPropPickerOpen(true)}
+              disabled={!scene}
+            >
+              + prop
+            </button>
+          )}
           <SaveBadge state={savingState} error={saveError} />
           <button
             className="btn btn-sm btn-ghost"
@@ -1474,6 +1580,15 @@ export function SceneEditor(props: Props) {
                 } catch {
                   // best-effort
                 }
+              }}
+            />
+          )}
+          {propPickerOpen && (
+            <PropPickerModal
+              projectPath={props.projectPath}
+              onClose={() => setPropPickerOpen(false)}
+              onPick={(image) => {
+                void addPropFromAsset(image);
               }}
             />
           )}
@@ -2647,6 +2762,164 @@ function UndoRedo({
   );
 }
 
+// PropPickerModal — lists every PNG under assets/props and assets/sprites
+// (the two locations the asset-path convention tells the agent to write
+// images to). User clicks one; parent calls addPropFromAsset(image).
+function PropPickerModal({
+  projectPath,
+  onClose,
+  onPick,
+}: {
+  projectPath: string;
+  onClose: () => void;
+  onPick: (image: string) => void;
+}) {
+  const [files, setFiles] = useState<string[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchFileTree(projectPath)
+      .then((r) => {
+        if (cancelled) return;
+        const out: string[] = [];
+        const walk = (n: FileNode): void => {
+          if (n.kind === 'file') {
+            const rel = n.relPath.replace(/\\/g, '/');
+            if (!rel.toLowerCase().endsWith('.png')) return;
+            if (rel.startsWith('assets/props/') || rel.startsWith('assets/sprites/')) {
+              out.push(rel);
+            }
+            return;
+          }
+          for (const c of n.children ?? []) walk(c);
+        };
+        walk(r.tree);
+        out.sort();
+        setFiles(out);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectPath]);
+
+  const visible = (files ?? []).filter((f) =>
+    filter ? f.toLowerCase().includes(filter.toLowerCase()) : true,
+  );
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: 'rgba(0,0,0,0.55)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 50,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'var(--bg-1)',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          width: 'min(560px, 92%)',
+          maxHeight: '78%',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            padding: '10px 14px',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <strong style={{ flex: 1 }}>Pick a prop image</strong>
+          <button className="btn btn-sm btn-ghost" onClick={onClose} title="Close (Esc)">
+            ✕
+          </button>
+        </div>
+        <div style={{ padding: '8px 14px' }}>
+          <input
+            autoFocus
+            placeholder="Filter — e.g. throne, samurai, brazier"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') onClose();
+              if (e.key === 'Enter' && visible.length > 0) onPick(visible[0]);
+            }}
+            style={{
+              width: '100%',
+              padding: '6px 10px',
+              background: 'var(--bg-0)',
+              border: '1px solid var(--border)',
+              borderRadius: 4,
+              color: 'var(--fg)',
+            }}
+          />
+        </div>
+        <div style={{ overflow: 'auto', padding: '0 14px 14px', flex: 1 }}>
+          {error && <div className="error">{error}</div>}
+          {!files && !error && <div className="muted">Loading…</div>}
+          {files && files.length === 0 && (
+            <div className="muted">
+              No images under <code>assets/props/</code> or <code>assets/sprites/</code> yet —
+              run a generate step first.
+            </div>
+          )}
+          {visible.map((f) => (
+            <div
+              key={f}
+              role="button"
+              tabIndex={0}
+              onClick={() => onPick(f)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') onPick(f);
+              }}
+              style={{
+                padding: '6px 8px',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: 12,
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-2)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              {f}
+            </div>
+          ))}
+        </div>
+        <div
+          style={{
+            padding: '8px 14px',
+            borderTop: '1px solid var(--border)',
+            fontSize: 11,
+            color: 'var(--fg-dim)',
+          }}
+        >
+          Click an image to drop it at the camera center. Drag to reposition,
+          Alt+drag a corner to scale non-uniformly.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ModeToggle({ mode, setMode }: { mode: EditMode; setMode: (m: EditMode) => void }) {
   return (
     <span className="scene-mode-toggle" role="tablist">
@@ -2840,6 +3113,50 @@ function applyOpToScene(s: SceneModel, op: SceneOp): SceneModel {
         sameRef(p.ref, op.ref)
           ? { ...p, points: p.points.map((pt, i) => (i === op.index ? op.position : pt)) }
           : p,
+      ),
+    };
+  }
+  if (op.kind === 'add-prop') {
+    // The forward path (addPropFromAsset) already inserted the prop and
+    // seeded the bank. This branch only runs from redo — re-insert if the
+    // prop is missing, otherwise no-op.
+    const id = op.entry.id;
+    const section = op.section ?? 'props';
+    const exists = s.props.some(
+      (p) =>
+        p.ref?.backend === 'json' &&
+        p.ref.relPath === op.relPath &&
+        p.ref.section === section &&
+        p.ref.id === id,
+    );
+    if (exists) return s;
+    const w = op.entry.w;
+    const h = op.entry.h;
+    const newProp: SceneProp = {
+      nodePath: `${section}/${id}`,
+      name: id,
+      position: { x: op.entry.x, y: op.entry.y },
+      spriteOffset: { x: 0, y: -h / 2 },
+      scale: { x: 1, y: 1 },
+      texture: op.entry.image,
+      metadata: typeof op.entry.sortY === 'number' ? { sortY: String(op.entry.sortY) } : {},
+      displaySize: { x: w, y: h },
+      ref: { backend: 'json', relPath: op.relPath, section, id },
+    };
+    return { ...s, props: [...s.props, newProp] };
+  }
+  if (op.kind === 'remove-prop') {
+    const section = op.section ?? 'props';
+    return {
+      ...s,
+      props: s.props.filter(
+        (p) =>
+          !(
+            p.ref?.backend === 'json' &&
+            p.ref.relPath === op.relPath &&
+            p.ref.section === section &&
+            p.ref.id === op.id
+          ),
       ),
     };
   }

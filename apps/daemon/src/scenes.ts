@@ -785,6 +785,10 @@ function applyOpsToJsonScene(opts: ApplyOpsOptions): ApplyOpsResult {
         throw new Error(`move-path-point on .json scene must use json ref`);
       }
       applyJsonPathPointEdit(opts.rootAbs, op.ref, op.index, op.position);
+    } else if (op.kind === 'add-prop') {
+      applyJsonAddProp(opts.rootAbs, op.relPath, op.section ?? 'props', op.entry);
+    } else if (op.kind === 'remove-prop') {
+      applyJsonRemoveProp(opts.rootAbs, op.relPath, op.section ?? 'props', op.id);
     } else {
       throw new Error(
         `op '${(op as { kind: string }).kind}' not supported on .json scenes`,
@@ -794,6 +798,52 @@ function applyOpsToJsonScene(opts: ApplyOpsOptions): ApplyOpsResult {
 
   const sceneAbs = safeJoin(opts.rootAbs, opts.relPath);
   return { size: existsSync(sceneAbs) ? statSync(sceneAbs).size : 0 };
+}
+
+/** Append a new prop entry to `<relPath>[<section>]`. Creates the array if
+ *  missing. Rejects duplicate ids. Whole-file JSON.parse / stringify roundtrip
+ *  — fine for level files (no comments, ~1-3KB typical). */
+function applyJsonAddProp(
+  rootAbs: string,
+  relPath: string,
+  section: string,
+  entry: { id: string; image: string; x: number; y: number; w: number; h: number; sortY?: number },
+): void {
+  const abs = safeJoin(rootAbs, relPath);
+  const text = readFileSync(abs, 'utf8');
+  const json = JSON.parse(text) as Record<string, unknown>;
+  const arr = Array.isArray(json[section]) ? (json[section] as unknown[]) : [];
+  for (const e of arr) {
+    if (e && typeof e === 'object' && (e as { id?: string }).id === entry.id) {
+      throw new Error(`add-prop: id '${entry.id}' already exists in ${relPath}#${section}`);
+    }
+  }
+  arr.push(entry);
+  json[section] = arr;
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
+}
+
+function applyJsonRemoveProp(
+  rootAbs: string,
+  relPath: string,
+  section: string,
+  id: string,
+): void {
+  const abs = safeJoin(rootAbs, relPath);
+  const text = readFileSync(abs, 'utf8');
+  const json = JSON.parse(text) as Record<string, unknown>;
+  const arr = json[section];
+  if (!Array.isArray(arr)) {
+    throw new Error(`remove-prop: section '${section}' is not an array in ${relPath}`);
+  }
+  const before = arr.length;
+  json[section] = (arr as Array<{ id?: string }>).filter((e) => e?.id !== id);
+  if ((json[section] as unknown[]).length === before) {
+    throw new Error(`remove-prop: id '${id}' not found in ${relPath}#${section}`);
+  }
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
 }
 
 /** Patch a single point inside `paths[id].points[index]` of a JSON
