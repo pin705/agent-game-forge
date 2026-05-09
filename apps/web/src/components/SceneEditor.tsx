@@ -159,10 +159,10 @@ export function SceneEditor(props: Props) {
   const [camera, setCamera] = useState<Camera>({ scale: 0.5, panX: 0, panY: 0 });
   // "+ Prop" picker modal — only meaningful for JSON-backed (web) scenes.
   const [propPickerOpen, setPropPickerOpen] = useState(false);
-  // "+ rect" / "+ circle" sub-toolbar arming. When set, click-drag in
-  // empty colliders-mode canvas draws a new shape instead of panning.
-  // ESC clears.
-  const [addShapeKind, setAddShapeKind] = useState<null | 'rect' | 'circle'>(null);
+  // "+ rect" / "+ circle" / "+ poly" sub-toolbar arming. When set,
+  // click-drag (rect/circle) or click-click (polygon) in empty colliders-
+  // mode canvas draws a new shape instead of panning. ESC clears.
+  const [addShapeKind, setAddShapeKind] = useState<null | 'rect' | 'circle' | 'polygon'>(null);
   // Live preview geometry while the user is mid-drag — drives a dashed
   // overlay in the render loop.
   const [draftShape, setDraftShape] = useState<
@@ -174,9 +174,12 @@ export function SceneEditor(props: Props) {
   // point; Enter / double-click commits when ≥ 2 points; Backspace pops
   // the last point; ESC cancels.
   const [pathDraft, setPathDraft] = useState<{ points: Vec2[] } | null>(null);
-  // Cursor world position while drafting a path — drives the "rubber band"
-  // segment from the last placed point to the cursor.
+  // Cursor world position while drafting a path or polygon — drives the
+  // "rubber band" segment from the last placed point to the cursor.
   const [pathDraftCursor, setPathDraftCursor] = useState<Vec2 | null>(null);
+  // Polygon collider draft. Same multi-click pattern as pathDraft, but
+  // commits as a polygon SceneCollider (≥ 3 points required).
+  const [polygonDraft, setPolygonDraft] = useState<{ points: Vec2[] } | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -579,6 +582,58 @@ export function SceneEditor(props: Props) {
       ctx.restore();
     }
 
+    // Polygon draft preview — same rubber-band pattern as paths, plus an
+    // extra dashed segment back to the first point so the user can see how
+    // the polygon will close.
+    if (polygonDraft && polygonDraft.points.length > 0) {
+      ctx.save();
+      const lineW = Math.max(1, 2 / camera.scale);
+      ctx.strokeStyle = '#fc7';
+      ctx.fillStyle = 'rgba(255, 204, 119, 0.18)';
+      ctx.lineWidth = lineW;
+      // Filled tentative polygon to make the inside obvious.
+      if (polygonDraft.points.length >= 3) {
+        ctx.beginPath();
+        ctx.moveTo(polygonDraft.points[0].x, polygonDraft.points[0].y);
+        for (let i = 1; i < polygonDraft.points.length; i++) {
+          ctx.lineTo(polygonDraft.points[i].x, polygonDraft.points[i].y);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+      // Solid edges between committed vertices.
+      ctx.beginPath();
+      ctx.moveTo(polygonDraft.points[0].x, polygonDraft.points[0].y);
+      for (let i = 1; i < polygonDraft.points.length; i++) {
+        ctx.lineTo(polygonDraft.points[i].x, polygonDraft.points[i].y);
+      }
+      ctx.stroke();
+      // Rubber band from last vertex to cursor + closing hint to first.
+      if (pathDraftCursor) {
+        const last = polygonDraft.points[polygonDraft.points.length - 1];
+        ctx.setLineDash([8 / camera.scale, 6 / camera.scale]);
+        ctx.beginPath();
+        ctx.moveTo(last.x, last.y);
+        ctx.lineTo(pathDraftCursor.x, pathDraftCursor.y);
+        if (polygonDraft.points.length >= 2) {
+          ctx.moveTo(pathDraftCursor.x, pathDraftCursor.y);
+          ctx.lineTo(polygonDraft.points[0].x, polygonDraft.points[0].y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      // Dots at each vertex; first one a bit larger so the close-target is
+      // obvious.
+      ctx.fillStyle = '#fc7';
+      polygonDraft.points.forEach((p, i) => {
+        const r = i === 0 ? Math.max(3, 6 / camera.scale) : Math.max(2, 4 / camera.scale);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+
     ctx.restore();
 
     // HUD
@@ -598,6 +653,7 @@ export function SceneEditor(props: Props) {
     draftShape,
     pathDraft,
     pathDraftCursor,
+    polygonDraft,
   ]);
 
   useEffect(() => {
@@ -939,19 +995,45 @@ export function SceneEditor(props: Props) {
 
     // ----- Shape modes (colliders or zones) -----
     if ((mode === 'colliders' || mode === 'zones') && e.button === 0 && !e.altKey) {
-      // 0) Add-shape draft? When the toolbar armed addShapeKind, the next
+      // 0a) Polygon click append? Polygons use multi-click (not drag), so
+      //     once the draft is started, every colliders-mode click adds a
+      //     vertex until Enter / dbl-click commits or ESC cancels.
+      if (polygonDraft) {
+        const snap = !e.shiftKey;
+        const pt = {
+          x: snap ? Math.round(w.x) : w.x,
+          y: snap ? Math.round(w.y) : w.y,
+        };
+        setPolygonDraft({ points: [...polygonDraft.points, pt] });
+        return;
+      }
+      // 0b) Add-shape draft? When the toolbar armed addShapeKind, the next
       //    click-drag in empty space draws a new shape instead of selecting
       //    or panning. Hit-test for existing shapes still wins so the user
       //    can grab a handle by accident-proofing — but we skip the body
       //    hit-test below so an empty-space click goes straight into draft.
       if (addShapeKind && mode === 'colliders') {
+        if (addShapeKind === 'polygon') {
+          // First click on polygon = seed the draft with one vertex.
+          // Subsequent clicks land in the 0a branch above on next mousedown.
+          const snap = !e.shiftKey;
+          const pt = {
+            x: snap ? Math.round(w.x) : w.x,
+            y: snap ? Math.round(w.y) : w.y,
+          };
+          setPolygonDraft({ points: [pt] });
+          // Disarm the toolbar — once drafting, the draft itself is the
+          // mode signal until commit or cancel.
+          setAddShapeKind(null);
+          return;
+        }
         // Don't grab from a resize handle on the selected shape — let the
         // existing resize path own that interaction.
         if (!findResizeHandle(w) && !findCircleRadiusHandle(w)) {
           if (addShapeKind === 'rect') {
             dragRef.current = { kind: 'add-rect-draft', startWorld: w, currentWorld: w };
             setDraftShape({ kind: 'rect', x1: w.x, y1: w.y, x2: w.x, y2: w.y });
-          } else {
+          } else if (addShapeKind === 'circle') {
             dragRef.current = { kind: 'add-circle-draft', startWorld: w, currentWorld: w };
             setDraftShape({ kind: 'circle', cx: w.x, cy: w.y, cur: w });
           }
@@ -1550,6 +1632,51 @@ export function SceneEditor(props: Props) {
     setAddShapeKind(null);
   }
 
+  // -------- Add polygon collider (multi-click vertex) --------
+  function commitPolygonDraft(): void {
+    const draft = polygonDraft;
+    setPolygonDraft(null);
+    setPathDraftCursor(null);
+    if (!draft || draft.points.length < 3) return;
+    if (!scene) return;
+    const relPath = scene.collidersJsonPath;
+    if (!relPath) {
+      setSaveError(
+        'No collision-map JSON for this scene. Generate one via the agent first.',
+      );
+      setSavingState('error');
+      return;
+    }
+    const section = 'blockers';
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const id = `poly_${suffix}`;
+    const ref: ColliderRef = { backend: 'json', relPath, section, id };
+    // JSON convention stores polygon points as [x, y] tuple arrays; the
+    // in-memory SceneCollider uses Vec2.
+    const tuples: [number, number][] = draft.points.map((p) => [p.x, p.y]);
+    const cx = draft.points.reduce((a, p) => a + p.x, 0) / draft.points.length;
+    const cy = draft.points.reduce((a, p) => a + p.y, 0) / draft.points.length;
+
+    const newCollider: SceneCollider = {
+      uid: `json:${section}:${id}`,
+      ref,
+      name: id,
+      kind: 'blocker',
+      position: { x: cx, y: cy },
+      shape: { kind: 'polygon', points: draft.points.map((p) => ({ x: p.x, y: p.y })) },
+      // Match the loader's behavior so post-refresh state stays consistent
+      // (polygon vertex editing isn't wired yet — Phase 4 territory).
+      editable: false,
+    };
+    setScene((s) => (s ? { ...s, colliders: [...s.colliders, newCollider] } : s));
+    setSelectedColliderUid(newCollider.uid);
+    commitOps(
+      [{ kind: 'add-collider', relPath, section, entry: { id, type: 'polygon', points: tuples } }],
+      [{ kind: 'remove-collider', relPath, section, id }],
+      `add ${id}`,
+    );
+  }
+
   // -------- Add path (multi-click waypoint) --------
   //
   // Called on Enter / "finish" / double-click. Builds the entry from the
@@ -1604,27 +1731,49 @@ export function SceneEditor(props: Props) {
           setPathDraft(null);
           setPathDraftCursor(null);
         }
+        if (polygonDraft) {
+          setPolygonDraft(null);
+          setPathDraftCursor(null);
+        }
         return;
       }
-      if (!pathDraft) return;
-      // Enter / Space = commit. Backspace = pop last point.
       const active = document.activeElement as HTMLElement | null;
       const inEditable =
         !!active &&
         (/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable);
       if (inEditable) return;
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        commitPathDraft();
-      } else if (e.key === 'Backspace') {
-        e.preventDefault();
-        setPathDraft({ points: pathDraft.points.slice(0, -1) });
+      // Enter = commit; Backspace = pop last vertex. Same behavior for
+      // path and polygon drafts — they are mutually exclusive.
+      if (pathDraft) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commitPathDraft();
+        } else if (e.key === 'Backspace') {
+          e.preventDefault();
+          setPathDraft({ points: pathDraft.points.slice(0, -1) });
+        }
+        return;
+      }
+      if (polygonDraft) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commitPolygonDraft();
+        } else if (e.key === 'Backspace') {
+          e.preventDefault();
+          const next = polygonDraft.points.slice(0, -1);
+          if (next.length === 0) {
+            setPolygonDraft(null);
+            setPathDraftCursor(null);
+          } else {
+            setPolygonDraft({ points: next });
+          }
+        }
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftShape, addShapeKind, pathDraft]);
+  }, [draftShape, addShapeKind, pathDraft, polygonDraft]);
 
   // -------- Add prop (from picker modal) --------
   //
@@ -1829,26 +1978,58 @@ export function SceneEditor(props: Props) {
             </button>
           )}
           {mode === 'colliders' && scene?.collidersJsonPath && (
-            <>
-              <button
-                className={`btn btn-sm ${addShapeKind === 'rect' ? 'active' : ''}`}
-                title="Drag in empty space to draw a rectangle blocker (Esc to cancel)"
-                onClick={() =>
-                  setAddShapeKind((k) => (k === 'rect' ? null : 'rect'))
-                }
-              >
-                + rect
-              </button>
-              <button
-                className={`btn btn-sm ${addShapeKind === 'circle' ? 'active' : ''}`}
-                title="Drag in empty space to draw a circle blocker (Esc to cancel)"
-                onClick={() =>
-                  setAddShapeKind((k) => (k === 'circle' ? null : 'circle'))
-                }
-              >
-                + circle
-              </button>
-            </>
+            polygonDraft ? (
+              <>
+                <button
+                  className="btn btn-sm"
+                  title="Close polygon (Enter)"
+                  onClick={commitPolygonDraft}
+                  disabled={polygonDraft.points.length < 3}
+                >
+                  finish ({polygonDraft.points.length} pt)
+                </button>
+                <button
+                  className="btn btn-sm btn-ghost"
+                  title="Cancel (Esc)"
+                  onClick={() => {
+                    setPolygonDraft(null);
+                    setPathDraftCursor(null);
+                  }}
+                >
+                  cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className={`btn btn-sm ${addShapeKind === 'rect' ? 'active' : ''}`}
+                  title="Drag in empty space to draw a rectangle blocker (Esc to cancel)"
+                  onClick={() =>
+                    setAddShapeKind((k) => (k === 'rect' ? null : 'rect'))
+                  }
+                >
+                  + rect
+                </button>
+                <button
+                  className={`btn btn-sm ${addShapeKind === 'circle' ? 'active' : ''}`}
+                  title="Drag in empty space to draw a circle blocker (Esc to cancel)"
+                  onClick={() =>
+                    setAddShapeKind((k) => (k === 'circle' ? null : 'circle'))
+                  }
+                >
+                  + circle
+                </button>
+                <button
+                  className={`btn btn-sm ${addShapeKind === 'polygon' ? 'active' : ''}`}
+                  title="Click to place each polygon vertex, Enter / dbl-click to close (≥ 3 points)"
+                  onClick={() =>
+                    setAddShapeKind((k) => (k === 'polygon' ? null : 'polygon'))
+                  }
+                >
+                  + poly
+                </button>
+              </>
+            )
           )}
           {mode === 'paths' && props.relPath.toLowerCase().endsWith('.json') && (
             pathDraft ? (
@@ -1914,15 +2095,19 @@ export function SceneEditor(props: Props) {
           onMouseDown={onMouseDown}
           onWheel={onWheel}
           onMouseMove={(e) => {
-            // Path-draft rubber band: track cursor in world coords. Cheap
-            // because pathDraft is null in the common case so we early-bail
-            // before any work.
-            if (!pathDraft) return;
+            // Path / polygon rubber-band: track cursor in world coords for
+            // the live preview line. Cheap because both drafts are null in
+            // the common case — early-bail before clientToWorld.
+            if (!pathDraft && !polygonDraft) return;
             setPathDraftCursor(clientToWorld(e));
           }}
           onDoubleClick={() => {
             if (pathDraft && pathDraft.points.length >= 2) {
               commitPathDraft();
+              return;
+            }
+            if (polygonDraft && polygonDraft.points.length >= 3) {
+              commitPolygonDraft();
             }
           }}
           style={{
@@ -1932,7 +2117,7 @@ export function SceneEditor(props: Props) {
             cursor:
               dragRef.current?.kind === 'pan'
                 ? 'grabbing'
-                : mode === 'comments' || addShapeKind || pathDraft
+                : mode === 'comments' || addShapeKind || pathDraft || polygonDraft
                 ? 'crosshair'
                 : 'default',
           }}
@@ -3564,26 +3749,42 @@ function applyOpToScene(s: SceneModel, op: SceneOp): SceneModel {
     if (exists) return s;
     const ref: ColliderRef = { backend: 'json', relPath: op.relPath, section, id };
     const e = op.entry;
-    const newCollider: SceneCollider =
-      e.type === 'rect'
-        ? {
-            uid: `json:${section}:${id}`,
-            ref,
-            name: id,
-            kind: 'blocker',
-            position: { x: e.x + e.w / 2, y: e.y + e.h / 2 },
-            shape: { kind: 'rect', w: e.w, h: e.h },
-            editable: true,
-          }
-        : {
-            uid: `json:${section}:${id}`,
-            ref,
-            name: id,
-            kind: 'blocker',
-            position: { x: e.x, y: e.y },
-            shape: { kind: 'circle', r: e.radius },
-            editable: true,
-          };
+    let newCollider: SceneCollider;
+    if (e.type === 'rect') {
+      newCollider = {
+        uid: `json:${section}:${id}`,
+        ref,
+        name: id,
+        kind: 'blocker',
+        position: { x: e.x + e.w / 2, y: e.y + e.h / 2 },
+        shape: { kind: 'rect', w: e.w, h: e.h },
+        editable: true,
+      };
+    } else if (e.type === 'circle') {
+      newCollider = {
+        uid: `json:${section}:${id}`,
+        ref,
+        name: id,
+        kind: 'blocker',
+        position: { x: e.x, y: e.y },
+        shape: { kind: 'circle', r: e.radius },
+        editable: true,
+      };
+    } else {
+      // polygon — JSON tuples [x, y][] → in-memory Vec2[].
+      const pts = e.points.map(([x, y]) => ({ x, y }));
+      const cx = pts.reduce((a, p) => a + p.x, 0) / Math.max(1, pts.length);
+      const cy = pts.reduce((a, p) => a + p.y, 0) / Math.max(1, pts.length);
+      newCollider = {
+        uid: `json:${section}:${id}`,
+        ref,
+        name: id,
+        kind: 'blocker',
+        position: { x: cx, y: cy },
+        shape: { kind: 'polygon', points: pts },
+        editable: false,
+      };
+    }
     return { ...s, colliders: [...s.colliders, newCollider] };
   }
   if (op.kind === 'remove-collider') {

@@ -305,7 +305,8 @@ export interface RemovePropOp {
 
 /** Append a new collider entry to the collision-map JSON. The shape's
  *  position convention follows the loader: rect uses top-left (x, y, w, h);
- *  circle uses center (x, y, radius). */
+ *  circle uses center (x, y, radius); polygon stores points as [x, y]
+ *  tuple arrays (matching readJsonColliders' parsing). */
 export interface AddColliderOp {
   kind: 'add-collider';
   /** Project-relative collision-map JSON path. */
@@ -314,7 +315,8 @@ export interface AddColliderOp {
   section?: string;
   entry:
     | { id: string; type: 'rect'; x: number; y: number; w: number; h: number }
-    | { id: string; type: 'circle'; x: number; y: number; radius: number };
+    | { id: string; type: 'circle'; x: number; y: number; radius: number }
+    | { id: string; type: 'polygon'; points: [number, number][] };
 }
 
 export interface RemoveColliderOp {
