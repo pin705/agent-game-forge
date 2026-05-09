@@ -98,6 +98,80 @@ function vendoredConventionFiles(): ScaffoldFile[] {
   return out;
 }
 
+// ── Vendored foundation seed (Sengoku-Era-ogf-derived starter code) ────
+//
+// Foundation seed = the richer scaffolding extracted from a known-good
+// reference project (D:/Sengoku-Era-ogf). Replaces the older 5-stub
+// inline WEB_* templates with the full 20-module / 14-data-file
+// vanilla-JS RPG starter. See templates/foundation/seed/SEED.md for
+// the universal-vs-starter-vs-recipe contract.
+//
+// Files copied into project root preserving the seed/ tree shape:
+//   seed/index.html     → project/index.html
+//   seed/styles.css     → project/styles.css
+//   seed/src/*.js       → project/src/*.js (20 modules)
+//   seed/data/*.json    → project/data/*.json (configs + empty catalogs)
+//   seed/SEED.md        → project/SEED.md (architecture doc for agent)
+const FOUNDATION_SEED_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  'foundation',
+  'seed',
+);
+
+/** Walk the foundation seed and produce ScaffoldFile entries rooted at
+ *  the project root (preserving src/ and data/ subfolders). */
+function vendoredFoundationSeedFiles(): ScaffoldFile[] {
+  if (!existsSync(FOUNDATION_SEED_DIR)) return [];
+  const out: ScaffoldFile[] = [];
+  const walk = (absDir: string, relSegments: string[]): void => {
+    for (const entry of readdirSync(absDir)) {
+      const absChild = path.join(absDir, entry);
+      const stat = statSync(absChild);
+      if (stat.isDirectory()) {
+        walk(absChild, [...relSegments, entry]);
+        continue;
+      }
+      // Bundle every regular file under seed/ — html, css, js, json, md.
+      const projectRel = [...relSegments, entry].join('/');
+      out.push({ rel: projectRel, body: readFileSync(absChild, 'utf8') });
+    }
+  };
+  walk(FOUNDATION_SEED_DIR, []);
+  return out;
+}
+
+// ── Vendored recipes (per-genre paste-ready code patterns) ─────────────
+//
+// Recipes are markdown files with paste-ready code snippets and "when
+// to use / when NOT to use" guidance. Agent reads them at phase-execute
+// time to decide whether/how to apply each pattern. Land in
+// .ogf/recipes/{universal,top-down-rpg,...}/ so agent can find them
+// alongside conventions.
+const RECIPES_SRC_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  'recipes',
+);
+
+function vendoredRecipeFiles(): ScaffoldFile[] {
+  if (!existsSync(RECIPES_SRC_DIR)) return [];
+  const out: ScaffoldFile[] = [];
+  const walk = (absDir: string, relSegments: string[]): void => {
+    for (const entry of readdirSync(absDir)) {
+      const absChild = path.join(absDir, entry);
+      const stat = statSync(absChild);
+      if (stat.isDirectory()) {
+        walk(absChild, [...relSegments, entry]);
+        continue;
+      }
+      if (!entry.endsWith('.md')) continue;
+      const projectRel = ['.ogf', 'recipes', ...relSegments, entry].join('/');
+      out.push({ rel: projectRel, body: readFileSync(absChild, 'utf8') });
+    }
+  };
+  walk(RECIPES_SRC_DIR, []);
+  return out;
+}
+
 interface ScaffoldFile {
   rel: string;
   body: string;
@@ -198,6 +272,7 @@ function godotFiles(name: string, conventions: string): ScaffoldFile[] {
     // a short pointer/legacy shim, NOT the authoritative content.
     { rel: '.ogf/conventions.md', body: conventions },
     ...vendoredConventionFiles(),
+    ...vendoredRecipeFiles(),
     ...vendoredSkillFiles(),
     { rel: 'data/.gitkeep', body: '' },
     { rel: 'assets/.gitkeep', body: '' },
@@ -455,7 +530,14 @@ node_modules/
 `;
 
 function webFiles(name: string, conventions: string): ScaffoldFile[] {
-  return [
+  // OGF v2: foundation seed (Sengoku-Era-ogf-derived ~36 files) replaces
+  // the older 5-file inline scaffold. If the seed isn't bundled in this
+  // build (foundation/ folder missing), fall back to the inline stubs
+  // so older OGF binaries still produce a runnable shell.
+  const seedFiles = vendoredFoundationSeedFiles();
+  const useSeed = seedFiles.length > 0;
+
+  const inlineScaffold: ScaffoldFile[] = useSeed ? [] : [
     { rel: 'index.html', body: WEB_INDEX(name) },
     { rel: 'styles.css', body: WEB_STYLES },
     { rel: 'src/game.js', body: WEB_GAME_JS },
@@ -465,15 +547,17 @@ function webFiles(name: string, conventions: string): ScaffoldFile[] {
     { rel: 'src/assets.js', body: WEB_ASSETS_JS },
     { rel: 'data/levels.json', body: WEB_LEVELS_JSON },
     { rel: 'data/level1.json', body: WEB_LEVEL1_JSON },
+  ];
+
+  return [
+    ...seedFiles,           // foundation seed (when available)
+    ...inlineScaffold,      // legacy fallback (only when seed missing)
     { rel: '.gitignore', body: WEB_GITIGNORE },
     // .ogf/conventions.md kept as a thin index that points the agent at
-    // the new genre-aware structure under .ogf/conventions/. The big
-    // monolithic conventions.ts was split into common.md + runtime-
-    // patterns.md + genres/<name>.md so each project loads only what's
-    // relevant to its genre. The `conventions` string passed in is now
-    // a short pointer/legacy shim, NOT the authoritative content.
+    // the new genre-aware structure under .ogf/conventions/.
     { rel: '.ogf/conventions.md', body: conventions },
     ...vendoredConventionFiles(),
+    ...vendoredRecipeFiles(),
     ...vendoredSkillFiles(),
     { rel: 'assets/maps/.gitkeep', body: '' },
     { rel: 'assets/sprites/.gitkeep', body: '' },

@@ -38,3 +38,10 @@ copyTemplateDir('skills', ['.md', '.yaml', '.py'], { skipDirNames: ['__pycache__
 
 // Conventions: only .md. Folder structure (genres/) preserved.
 copyTemplateDir('conventions', ['.md']);
+
+// Foundation seed (OGF v2): the Sengoku-Era-ogf-derived starter scaffold.
+// Includes index.html / styles.css / src/*.js / data/*.json + SEED.md.
+copyTemplateDir('foundation', ['.md', '.html', '.css', '.js', '.json']);
+
+// Recipes (OGF v2): per-genre paste-ready code patterns. Markdown only.
+copyTemplateDir('recipes', ['.md']);
