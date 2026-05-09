@@ -1,0 +1,5 @@
+{
+  "_doc": "Asset path manifest. Maps imageKey → PNG path. Generated assets land under assets/sprites/<id>/sheet-transparent.png. Each entry added here gets preloaded by src/assets.js. Initial empty — agent fills as it generates assets via generate2dsprite / generate2dmap skills.",
+  "images": {},
+  "animations": {}
+}

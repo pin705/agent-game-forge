@@ -1,0 +1,23 @@
+{
+  "_doc": "Localizable battle + post-battle strings. Keys map to lookup paths used in battle.js. Add new boss kinds by extending victoryDialogue/runDialogue, no JS code change needed. {enemy} and {growth} placeholders are substituted at runtime.",
+
+  "noPartner": "(your party is exhausted — return to rest)",
+
+  "lossDialogue": {
+    "indoor": "(you withdraw from the gym to recover)",
+    "default": "(your partner fell — return to a safe point)"
+  },
+
+  "runDialogue": {
+    "default": "(you withdraw from the encounter)"
+  },
+
+  "captureCircle": {
+    "added": "{enemy} joins your roster. {growth}",
+    "duplicate": "{enemy}'s presence is already in the roster. {growth}"
+  },
+
+  "victoryDialogue": {
+    "default": "{enemy} fades. {growth}"
+  }
+}
