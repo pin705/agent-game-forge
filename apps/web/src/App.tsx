@@ -1393,6 +1393,7 @@ function EditorPane(props: {
               key={file.relPath}
               projectPath={props.project.path}
               relPath={file.relPath}
+              engine={props.project.engine}
               reloadKey={props.sceneReloadKey}
               onAskCodex={props.onAskCodex}
               onClose={props.onCloseFile}
@@ -1404,6 +1405,7 @@ function EditorPane(props: {
               project={props.project}
               usedAssets={props.usedAssets}
               mainScene={props.mainScene}
+              webLevelFiles={props.sceneFiles}
             />
           );
         })()}
@@ -1581,12 +1583,14 @@ function ScenePicker({
   project,
   usedAssets,
   mainScene,
+  webLevelFiles,
 }: {
   tree: FileNode | null;
   onPick: (relPath: string) => void;
   project: Project;
   usedAssets: Set<string>;
   mainScene: string | null;
+  webLevelFiles: Set<string>;
 }) {
   const [usedOnly, setUsedOnly] = useState<boolean>(() => {
     return localStorage.getItem('ogf:scenes:usedOnly') === '1';
@@ -1596,7 +1600,7 @@ function ScenePicker({
   }, [usedOnly]);
 
   const all: FileNode[] = [];
-  if (tree) collectScenes(tree, all, project.engine);
+  if (tree) collectScenes(tree, all, project.engine, webLevelFiles);
 
   const items = all.map((s) => {
     const isMain = mainScene === s.relPath;
@@ -1661,25 +1665,30 @@ function ScenePicker({
   );
 }
 
-function isWebLevelCandidate(rel: string): boolean {
-  // Web projects: data/<level>.json files are level candidates. We don't
-  // probe the contents here (that would require reading every JSON); the
-  // Sengoku-style naming convention is enough for picker purposes.
+function isWebLevelCandidate(rel: string, knownLevels?: Set<string>): boolean {
+  // Web projects: data/<level>.json files are level candidates. The
+  // canonical signal is data/levels.json's `file` entries (passed in as
+  // `knownLevels`). When that registry is available we use it strictly;
+  // otherwise fall back to a Sengoku-style filename heuristic so projects
+  // with no levels.json still get something sensible.
   if (!rel.toLowerCase().endsWith('.json')) return false;
   if (!rel.startsWith('data/')) return false;
-  // Skip catalogs / index files we know aren't levels.
+  if (knownLevels && knownLevels.size > 0) {
+    return knownLevels.has(rel.replace(/\\/g, '/'));
+  }
+  // Heuristic fallback — name contains "collision-map" or starts with "level".
   const base = rel.split('/').pop() ?? '';
-  if (/^(enemies|heroes|towers|items|waves|levels)\.json$/i.test(base)) return false;
-  return true;
+  if (/^(?:[^/]*-)?(?:collision-map|level)(?:-[^/]+)?\.json$/i.test(base)) return true;
+  return false;
 }
 
-function collectScenes(node: FileNode, out: FileNode[], engine?: string) {
+function collectScenes(node: FileNode, out: FileNode[], engine?: string, knownLevels?: Set<string>) {
   if (node.kind === 'file') {
     if (node.name.toLowerCase().endsWith('.tscn')) out.push(node);
-    else if (engine === 'web' && isWebLevelCandidate(node.relPath)) out.push(node);
+    else if (engine === 'web' && isWebLevelCandidate(node.relPath, knownLevels)) out.push(node);
     return;
   }
-  for (const c of node.children ?? []) collectScenes(c, out, engine);
+  for (const c of node.children ?? []) collectScenes(c, out, engine, knownLevels);
 }
 
 function PlaceholderView({ title, hint }: { title: string; hint: string }) {

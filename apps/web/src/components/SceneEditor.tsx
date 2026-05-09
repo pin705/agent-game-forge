@@ -40,6 +40,10 @@ const MAX_UNDO = 200;
 interface Props {
   projectPath: string;
   relPath: string;
+  /** Engine used by the project — needed for scene-context payload so the
+   *  agent reads the right value back. Used to be hardcoded 'godot' (legacy
+   *  Godot-only era). Fallback to 'web' if not provided. */
+  engine?: string;
   /** Bumped by App on Codex run end so the editor refetches the scene from
    *  disk after the agent edits files. Initial value 0 = no reload yet. */
   reloadKey?: number;
@@ -280,6 +284,7 @@ export function SceneEditor(props: Props) {
           selectedZoneUid,
           selectedPath,
         },
+        props.engine ?? 'web',
       );
     }, 500);
     return () => {
@@ -2243,6 +2248,7 @@ async function dumpSceneContext(
   camera: { scale: number; panX: number; panY: number },
   containerEl: HTMLDivElement | null,
   sel: SelectionSnapshot,
+  engine: string = 'web',
 ): Promise<void> {
   // Compute viewport in world coords from the canvas size + camera.
   const viewport = (() => {
@@ -2316,7 +2322,7 @@ async function dumpSceneContext(
   const payload = {
     version: 1,
     updatedAt: Date.now(),
-    project: { path: projectPath, engine: 'godot' },
+    project: { path: projectPath, engine },
     scene: {
       relPath: scene.scenePath,
       rootName: scene.rootName,
