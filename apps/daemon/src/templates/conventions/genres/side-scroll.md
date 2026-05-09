@@ -216,6 +216,53 @@ Spec.md camera mode = `follow` for scrolling levels, `locked` for boss arenas:
 
 Each of these has bitten previous OGF test projects. Avoid by following the patterns above.
 
+## Recommended module split (side-scroll)
+
+Per `common.md` "Module architecture (universal)", every project gets the universal modules. Side-scroll adds these on top:
+
+| Module | Responsibility | Approx LOC |
+|---|---|---|
+| `src/physics.js` | Gravity, jump arc integration, ground/wall checks, terminal velocity | 150-300 |
+| `src/platforms.js` | Platform rect collision (one-way / solid), ladder/rope, moving platforms | 200-400 |
+| `src/player-fsm.js` | State machine: idle / run / jump / fall / attack / wall-cling / hurt | 300-500 |
+| `src/attack.js` | Player attack hitboxes, slash arc timing, projectile spawn | 150-300 |
+| `src/enemies-ai.js` | Patrol / chase / shoot AI, per-enemy state | 200-400 |
+| `src/camera.js` | Camera-window + lookahead + platform-snapping (Itay Keren pattern) | 100-200 |
+| `src/parallax.js` | Multi-layer scroll factors, segment switching | 100-200 |
+| `src/hud.js` | HP/lives/energy/score overlay | 100-200 |
+
+Total per-project: ~14-20 src files, 2,500-4,000 LOC.
+
+Genre-specific config files:
+
+| File | Holds |
+|---|---|
+| `data/physics-config.json` | Gravity, jump impulse, max-fall, run accel, friction, wall-cling slide |
+| `data/enemy-stats.json` | Per-enemy HP / damage / speed / contact-damage |
+| `data/camera-config.json` | Window width/height, lookahead distance, vertical snap |
+| `data/audio-config.json` | sfx tone freqs, gain |
+
+Identity files:
+
+| File | Holds |
+|---|---|
+| `data/levels.json` | Level registry |
+| `data/<level_id>.json` | Per level: parallax layers, platforms, enemies, hazards, pickups, exits, boss zone |
+| `data/enemies.json` | Enemy catalog (id, sprite paths, animations) |
+| `data/projectiles.json` | Projectile catalog |
+
+## Reference implementation
+
+OGF does not yet have a strong side-scroll reference project. **For Phase planning + module shape, use `D:/Sengoku-Era-ogf` as the architectural baseline** (state.js + config split + thin game.js + per-subsystem modules). Translate its RPG-specific subsystems to side-scroll equivalents:
+
+| Sengoku-Era-ogf module | Side-scroll equivalent |
+|---|---|
+| `src/battle.js` | `src/player-fsm.js` + `src/attack.js` |
+| `src/menu.js` | `src/hud.js` (simpler — usually just pause menu) |
+| `src/progression.js` | usually not needed (or simplified into `src/upgrades.js` for Metroidvania) |
+| `src/overworld.js` | `src/camera.js` + `src/parallax.js` |
+| `data/battle-config.json` | `data/physics-config.json` + `data/camera-config.json` |
+
 ## Reference repos to learn from
 
 - [mikewesthad/phaser-3-tilemap-blog-posts](https://github.com/mikewesthad/phaser-3-tilemap-blog-posts) — canonical

@@ -381,9 +381,67 @@ data/
 7. **All NPC dialogues hardcoded in source** — put them in `data/dialogues.json`.
 8. **Picking Path B (tilemap) when Path A would do** — V1 doesn't have tilemap editor support; you'll regret it. Default to Path A.
 
+## Recommended module split (top-down RPG)
+
+Per `common.md` "Module architecture (universal)", every project gets the universal modules (constants/config/catalogs/dom/state/assets/audio/input/collision/render/scene/transition + game.js entry). Top-down RPG adds these genre-specific modules on top:
+
+| Module | Responsibility | Approx LOC |
+|---|---|---|
+| `src/overworld.js` | Player movement, camera follow, NPC update, encounter triggers | 100-200 |
+| `src/battle.js` | Turn-based FSM: command → animation → FX → resolve → enemyTurn → win/loss | 400-600 |
+| `src/menu.js` | Stack-based menu navigation: party / inventory / battle commands / starter pick | 300-500 |
+| `src/dialogue.js` | Text-reveal box, advance trigger, branching choices | 150-250 |
+| `src/progression.js` | XP curve, level-up, stat growth, evolution stages, capture/recruit | 200-400 |
+| `src/interaction.js` | NPC talk / sign read / save shrine / starter shrine triggers | 100-200 |
+
+Total per-project: ~12-18 src files, 2,500-3,500 LOC.
+
+Genre-specific config files (TUNING — separate from identity):
+
+| File | Holds |
+|---|---|
+| `data/battle-config.json` | Transition timings (battle entry/exit fade), FX durations per element, finish delay, command ease curves |
+| `data/progression-config.json` | XP curve formula, stat growth per level, evolution thresholds, capture rate formula |
+| `data/audio-config.json` | Tone frequencies for sfx (hit/heal/menu/win/lose), gain levels |
+| `data/overworld-config.json` | Player walk speed, camera dead zone, NPC interact radius |
+
+Identity files (catalog of WHAT exists, no balance numbers):
+
+| File | Holds |
+|---|---|
+| `data/levels.json` | Level registry: `[{id, file, name, mapKey}]` |
+| `data/<level_id>-collision-map.json` | Per-level: background path, mapSize, spawn, NPC positions, exits, encounter zones |
+| `data/enemies.json` | Enemy/spirit definitions: id, displayName, element, animations |
+| `data/heroes.json` | Player-recruitable hero/spirit definitions (mirror of enemies + starter flags) |
+| `data/items.json` | Items: id, name, effect type |
+| `data/dialogues.json` | Dialogue trees: id, lines, branches |
+| `data/quests.json` | Quest log entries: id, prompt, completion flags |
+
+## Reference implementation — `D:/Sengoku-Era-ogf`
+
+This local project is the proven baseline for top-down RPG engine. **Read its modules when implementing the corresponding subsystem in any phase.**
+
+Key files to view_image / read when stuck:
+
+| When implementing | Read this Sengoku-Era-ogf file |
+|---|---|
+| `src/state.js` | `D:/Sengoku-Era-ogf/src/state.js` (41 lines, full state shape) |
+| `src/battle.js` | `D:/Sengoku-Era-ogf/src/battle.js` (537 lines, complete FSM with 30+ functions: startBattle / openMoveMenu / performAttack / performSkill / performBind / enemyTurn / awardExperience / finishBattle) |
+| `src/menu.js` | `D:/Sengoku-Era-ogf/src/menu.js` (454 lines, stack-based menu nav with controller + touch support) |
+| `src/dialogue.js` | `D:/Sengoku-Era-ogf/src/dialogue.js` (194 lines) |
+| `src/progression.js` | `D:/Sengoku-Era-ogf/src/progression.js` (287 lines, XP/level/evolution) |
+| `src/transition.js` | `D:/Sengoku-Era-ogf/src/transition.js` (57 lines, fade/zoom curves) |
+| `src/audio.js` | `D:/Sengoku-Era-ogf/src/audio.js` (187 lines, WebAudio tones — no .mp3 files) |
+| `src/render.js` | `D:/Sengoku-Era-ogf/src/render.js` (295 lines, including FX layer rendering) |
+| `data/battle-config.json` | shows the tuning vs identity split for battle |
+| `data/audio-config.json` | shows audio config split (tone freqs, gain levels) |
+| `data/progression-config.json` | shows XP curve as data not code |
+
+When the spec writer or phase executor needs to implement a subsystem, the FIRST step is `view_image` (or read) the corresponding Sengoku-Era-ogf file, then write a project-adapted version. Do NOT copy character names / level ids / Sengoku-specific identity — copy the PATTERN (function shapes, state mutations, FSM transitions, config-data split).
+
 ## Reference repos
 
-- **For Path A (image-bg)**: Sengoku-Era — see your test project. The base map + reference map + extracted props pattern is the proven workflow.
+- **For Path A (image-bg)**: see `D:/Sengoku-Era-ogf` (local), with the base map + reference map + extracted props pattern.
 - **For Path B (tilemap, future)**: [mikewesthad/phaser-3-tilemap-blog-posts post-1](https://github.com/mikewesthad/phaser-3-tilemap-blog-posts/blob/master/posts/post-1/README.md) for when V3.2 lands.
 - [LDtk docs](https://ldtk.io/docs/) — modern indie level format, future Path B target.
 - [Phaser z-order tutorial](https://phaser.io/news/2016/03/z-order-tutorial) — Y-sort principle, vanilla translation in `runtime-patterns.md`.

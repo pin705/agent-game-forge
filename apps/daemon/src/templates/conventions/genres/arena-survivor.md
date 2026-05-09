@@ -226,6 +226,53 @@ data/
 5. **Trying to add tilemap walls** — doesn't fit the genre. If walls needed, use rect colliders, but most VS-likes are open arena.
 6. **Adding parallax** — not VS-pattern. Single tiled background only.
 
+## Recommended module split (arena survivor)
+
+Per `common.md` "Module architecture (universal)", every project gets the universal modules. Arena survivor adds these on top:
+
+| Module | Responsibility | Approx LOC |
+|---|---|---|
+| `src/pool.js` | Object pool factory (enemies, projectiles, xp orbs, pickups). MANDATORY — never `new`/GC in hot loop | 100-200 |
+| `src/weapons.js` | Auto-fire weapon timers, target acquisition, projectile spawn per weapon | 300-500 |
+| `src/enemies.js` | Enemy update + AI (chase player, contact damage), wave-density driven | 200-400 |
+| `src/spawner.js` | Time-based difficulty curve, wave director, enemy ring around camera | 150-300 |
+| `src/xp.js` | XP orb collection, magnet radius, level-up trigger | 100-200 |
+| `src/levelup.js` | Pause + 3-card upgrade choice screen, weapon evolution rules | 200-400 |
+| `src/hud.js` | HP bar, XP bar, timer, kill count, weapon icons | 150-250 |
+
+Total per-project: ~14-19 src files, 2,000-3,500 LOC.
+
+Genre-specific config files:
+
+| File | Holds |
+|---|---|
+| `data/weapon-stats.json` | Per-weapon: cooldown, damage, projectile speed, area, level-up curve |
+| `data/enemy-spawn-curve.json` | Time → spawn-rate / enemy-mix / boss-trigger schedule |
+| `data/level-curve.json` | XP needed per level, upgrade-card pool weights |
+| `data/audio-config.json` | sfx tones |
+
+Identity files:
+
+| File | Holds |
+|---|---|
+| `data/levels.json` | Map registry (usually 1-3 arenas) |
+| `data/<arena_id>.json` | Background tile, mapSize, player spawn, ambient props, music theme |
+| `data/enemies.json` | Enemy catalog (id, sprite, base stats — not balance curves) |
+| `data/weapons.json` | Weapon catalog (id, sprite, behavior type) |
+| `data/upgrades.json` | Upgrade card catalog (id, name, effect) |
+
+## Reference implementation
+
+OGF does not yet have a strong arena-survivor reference project. **For Phase planning + module shape, use `D:/Sengoku-Era-ogf` as the architectural baseline** (state.js + config split + thin game.js + per-subsystem modules). Translate to arena-survivor:
+
+| Sengoku-Era-ogf module | Arena-survivor equivalent |
+|---|---|
+| `src/battle.js` | `src/weapons.js` + `src/enemies.js` (continuous combat) |
+| `src/menu.js` | `src/levelup.js` (the only menu — appears on level up) |
+| `src/progression.js` | `src/xp.js` + parts of `src/levelup.js` |
+| `src/overworld.js` | `src/spawner.js` (spawn director instead of NPC overworld) |
+| `data/battle-config.json` | `data/weapon-stats.json` + `data/enemy-spawn-curve.json` |
+
 ## Reference repos
 
 - [Emanuele Feronato VS prototype](https://emanueleferonato.com/2024/11/29/quick-html5-prototype-of-vampire-survivors-built-with-phaser-like-the-original-game/) — single-file canonical

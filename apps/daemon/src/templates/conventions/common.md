@@ -82,6 +82,16 @@ Before writing spec.md, emit a `<question-form>` block. The form's `fields` arra
         { "value": "standard", "label": "Standard", "detail": "skill picks per-action (idle 2×2, walk 2×3-2×4, attack 2×3)" },
         { "value": "rich",     "label": "Rich",     "detail": "bigger grids: walk 2×4-2×6, attack 2×4, death 2×4" }
       ]
+    },
+    {
+      "key": "module_style",
+      "label": "How should the source code be organized?",
+      "type": "radio",
+      "default": "simple",
+      "options": [
+        { "value": "simple", "label": "Simple — script tags + globals", "detail": "Sengoku-Era-ogf style. <script src=...> in index.html, shared global state.js, easy to inspect in DevTools, easy to add modules. Default — best for prototyping and iterative tweaks." },
+        { "value": "modern", "label": "Modern — ES modules", "detail": "import/export per file, scoped modules. Slightly more ceremony when adding a module (update import graph). Pick this if you plan to ship to a bundler later." }
+      ]
     }
     /* … add other discovery questions: title, palette, references, etc. … */
   ]
@@ -93,7 +103,7 @@ Add other discovery questions (title, world setting, palette, etc) as needed. **
 After form submission, write **Visual decisions** into spec.md §1 Identity:
 
 ```
-- **Visual decisions**: genre=<chosen>, animation_richness=<chosen>
+- **Visual decisions**: genre=<chosen>, animation_richness=<chosen>, module_style=<chosen>
 ```
 
 Then read `.ogf/conventions/genres/<chosen-genre>.md` for the genre-specific patterns the spec + later phases must follow.
@@ -421,57 +431,116 @@ For multi-layer parallax, every layer file must independently match mapSize.
 - **Godot**: still supported for legacy projects but no longer the default.
 - **Unity / Unreal / WebGL+Three.js**: not supported for new projects.
 
-## File layout (web engine)
+## Module architecture (universal across all genres)
+
+> ⚠️ Past OGF projects shipped with weak engines because the spec template recommended only 4-6 files. test-2d-rpg5's combat.js was 138 lines for an entire turn-based battle system; test-scroll's whole game was 465 LOC. Compare to `D:/Sengoku-Era-ogf` — same RPG genre, 20 modules, 3,052 LOC, full battle FSM + menu + dialogue + progression + transitions + audio. The thin engine isn't a model limitation; it's a spec template that didn't ask for enough modules.
+
+### Five universal rules
+
+These apply to EVERY genre. Per-genre module recipes appear in each genre file.
+
+**1. One responsibility per file.** Aim for 100-500 LOC per module. A 138-line combat.js that handles turn FSM + animation timing + capture math + state transitions is too crowded — split into `battle.js` (FSM) + `menu.js` (commands) + `progression.js` (XP). Sengoku-Era-ogf's battle.js is 537 lines doing ONLY the battle FSM with 30+ small functions; that's the depth target.
+
+**2. Shared global `state.js`.** One canonical state object held in `src/state.js`. All other modules read/mutate it directly. No prop drilling, no React-style nested state, no per-entity stores. Keeps cross-module wiring trivial:
+
+```js
+// src/state.js
+const state = {
+  mode: "overworld",     // overworld | battle | menu | choose | transition
+  scene: "outdoor",
+  player: { x: 0, y: 0, hp: 100, ... },
+  party: [],
+  inventory: {},
+  battle: null,          // populated when mode === 'battle'
+  transition: null,
+  keys: new Set(),
+  // ... whatever the game needs
+};
+```
+
+**3. Config split: tuning vs identity.** Two kinds of JSON under `data/`:
+- `*-config.json` — TUNING (numbers the user wants to tweak: HP curves, damage multipliers, animation durations, ease curves, audio volumes, camera follow speed)
+- `*.json` (no `-config` suffix) — IDENTITY (catalog entries: enemies/items/heroes/levels — what THINGS exist)
+
+Why split: balance changes touch ONE file (`battle-config.json`), don't risk breaking catalog parsers. User can tweak game feel without reading code. Examples from Sengoku-Era-ogf:
+- `data/enemies.json` — enemy ids, names, sprite paths (identity)
+- `data/battle-config.json` — transition timings, finish delays, FX durations (tuning)
+- `data/audio-config.json` — tone frequencies, gain levels (tuning)
+- `data/progression-config.json` — XP curve, stat growth per level (tuning)
+
+**4. Thin `game.js` entry.** ~50 lines max. Just: load assets → init state → start main loop → wire DOM event handlers. All gameplay logic lives in subsystem modules. Sengoku-Era-ogf's game.js is 46 lines.
+
+**5. Script tag loading is the default.** Use classic `<script src="src/x.js">` tags in index.html, not ES modules. Each module declares functions at the top level (globals). This sounds old-school but is RIGHT for OGF's prototype-and-modify niche:
+- Agent adds new module = add file + one `<script>` line. No import graph to update.
+- User can inspect any global in DevTools without import tracking.
+- Zero bundler overhead, fastest reload.
+- Order-sensitivity is the only downside — declare load order in index.html (constants → state → subsystems → game.js entry last). For 5-25 module projects this is fine.
+
+If the user explicitly opts into ES modules via the discovery form (`module_style: modern`), use `<script type="module">` and `import/export` instead. Default is `simple`.
+
+### File layout (web engine, script-tag default)
 
 ```
 project-root/
-├── index.html
+├── index.html             ← <script> tags load src/* in order
 ├── styles.css
 ├── src/
-│   ├── game.js              ← entry: boots renderer + scene + input + frame loop
-│   ├── render.js            ← all canvas drawing
-│   ├── scene.js             ← level state + per-frame update
-│   ├── input.js             ← keyboard + gamepad
-│   ├── assets.js            ← image preloader + cache
-│   ├── collision.js         ← AABB + tilemap collision
-│   ├── combat.js            ← if game has combat
-│   ├── entities/
-│   │   ├── player.js
-│   │   ├── enemy.js
-│   │   └── projectile.js
-│   ├── ui.js                ← HUD overlay
-│   └── audio.js             ← WebAudio cues
+│   ├── constants.js       ← VIEW.w/h, frame budget, fixed values
+│   ├── config.js          ← load + cache *-config.json
+│   ├── catalogs.js        ← load + cache identity *.json
+│   ├── dom.js             ← cached DOM refs
+│   ├── state.js           ← shared global state object
+│   ├── assets.js          ← image preloader
+│   ├── audio.js           ← WebAudio cues (tones + noise, no .mp3)
+│   ├── input.js           ← keyboard + gamepad
+│   ├── touch.js           ← mobile touch (optional, only if mobile in scope)
+│   ├── collision.js       ← AABB + level-collision-map
+│   ├── render.js          ← canvas drawing (calls into per-mode draw functions)
+│   ├── scene.js           ← scene/level switching
+│   ├── transition.js      ← fade/zoom over the canvas (battle entry, scene change)
+│   ├── dialogue.js        ← text-reveal box (only if game has dialogue)
+│   ├── interaction.js     ← NPC / object interact triggers
+│   │
+│   ├── <genre subsystem 1>.js   ← see your genre file for recipe
+│   ├── <genre subsystem 2>.js
+│   ├── <genre subsystem N>.js
+│   │
+│   └── game.js            ← entry: load → init → main loop. ~50 lines.
 ├── data/
-│   ├── levels.json          ← registry: { id, file, displayName? }[]
-│   ├── <level_id>.json      ← per level
-│   ├── enemies.json         ← catalog (one per kind)
-│   ├── heroes.json
-│   ├── pickups.json
-│   ├── hazards.json
-│   ├── projectiles.json
+│   ├── levels.json
+│   ├── <level_id>.json
+│   ├── <level_id>-collision-map.json
+│   │
+│   ├── <catalog>.json     ← identity (enemies / items / heroes / pickups)
+│   ├── <catalog>.json
+│   │
+│   ├── <subsystem>-config.json  ← tuning (battle-config / audio-config / progression-config)
+│   ├── <subsystem>-config.json
 │   └── ...
 ├── assets/
-│   ├── maps/<level_id>/{layers}.png + per-asset folders
+│   ├── maps/<level_id>/{base,reference,...}.png
 │   └── sprites/<entity_id>/<action>/sheet.png + pipeline-meta.json
 ├── .ogf/
 │   ├── spec.md
 │   ├── style-anchor.png
-│   ├── conventions/         ← these conventions files
-│   │   ├── common.md
-│   │   ├── runtime-patterns.md
-│   │   └── genres/<your-genre>.md
-│   └── ...
+│   └── conventions/
 └── .agents/
-    └── skills/              ← codex skills bundle (auto-discovered)
+    └── skills/
 ```
 
-## Module split rules (when to break out a new file)
+Every project gets the universal modules (constants/config/catalogs/dom/state/assets/audio/input/collision/render/scene/transition + game.js). Genre-specific modules and config files are listed in each genre file's `## Recommended module split` section. Most playable-tier projects land at 12-20 src/ files + 5-10 data/ files.
 
-- A function is a state machine ≥ 4 states → its own file.
-- A subsystem has ≥ 3 entry points called from elsewhere → its own file.
-- A file passes ~250 lines OR mixes 2 concerns → split.
+### When to split further
 
-Don't pre-emptively split. Most game-jam-scale projects fit in 4-6 files in `src/` + entities folder.
+- A function is a state machine ≥ 4 states → its own file
+- A subsystem has ≥ 3 entry points called from elsewhere → its own file
+- A file passes ~500 lines OR mixes 2 concerns → split
+
+Don't pre-emptively split single-state systems into their own files. Don't merge unrelated concerns to "save a file."
+
+### Reference implementations to read
+
+Each genre file lists `## Reference implementation` paths to known-good projects. When implementing engine code in any phase, view_image the relevant module from the reference and follow its shape rather than reinventing.
 
 ## What NOT to do (project-wide)
 
