@@ -222,6 +222,112 @@ Use **inline** when the entity appears once or twice and doesn't need shared sta
 
 These contain everything about: side-scroll segment counts, platform strategies, parallax layer organization, prop pack vs strip vs tilemap, sprite frame layouts per action, anchor + collision extraction, magenta cleanup, QC. **OGF defers to them.** If they contradict this file, the skill files win.
 
+## Recipes — read at phase execution time
+
+`.ogf/recipes/<genre>/<recipe>.md` contains paste-ready code patterns + adaptation guidance for every common subsystem (battle FSM, menu navigation, dialogue box, save/load, progression, FX layer, etc.). Foundation seed gives you the universal scaffolding; recipes show you how to fill the genre-specific subsystem files.
+
+**Mandatory read points** (during phase execution):
+
+| Implementing | Read this recipe FIRST |
+|---|---|
+| `src/battle.js` (turn-based combat) | `.ogf/recipes/<genre>/battle-turn-based.md` |
+| `src/battle.js` (ATB / real-time variant) | corresponding recipe (or write from scratch if not present) |
+| `src/menu.js` (party / inventory / dex) | `.ogf/recipes/<genre>/menu-stack.md` |
+| `src/dialogue.js` (NPC + post-battle text) | `.ogf/recipes/<genre>/dialogue-box.md` |
+| Save game / migration | `.ogf/recipes/<genre>/save-load.md` |
+| XP / level-up / evolution | `.ogf/recipes/<genre>/progression.md` |
+| Elemental FX on hit | `.ogf/recipes/<genre>/fx-layer.md` |
+
+Each recipe has a "When to use / When NOT to use" section. **If your project's mechanic differs (ATB instead of turn-based, sandbox instead of combat, tactical instead of action), the recipe explicitly tells you to skip it or fork.** Recipes are starting points, not contracts.
+
+If a recipe doesn't exist for what you need, the fallback is: read the closest neighbor recipe + write the new pattern from scratch using the same shape (when-to-use → files-affected → dependencies → pattern → adaptation knobs → common mistakes → reference).
+
+## Asset path contract — ALWAYS write to `assets/`
+
+OGF runtime reads from these hardcoded paths:
+- `assets/maps/<scene_id>/base.png` — scene background
+- `assets/sprites/<entity_id>/<action>/sheet.png` — character / NPC / enemy sprites
+- `assets/props/<prop_id>/prop.png` — overworld / scene props
+- `assets/fx/<element>/sheet-transparent.png` — elemental FX
+- `assets/items/<item_id>/icon.png` — inventory item icons
+- `assets/battle/<battle_bg>.png` — battle backgrounds
+
+These paths are referenced from `src/assets.js` + `data/assets.json` + per-scene `data/<scene>-collision-map.json`. **If you write generated assets anywhere else, the runtime will not find them and Play tab stays empty.**
+
+Past failure: test-2d-rpg9's agent ran an early `apply_patch` that failed for a non-permission reason (likely encoding / format), then concluded "Windows ACL blocks writes inside daemon-created folders" and switched to `generated_assets/` as a workaround. This was **wrong** — earlier projects (test-2d-rpg5, test-2d-rpg6) prove writes to `assets/maps/`, `assets/sprites/` etc. work fine.
+
+If you see a write failure inside `assets/` or `data/`:
+- Try a different write method (shell `Set-Content` instead of `apply_patch`, or vice versa)
+- Verify the parent dir exists (`Test-Path` first, `New-Item -ItemType Directory -Force` if missing)
+- Check the actual error message — file format / encoding / line endings can cause apparent "permission" errors
+- DO NOT create `generated_assets/` or any other root-level workaround folder
+
+## Style anchor — depict user's actual subject, not a generic mascot
+
+The Phase 1 style anchor sets the visual canon every later asset references via `view_image`. **Whatever the anchor depicts becomes the project's visual identity.** Picking the wrong subject for the anchor cascades.
+
+Past failure: user asked for "戰國武將 Pokemon-like RPG" (Sengoku general / human warrior + monster-taming structure). Agent picked anchor subject = "war-spirit fox-dragon mascot in samurai armor". Result: the project became chibi-creature-themed instead of warrior-themed. The anchor essentially overwrote user's stated theme.
+
+**Anchor subject rule**:
+
+1. **Read user's prompt for the MAIN PLAYABLE SUBJECT.** "戰國武將" = human general. "野獸馴服師" = beast-master human + creature partner. "通靈師" = spirit medium human. "妖怪變身者" = creature shapeshifter. The subject they NAME is the subject the anchor depicts.
+2. **If user named a creature/monster theme** (Pokemon, Digimon, Slime ranch), anchor depicts the most representative starter creature.
+3. **If user named a human theme** (samurai RPG, ninja game, cyberpunk hacker), anchor depicts the player human in their canonical pose.
+4. **If user named a hybrid** (medium + spirit, knight + dragon), anchor depicts BOTH together — human + companion.
+5. **Default ambiguous case**: pick HUMAN. Most RPG protagonists are human-shaped; safer baseline.
+
+**Anchor prompt template**:
+```
+Style: <Style directive verbatim from spec §1>
+Subject: <User-named main subject — be specific>.
+       Example: "Young Sengoku tactician in lacquered armor, holding a war fan,
+        confident pose, kabuto helmet visible, age 18-25."
+       NOT: "war-spirit mascot creature with samurai armor."
+Constraint: This anchor defines the project's visual identity. Every later
+character / monster / NPC will be generated with view_image of this image —
+so the proportions, color treatment, and rendering style here propagate.
+```
+
+If the first anchor comes back wrong (mascot when you wanted hero, monster when you wanted human), **regenerate before moving on**. A wrong anchor wastes every subsequent gen call.
+
+## Style directive specificity — for restrictive art styles
+
+Image_gen has strong defaults: bright chibi anime, full color, glossy rendering. To produce something OUTSIDE that bias (ink wash, brutalist pixel, monochrome retro, hand-drawn lineart), the prompt needs **explicit negatives** plus **positive examples**.
+
+The `Style directive` from spec §1 must include both for restrictive styles. Examples:
+
+**水墨 (ink wash) — restrictive**:
+```
+Style: traditional East Asian ink-wash painting, monochromatic black and grey
+with ONE muted color accent maximum (vermilion seal red OR moss green, not
+both). Visible brush strokes, ink bleed at edges, parchment background.
+NOT chibi, NOT anime, NOT brightly colored. Sumi-e brush technique.
+References: Sesshu Toyo, Hasegawa Tohaku ink scrolls.
+```
+
+**Brutalist pixel — restrictive**:
+```
+Style: high-contrast 8-bit pixel art, exactly 16-color palette, hard pixel
+edges with NO anti-aliasing, NES-era constraint. Each character fits
+in 16x16 or 24x24 cell. NOT 16-bit, NOT detailed, NOT smoothed pixels.
+Reference: Castlevania (NES), Mega Man (NES).
+```
+
+**Cute cartoon — permissive (default-aligned)**:
+```
+Style: bright cartoon 2D, cute readable silhouettes, simple shading.
+```
+(Less constraint needed — image_gen defaults to this.)
+
+**Hand-drawn editorial — restrictive**:
+```
+Style: editorial pencil-and-watercolor illustration, visible paper grain,
+hand-drawn linework with weight variation, muted watercolor wash. NOT
+digital, NOT chibi, NOT vector. Reference: Studio Ghibli concept sketches.
+```
+
+**Rule**: if the user picks a non-default style (ink_painterly, retro_pixel, hand_drawn, brutalist, monochrome, etc.), the Style directive MUST include explicit "NOT X, NOT Y" negatives + "Reference: <real-world artist or game>" anchors. Otherwise image_gen reverts to its default chibi-anime aesthetic and the user feels every project looks the same.
+
 ## Style directive — every gen call uses it
 
 `.ogf/spec.md` §1 contains a 'Style directive' line — the concrete art direction the project locks. **Every** `generate2dsprite` and `generate2dmap` call must include this directive verbatim in the prompt argument. After each gen, the skill writes the actual prompt back to `prompt-used.txt` next to the asset; that's your audit trail.

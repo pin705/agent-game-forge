@@ -37,9 +37,10 @@ Read [references/modes.md](references/modes.md) when the request is ambiguous.
 - Decide the asset plan yourself. Do not force the user to spell out sheet size, frame count, or bundle structure when the request already implies them.
 - Do not pack unrelated actions into one raw generated sheet just to satisfy a `4x4`, `5x5`, or custom engine atlas. A raw generated sheet should represent one action family, one continuous sequence, one canonical directional locomotion sheet, or one prop/asset pack.
 - For controllable heroes, main characters, and high-value player assets with multiple actions, generate separate per-action grid sheets first, QC each action, then deterministically assemble the engine-required atlas only after the grids pass visual review.
-- For controllable heroes, main characters, and high-value player body actions, default attack/shoot/cast body sheets to body-only. Do not include large slash arcs, muzzle flashes, projectiles, impact bursts, detached dust, long trails, or wide detached FX in the body sheet. Generate those as separate `fx`, `projectile`, or `impact` sheets and layer them in the game.
-- Only include wide attack FX in the same raw body sheet when the target runtime explicitly supports wider per-action cells plus per-action origin/anchor metadata. Otherwise, a wide FX bbox will force the body to shrink inside the fixed cell.
-- When a grounded hero/player attack must keep an integrated weapon in the body sheet and there is no runtime FX layer, process it with `scale_strategy=preserve` and `align=feet` by default. This preserves raw-cell scale, translates frames to a shared feet line, and avoids bbox-fit shrinking from long swords, spears, weapon trails, capes, or wide melee poses.
+- **Default `scale_strategy=preserve --align feet` for every character / creature / NPC / enemy / boss body sheet (idle, walk, run, attack, hurt, cast, channel, action, jump, etc.).** Preserve keeps raw-cell scale, supports wide attack poses, integrated weapons, capes, ribbons, and aura/flame FX without bbox-fit vertical compression. Past projects have shown preserve produces visually richer character sheets than fit (artistic intent + FX preservation kept), at the cost of ~15-25% body-height variance across actions which reads as natural action-pose tightening rather than glitch.
+- **Use `scale_strategy=fit` ONLY for: projectiles, item icons, pickups, FX sheets (impact, muzzle flash, hit spark), UI sprites, and other small / grid-uniform / aspect-stable assets where cell-fitting matters more than artistic preservation.** Compact bodies and small creatures may also use fit when the user specifically requests grid-uniform sizing.
+- **Same character = same strategy across ALL its action sheets.** If you process idle with `preserve`, every sheet for that character (walk, attack, hurt, etc.) MUST also use `preserve`. Mixing fit and preserve for one character produces 25-36% body-height drift between actions and is a hard bug — test-2d-gpg2's nobunaga_ember (idle fit 139px, attack preserve 102px) is the canonical failure case. Pick one strategy at the first action and stick to it for the whole character.
+- For controllable heroes and high-value characters, body sheets MAY include integrated weapons, slash arcs, capes, and auras when using `preserve` — preserve was designed for exactly this case. Only split into separate FX sheets when the runtime explicitly needs per-action FX origin metadata or layered z-ordering (e.g. weapon must render above an enemy that's between body and screen).
 - Write the art prompt yourself. Do not default to the prompt-builder script.
 - Use built-in `image_gen` for every raw image.
 - Do not create raw sprite art with Three.js, Canvas, SVG, HTML/CSS drawing, PIL shape drawing, procedural geometry, placeholder primitives, or code-rendered screenshots. Runtime code may display finished generated assets, and scripts may make layout guides or postprocess generated images, but requested sprite art must originate from built-in `image_gen`.
@@ -54,7 +55,7 @@ Read [references/modes.md](references/modes.md) when the request is ambiguous.
 - For animated body assets, use a multi-row grid by default: 4 frames -> `2x2`, 6 frames -> `2x3`, 8 frames -> `2x4`, 9 frames -> `3x3`, 12 frames -> `3x4` or `4x3`, 16 frames -> `4x4`.
 - If a game engine needs a final single-row strip or mixed atlas, first generate and QC the action as a multi-row grid, then assemble the delivery strip/atlas deterministically.
 - In every animated body grid prompt, require the subject body to stay centered in each cell, full body inside the central 60% to 70% safe area, consistent scale across cells, stable feet/bottom anchor line when applicable, and no limbs, weapons, hair, capes, dust, muzzle flashes, or detached FX crossing cell edges.
-- For hero attack body prompts, explicitly require body height and body scale to match the accepted idle/run sheets, stable feet/bottom anchor, weapon kept close enough to avoid widening the body bbox, and no detached slash arc or screen-space attack effect.
+- For hero attack body prompts, explicitly require body height and overall scale to match the accepted idle/run sheet's character size — phrasing like "the character body must be the same height and proportions as the loaded idle reference" + view_image of the prior idle sheet. Preserve will not normalize for you; the model has to produce matching scale, and view_image makes that achievable.
 - For map prop packs, classify props before choosing a grid. Square `2x2`, `3x3`, and `4x4` packs are only for compact props. Do not put platforms, floors, bridges, walls, ladders, gates, doors, long hazards, wide/tall props, collision-bearing objects, or tileset/strip pieces into square prop packs; use one-by-one, `1x3`/`1x4` strips, custom wide cells, or a tileset-like atlas instead.
 - Keep the solid `#FF00FF` background rule unless the user explicitly wants a different processing workflow.
 
@@ -192,9 +193,14 @@ The processor is intentionally low-level. The agent chooses:
 
 Use the processor to gather QC metadata, not to make aesthetic decisions for you.
 
-For hero action bundles, process each action grid as its own sheet before any final atlas assembly. Use `component_mode=largest` for body-only hero grids. Use `component_mode=all` only for projectile, impact, aura, slash FX, or intentionally detached FX sheets, not for fixed-cell hero body attacks that need stable body scale.
+For hero action bundles, process each action grid as its own sheet before any final atlas assembly. Use `component_mode=all` for character body sheets (default — keeps capes, weapons, auras attached). Use `component_mode=largest` only when you explicitly want to strip detached subcomponents (e.g. when the model leaked stray FX into otherwise body-only frames you want clean).
 
-Use `--scale-strategy preserve --align feet` for grounded hero/player body sheets when the raw art already has acceptable scale but bbox-fit would shrink the character because of a long weapon, extended pose, cape, or integrated melee effect. Preserve mode crops the detected subject, does not resize that subject to fit its bbox, pastes it back into a same-size source cell on a shared anchor, and then resizes the whole cell to the requested output cell. Use the default `fit` strategy for compact bodies, creatures, projectiles, impacts, and intentionally normalized FX.
+**Strategy selection** — pick once per character and use the same flag for every action sheet of that character:
+
+- `--scale-strategy preserve --align feet` — DEFAULT for character / creature / NPC / enemy / boss body sheets. Preserve crops the subject, pastes it back into a same-size source canvas on a shared feet anchor, then resizes the whole canvas to the requested output cell. Wide attack poses, integrated weapons, capes, flames, and auras all survive. Cross-action body height varies ~15-25% with model output (raw model variance) and that variance reads as natural action-pose tightening, not glitch.
+- `--scale-strategy fit` — for projectiles, item icons, pickups, FX sheets, UI sprites, and small grid-uniform assets where cell-fitting and aspect normalization matter more than artistic preservation. Fit rescales the subject's bbox to fill `cell_size × fit_scale`, which compresses wide compositions vertically — never use it for character body sheets that include extended weapons, capes, or wide attack poses.
+
+**Hard rule**: every action sheet for the same character MUST use the same strategy. Mixing produces 25-36% body-height drift between actions (idle fit + attack preserve = idle 139px / attack 102px in test-2d-gpg2). Pick at the first action; stick with it.
 
 ### 5. QC the result
 
@@ -251,8 +257,8 @@ For `hero_action_bundle`, expect:
   - side-view asset -> `2x2`
 - controllable hero or main player with multiple actions -> `hero_action_bundle`
   - generate one action per raw multi-row grid sheet, not as a raw `1x4` strip
-  - attack/shoot/cast body sheets are body-only by default; wide slash arcs, muzzle flashes, projectiles, trails, dust, and hit impacts are separate FX/projectile/impact sheets
-  - if the weapon must stay integrated and there is no separate FX layer, use `--scale-strategy preserve --align feet` instead of bbox-fit normalization
+  - body sheets process with `--scale-strategy preserve --align feet` (the default for characters); integrated weapons, capes, slash arcs, and aura FX in the body sheet are FINE under preserve — that's what preserve was designed for
+  - separate FX / projectile / muzzle-flash / hit-impact sheets only when the runtime needs per-action FX origin metadata or independent z-order layering
   - default 4-frame action grid is `2x2`
   - use `2x3` for 6-frame actions and `2x4`, `3x3`, `3x4`, or `4x4` for longer actions
   - do not generate a mixed-action raw `4x4`, `5x5`, or custom atlas
@@ -261,8 +267,11 @@ For `hero_action_bundle`, expect:
   - use as raw generation only for one coherent long action sequence, canonical directional locomotion, prop packs, or tileset-like atlases
   - use as delivery atlases for mixed actions only after separate action sheets pass QC
 - use `shared_scale` by default for any multi-frame asset where frame-to-frame consistency matters
-- use `largest` component mode for hero/player body grids; use `all` for separate FX/projectile/impact sheets
-- use `scale_strategy=preserve` for grounded hero/player melee attacks with integrated weapons or wide body poses that would shrink under bbox-fit normalization; use `fit` for normal compact sheets and FX
+- use `component_mode=all` (default) for character body grids; use `largest` only when stripping leaked detached subcomponents from otherwise body-only frames
+- **strategy selection summary**:
+  - characters / creatures / NPCs / enemies / bosses → `--scale-strategy preserve --align feet` (default for ALL their actions; pick once per character)
+  - projectiles / impacts / item icons / pickups / UI / small grid-uniform assets → `--scale-strategy fit`
+  - never mix strategies within one character's action set — that produces 25-36% body-height drift
 
 ## Resources
 
