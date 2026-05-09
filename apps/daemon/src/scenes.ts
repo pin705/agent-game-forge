@@ -786,9 +786,13 @@ function applyOpsToJsonScene(opts: ApplyOpsOptions): ApplyOpsResult {
       }
       applyJsonPathPointEdit(opts.rootAbs, op.ref, op.index, op.position);
     } else if (op.kind === 'add-prop') {
-      applyJsonAddProp(opts.rootAbs, op.relPath, op.section ?? 'props', op.entry);
+      applyJsonArrayAppend(opts.rootAbs, op.relPath, op.section ?? 'props', op.entry);
     } else if (op.kind === 'remove-prop') {
-      applyJsonRemoveProp(opts.rootAbs, op.relPath, op.section ?? 'props', op.id);
+      applyJsonArrayRemove(opts.rootAbs, op.relPath, op.section ?? 'props', op.id);
+    } else if (op.kind === 'add-collider') {
+      applyJsonArrayAppend(opts.rootAbs, op.relPath, op.section ?? 'blockers', op.entry);
+    } else if (op.kind === 'remove-collider') {
+      applyJsonArrayRemove(opts.rootAbs, op.relPath, op.section ?? 'blockers', op.id);
     } else {
       throw new Error(
         `op '${(op as { kind: string }).kind}' not supported on .json scenes`,
@@ -800,14 +804,15 @@ function applyOpsToJsonScene(opts: ApplyOpsOptions): ApplyOpsResult {
   return { size: existsSync(sceneAbs) ? statSync(sceneAbs).size : 0 };
 }
 
-/** Append a new prop entry to `<relPath>[<section>]`. Creates the array if
- *  missing. Rejects duplicate ids. Whole-file JSON.parse / stringify roundtrip
- *  — fine for level files (no comments, ~1-3KB typical). */
-function applyJsonAddProp(
+/** Append an entry (any shape with an `id`) to `<relPath>[<section>]`.
+ *  Creates the array if missing. Rejects duplicate ids. Whole-file JSON
+ *  roundtrip — fine for level files (no comments, ~1-3KB typical).
+ *  Used by add-prop, add-collider, and any future array-append op. */
+function applyJsonArrayAppend(
   rootAbs: string,
   relPath: string,
   section: string,
-  entry: { id: string; image: string; x: number; y: number; w: number; h: number; sortY?: number },
+  entry: { id: string } & Record<string, unknown>,
 ): void {
   const abs = safeJoin(rootAbs, relPath);
   const text = readFileSync(abs, 'utf8');
@@ -815,7 +820,7 @@ function applyJsonAddProp(
   const arr = Array.isArray(json[section]) ? (json[section] as unknown[]) : [];
   for (const e of arr) {
     if (e && typeof e === 'object' && (e as { id?: string }).id === entry.id) {
-      throw new Error(`add-prop: id '${entry.id}' already exists in ${relPath}#${section}`);
+      throw new Error(`add: id '${entry.id}' already exists in ${relPath}#${section}`);
     }
   }
   arr.push(entry);
@@ -824,7 +829,7 @@ function applyJsonAddProp(
   writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
 }
 
-function applyJsonRemoveProp(
+function applyJsonArrayRemove(
   rootAbs: string,
   relPath: string,
   section: string,
@@ -835,12 +840,12 @@ function applyJsonRemoveProp(
   const json = JSON.parse(text) as Record<string, unknown>;
   const arr = json[section];
   if (!Array.isArray(arr)) {
-    throw new Error(`remove-prop: section '${section}' is not an array in ${relPath}`);
+    throw new Error(`remove: section '${section}' is not an array in ${relPath}`);
   }
   const before = arr.length;
   json[section] = (arr as Array<{ id?: string }>).filter((e) => e?.id !== id);
   if ((json[section] as unknown[]).length === before) {
-    throw new Error(`remove-prop: id '${id}' not found in ${relPath}#${section}`);
+    throw new Error(`remove: id '${id}' not found in ${relPath}#${section}`);
   }
   const eol = text.includes('\r\n') ? '\r\n' : '\n';
   writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');

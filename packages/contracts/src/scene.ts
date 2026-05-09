@@ -303,6 +303,27 @@ export interface RemovePropOp {
   id: string;
 }
 
+/** Append a new collider entry to the collision-map JSON. The shape's
+ *  position convention follows the loader: rect uses top-left (x, y, w, h);
+ *  circle uses center (x, y, radius). */
+export interface AddColliderOp {
+  kind: 'add-collider';
+  /** Project-relative collision-map JSON path. */
+  relPath: string;
+  /** Array section: 'blockers' (default), 'buildZones', 'walkBounds'. */
+  section?: string;
+  entry:
+    | { id: string; type: 'rect'; x: number; y: number; w: number; h: number }
+    | { id: string; type: 'circle'; x: number; y: number; radius: number };
+}
+
+export interface RemoveColliderOp {
+  kind: 'remove-collider';
+  relPath: string;
+  section?: string;
+  id: string;
+}
+
 export type SceneOp =
   | MovePropOp
   | ScalePropOp
@@ -311,7 +332,9 @@ export type SceneOp =
   | ResizeCircleColliderOp
   | MovePathPointOp
   | AddPropOp
-  | RemovePropOp;
+  | RemovePropOp
+  | AddColliderOp
+  | RemoveColliderOp;
 
 export interface ApplySceneOpsRequest {
   projectPath: string;

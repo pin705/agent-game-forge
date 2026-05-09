@@ -159,6 +159,17 @@ export function SceneEditor(props: Props) {
   const [camera, setCamera] = useState<Camera>({ scale: 0.5, panX: 0, panY: 0 });
   // "+ Prop" picker modal — only meaningful for JSON-backed (web) scenes.
   const [propPickerOpen, setPropPickerOpen] = useState(false);
+  // "+ rect" / "+ circle" sub-toolbar arming. When set, click-drag in
+  // empty colliders-mode canvas draws a new shape instead of panning.
+  // ESC clears.
+  const [addShapeKind, setAddShapeKind] = useState<null | 'rect' | 'circle'>(null);
+  // Live preview geometry while the user is mid-drag — drives a dashed
+  // overlay in the render loop.
+  const [draftShape, setDraftShape] = useState<
+    | { kind: 'rect'; x1: number; y1: number; x2: number; y2: number }
+    | { kind: 'circle'; cx: number; cy: number; cur: Vec2 }
+    | null
+  >(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -504,6 +515,30 @@ export function SceneEditor(props: Props) {
       }
     }
 
+    // Draft shape preview while user drags out a new collider — dashed
+    // outline in the same coord space as everything else above.
+    if (draftShape) {
+      ctx.save();
+      ctx.strokeStyle = '#7cf';
+      ctx.lineWidth = Math.max(1, 2 / camera.scale);
+      ctx.setLineDash([8 / camera.scale, 6 / camera.scale]);
+      if (draftShape.kind === 'rect') {
+        const x = Math.min(draftShape.x1, draftShape.x2);
+        const y = Math.min(draftShape.y1, draftShape.y2);
+        const w = Math.abs(draftShape.x2 - draftShape.x1);
+        const h = Math.abs(draftShape.y2 - draftShape.y1);
+        ctx.strokeRect(x, y, w, h);
+      } else {
+        const dx = draftShape.cur.x - draftShape.cx;
+        const dy = draftShape.cur.y - draftShape.cy;
+        const r = Math.hypot(dx, dy);
+        ctx.beginPath();
+        ctx.arc(draftShape.cx, draftShape.cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     ctx.restore();
 
     // HUD
@@ -520,6 +555,7 @@ export function SceneEditor(props: Props) {
     visibleThreads,
     selectedThreadId,
     draftAnchor,
+    draftShape,
   ]);
 
   useEffect(() => {
@@ -585,6 +621,20 @@ export function SceneEditor(props: Props) {
         origin: Vec2;
         startWorld: Vec2;
         startPoint: Vec2;
+      }
+    | {
+        // User is drawing a brand-new rect collider. start = mousedown world
+        // point, current = mousemove tracker. Finalized on mouseup.
+        kind: 'add-rect-draft';
+        startWorld: Vec2;
+        currentWorld: Vec2;
+      }
+    | {
+        // Same for circles. start = center, currentWorld = cursor; radius =
+        // distance(start, current).
+        kind: 'add-circle-draft';
+        startWorld: Vec2;
+        currentWorld: Vec2;
       };
   const dragRef = useRef<DragState | null>(null);
   const saveTimerRef = useRef<number | null>(null);
@@ -834,6 +884,26 @@ export function SceneEditor(props: Props) {
 
     // ----- Shape modes (colliders or zones) -----
     if ((mode === 'colliders' || mode === 'zones') && e.button === 0 && !e.altKey) {
+      // 0) Add-shape draft? When the toolbar armed addShapeKind, the next
+      //    click-drag in empty space draws a new shape instead of selecting
+      //    or panning. Hit-test for existing shapes still wins so the user
+      //    can grab a handle by accident-proofing — but we skip the body
+      //    hit-test below so an empty-space click goes straight into draft.
+      if (addShapeKind && mode === 'colliders') {
+        // Don't grab from a resize handle on the selected shape — let the
+        // existing resize path own that interaction.
+        if (!findResizeHandle(w) && !findCircleRadiusHandle(w)) {
+          if (addShapeKind === 'rect') {
+            dragRef.current = { kind: 'add-rect-draft', startWorld: w, currentWorld: w };
+            setDraftShape({ kind: 'rect', x1: w.x, y1: w.y, x2: w.x, y2: w.y });
+          } else {
+            dragRef.current = { kind: 'add-circle-draft', startWorld: w, currentWorld: w };
+            setDraftShape({ kind: 'circle', cx: w.x, cy: w.y, cur: w });
+          }
+          attachWindowDrag();
+          return;
+        }
+      }
       // 1) Resize handle on selected rect?
       const handle = findResizeHandle(w);
       if (handle) {
@@ -1080,6 +1150,25 @@ export function SceneEditor(props: Props) {
       setScene((s) => updatePathPoint(s, ds.uid, ds.index, next));
       return;
     }
+    if (ds.kind === 'add-rect-draft') {
+      const w = clientToWorld(ev);
+      ds.currentWorld = w;
+      const snap = !ev.shiftKey;
+      const x1 = snap ? Math.round(ds.startWorld.x) : ds.startWorld.x;
+      const y1 = snap ? Math.round(ds.startWorld.y) : ds.startWorld.y;
+      const x2 = snap ? Math.round(w.x) : w.x;
+      const y2 = snap ? Math.round(w.y) : w.y;
+      setDraftShape({ kind: 'rect', x1, y1, x2, y2 });
+      return;
+    }
+    if (ds.kind === 'add-circle-draft') {
+      const w = clientToWorld(ev);
+      ds.currentWorld = w;
+      const snap = !ev.shiftKey;
+      const cur = snap ? { x: Math.round(w.x), y: Math.round(w.y) } : w;
+      setDraftShape({ kind: 'circle', cx: ds.startWorld.x, cy: ds.startWorld.y, cur });
+      return;
+    }
   }
 
   function onMouseUp() {
@@ -1187,6 +1276,37 @@ export function SceneEditor(props: Props) {
           [{ kind: 'resize-circle-collider', ref: ds.ref, r: ds.startR }],
           `resize ${cur.name ?? ds.bucket}`,
         );
+      }
+      return;
+    }
+    if (ds.kind === 'add-rect-draft') {
+      // Build the rect from the draft and commit. Skip 0-area rects (a
+      // simple click instead of a drag) so the user doesn't accidentally
+      // pollute the JSON with empty shapes.
+      const x1 = Math.round(Math.min(ds.startWorld.x, ds.currentWorld.x));
+      const y1 = Math.round(Math.min(ds.startWorld.y, ds.currentWorld.y));
+      const x2 = Math.round(Math.max(ds.startWorld.x, ds.currentWorld.x));
+      const y2 = Math.round(Math.max(ds.startWorld.y, ds.currentWorld.y));
+      const w = x2 - x1;
+      const h = y2 - y1;
+      setDraftShape(null);
+      if (w >= 4 && h >= 4) {
+        addColliderShape({ kind: 'rect', x: x1, y: y1, w, h });
+      }
+      return;
+    }
+    if (ds.kind === 'add-circle-draft') {
+      const dx = ds.currentWorld.x - ds.startWorld.x;
+      const dy = ds.currentWorld.y - ds.startWorld.y;
+      const r = Math.round(Math.hypot(dx, dy));
+      setDraftShape(null);
+      if (r >= 3) {
+        addColliderShape({
+          kind: 'circle',
+          x: Math.round(ds.startWorld.x),
+          y: Math.round(ds.startWorld.y),
+          radius: r,
+        });
       }
       return;
     }
@@ -1305,6 +1425,94 @@ export function SceneEditor(props: Props) {
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // -------- Add collider (from drag-to-draw) --------
+  //
+  // Called by onMouseUp when an add-rect-draft / add-circle-draft drag
+  // finishes. Writes to the SceneModel's collidersJsonPath under the
+  // 'blockers' section (the most universal default; users can rename later
+  // by editing JSON). Locally splices a SceneCollider so the new shape
+  // renders + becomes selectable without waiting for a refetch.
+  function addColliderShape(
+    shape:
+      | { kind: 'rect'; x: number; y: number; w: number; h: number }
+      | { kind: 'circle'; x: number; y: number; radius: number },
+  ): void {
+    if (!scene) return;
+    const relPath = scene.collidersJsonPath;
+    if (!relPath) {
+      setSaveError(
+        'No collision-map JSON for this scene. Generate one via the agent first.',
+      );
+      setSavingState('error');
+      return;
+    }
+    const section = 'blockers';
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const id = `${shape.kind}_${suffix}`;
+    const ref: ColliderRef = { backend: 'json', relPath, section, id };
+
+    const entry =
+      shape.kind === 'rect'
+        ? { id, type: 'rect' as const, x: shape.x, y: shape.y, w: shape.w, h: shape.h }
+        : {
+            id,
+            type: 'circle' as const,
+            x: shape.x,
+            y: shape.y,
+            radius: shape.radius,
+          };
+
+    const newCollider: SceneCollider =
+      shape.kind === 'rect'
+        ? {
+            uid: `json:${section}:${id}`,
+            ref,
+            name: id,
+            kind: 'blocker',
+            position: { x: shape.x + shape.w / 2, y: shape.y + shape.h / 2 },
+            shape: { kind: 'rect', w: shape.w, h: shape.h },
+            editable: true,
+          }
+        : {
+            uid: `json:${section}:${id}`,
+            ref,
+            name: id,
+            kind: 'blocker',
+            position: { x: shape.x, y: shape.y },
+            shape: { kind: 'circle', r: shape.radius },
+            editable: true,
+          };
+
+    setScene((s) => (s ? { ...s, colliders: [...s.colliders, newCollider] } : s));
+    setSelectedColliderUid(newCollider.uid);
+    commitOps(
+      [{ kind: 'add-collider', relPath, section, entry }],
+      [{ kind: 'remove-collider', relPath, section, id }],
+      `add ${id}`,
+    );
+    // Disarm so the next click doesn't draw another shape unintentionally.
+    setAddShapeKind(null);
+  }
+
+  // ESC cancels an in-progress draft AND disarms add mode. We don't bother
+  // removing the mousemove/mouseup window listeners — they self-bail when
+  // dragRef is null and clean themselves up on the next mouseup.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      if (draftShape) setDraftShape(null);
+      if (
+        dragRef.current?.kind === 'add-rect-draft' ||
+        dragRef.current?.kind === 'add-circle-draft'
+      ) {
+        dragRef.current = null;
+      }
+      if (addShapeKind) setAddShapeKind(null);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [draftShape, addShapeKind]);
 
   // -------- Add prop (from picker modal) --------
   //
@@ -1508,6 +1716,28 @@ export function SceneEditor(props: Props) {
               + prop
             </button>
           )}
+          {mode === 'colliders' && scene?.collidersJsonPath && (
+            <>
+              <button
+                className={`btn btn-sm ${addShapeKind === 'rect' ? 'active' : ''}`}
+                title="Drag in empty space to draw a rectangle blocker (Esc to cancel)"
+                onClick={() =>
+                  setAddShapeKind((k) => (k === 'rect' ? null : 'rect'))
+                }
+              >
+                + rect
+              </button>
+              <button
+                className={`btn btn-sm ${addShapeKind === 'circle' ? 'active' : ''}`}
+                title="Drag in empty space to draw a circle blocker (Esc to cancel)"
+                onClick={() =>
+                  setAddShapeKind((k) => (k === 'circle' ? null : 'circle'))
+                }
+              >
+                + circle
+              </button>
+            </>
+          )}
           <SaveBadge state={savingState} error={saveError} />
           <button
             className="btn btn-sm btn-ghost"
@@ -1542,7 +1772,7 @@ export function SceneEditor(props: Props) {
             cursor:
               dragRef.current?.kind === 'pan'
                 ? 'grabbing'
-                : mode === 'comments'
+                : mode === 'comments' || addShapeKind
                 ? 'crosshair'
                 : 'default',
           }}
@@ -3156,6 +3386,57 @@ function applyOpToScene(s: SceneModel, op: SceneOp): SceneModel {
             p.ref.relPath === op.relPath &&
             p.ref.section === section &&
             p.ref.id === op.id
+          ),
+      ),
+    };
+  }
+  if (op.kind === 'add-collider') {
+    // Idempotent — addColliderShape already inserted; this only fires on redo.
+    const id = op.entry.id;
+    const section = op.section ?? 'blockers';
+    const exists = s.colliders.some(
+      (c) =>
+        c.ref.backend === 'json' &&
+        c.ref.relPath === op.relPath &&
+        c.ref.section === section &&
+        c.ref.id === id,
+    );
+    if (exists) return s;
+    const ref: ColliderRef = { backend: 'json', relPath: op.relPath, section, id };
+    const e = op.entry;
+    const newCollider: SceneCollider =
+      e.type === 'rect'
+        ? {
+            uid: `json:${section}:${id}`,
+            ref,
+            name: id,
+            kind: 'blocker',
+            position: { x: e.x + e.w / 2, y: e.y + e.h / 2 },
+            shape: { kind: 'rect', w: e.w, h: e.h },
+            editable: true,
+          }
+        : {
+            uid: `json:${section}:${id}`,
+            ref,
+            name: id,
+            kind: 'blocker',
+            position: { x: e.x, y: e.y },
+            shape: { kind: 'circle', r: e.radius },
+            editable: true,
+          };
+    return { ...s, colliders: [...s.colliders, newCollider] };
+  }
+  if (op.kind === 'remove-collider') {
+    const section = op.section ?? 'blockers';
+    return {
+      ...s,
+      colliders: s.colliders.filter(
+        (c) =>
+          !(
+            c.ref.backend === 'json' &&
+            c.ref.relPath === op.relPath &&
+            c.ref.section === section &&
+            c.ref.id === op.id
           ),
       ),
     };
