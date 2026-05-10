@@ -19,7 +19,7 @@
 //     "props":      [ { "id", "image", "x", "y", "w", "h", "sortY"? } ]
 //   }
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type {
   ColliderRef,
@@ -127,6 +127,62 @@ export function isWebLevelJson(content: string): boolean {
   }
 }
 
+/** Walk the named arrays in `data` and inject `id: "<section>_<idx>"` on
+ *  any entry missing one. Returns the list of arrays that were mutated
+ *  so the caller can decide whether to write the file back to disk.
+ *  Per common.md "JSON entry contract": every entry needs an id for OGF
+ *  editor writes to address it. Auto-injection is the safety net when
+ *  the agent forgot. */
+function autoInjectIds(
+  data: Record<string, unknown>,
+  arrayNames: readonly string[],
+): boolean {
+  let dirty = false;
+  for (const name of arrayNames) {
+    const arr = data[name];
+    if (!Array.isArray(arr)) continue;
+    let nextSeq = 0;
+    const used = new Set<string>();
+    for (const e of arr) {
+      if (e && typeof e === 'object' && !Array.isArray(e)) {
+        const id = (e as { id?: unknown }).id;
+        if (typeof id === 'string' && id) used.add(id);
+      }
+    }
+    arr.forEach((e, idx) => {
+      if (!e || typeof e !== 'object' || Array.isArray(e)) return;
+      const obj = e as Record<string, unknown>;
+      if (typeof obj.id === 'string' && obj.id) return; // already has id
+      // Find a unique synthetic id. Most arrays will collide-check trivially
+      // since other entries also lack ids, but if the user has a mix we
+      // still want uniqueness within the array.
+      let candidate = `${name}_${idx}`;
+      while (used.has(candidate)) {
+        candidate = `${name}_${idx}_${nextSeq++}`;
+      }
+      obj.id = candidate;
+      used.add(candidate);
+      dirty = true;
+    });
+  }
+  return dirty;
+}
+
+const LEVEL_ARRAYS_NEEDING_ID = [
+  'props',
+  'npcs',
+  'pickups',
+  'hazards',
+  'colliders',
+  'blockers',
+  'walkBounds',
+  'walkable',
+  'paths',
+  'spawn_points',
+];
+
+const SIDECAR_ARRAYS_NEEDING_ID = ['blockers', 'walkBounds', 'walkable'];
+
 export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneResponse {
   const abs = safeJoin(rootAbs, relPath);
   if (!existsSync(abs)) throw new Error(`level not found: ${relPath}`);
@@ -136,6 +192,15 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
     data = JSON.parse(text);
   } catch (err) {
     throw new Error(`level JSON parse error: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Strategy 2 — auto-inject missing ids and persist. Side effect on
+  // first load of an agent-written file that omitted ids; subsequent
+  // loads see the ids and this is a no-op. Editor writers can then
+  // address every entry by id without the index-based fallback path.
+  if (autoInjectIds(data, LEVEL_ARRAYS_NEEDING_ID)) {
+    const eol = text.includes('\r\n') ? '\r\n' : '\n';
+    writeFileSync(abs, JSON.stringify(data, null, 2) + eol, 'utf8');
   }
 
   const props: SceneProp[] = [];
@@ -583,16 +648,20 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
     const sidecarAbs = safeJoin(rootAbs, sidecarRel);
     if (existsSync(sidecarAbs)) {
       try {
-        const sidecar = JSON.parse(readFileSync(sidecarAbs, 'utf8')) as Record<string, unknown>;
+        const sidecarText = readFileSync(sidecarAbs, 'utf8');
+        const sidecar = JSON.parse(sidecarText) as Record<string, unknown>;
 
-        // Synthetic id prefix `__i<n>` signals "no id field in JSON,
-        // address by array index N on writes". Daemon's writers detect
-        // this prefix and dispatch to applyJsonArrayEntryByIndex (index-
-        // based JSON-parse mutate) instead of the id-based line patcher
-        // which would fail to locate the entry when no `id` key exists.
-        // (rpg-gogogo, 2026: agent-written sidecars omit `id` on every
-        // blocker / walkBounds polygon — every move + delete attempt
-        // failed silently with "JSON collider not found".)
+        // Strategy 2 — auto-inject ids into sidecar entries that omit
+        // them, then persist. Subsequent loads see the ids and this is
+        // a no-op; editor writers find each entry by its real id.
+        // The `__i<n>` synthetic-id fallback in writers stays in place
+        // as a safety net (covers files that fail to write back, etc.)
+        // but normally won't fire after the first load of an agent file.
+        if (autoInjectIds(sidecar, SIDECAR_ARRAYS_NEEDING_ID)) {
+          const eol = sidecarText.includes('\r\n') ? '\r\n' : '\n';
+          writeFileSync(sidecarAbs, JSON.stringify(sidecar, null, 2) + eol, 'utf8');
+        }
+
         const sidecarBlockers = Array.isArray(sidecar.blockers)
           ? (sidecar.blockers as RectLike[])
           : [];

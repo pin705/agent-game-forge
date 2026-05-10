@@ -302,6 +302,28 @@ Each recipe has a "When to use / When NOT to use" section. **If your project's m
 
 If a recipe doesn't exist for what you need, the fallback is: read the closest neighbor recipe + write the new pattern from scratch using the same shape (when-to-use → files-affected → dependencies → pattern → adaptation knobs → common mistakes → reference).
 
+## JSON entry contract — every array entry needs an `id`
+
+Every entry in these JSON arrays MUST carry a unique `id` string field, regardless of whether the runtime uses it or not:
+
+| File | Arrays that require `id` on every entry |
+|---|---|
+| `data/<level>.json` | `props[]`, `npcs[]`, `colliders[]`, `blockers[]`, `walkBounds[]`, `walkable[]`, `paths[]`, `pickups[]`, `hazards[]` |
+| `data/<level>-collision-map.json` (sidecar) | `blockers[]`, `walkBounds[]`, `walkable[]` |
+
+**Why**: OGF's scene editor addresses entries by `id` for every move / resize / delete operation. Without it, the editor's writers can't locate the entry to patch — every drag attempt fails with "save failed" until the user gives up. This is one of the most expensive recurring bug classes in OGF, more painful than any phase-plan or asset-path issue.
+
+**Rule**: when generating JSON, populate `id` on EVERY entry, even when the entry already has a `tag` or other descriptive field. The two are different — `tag` is a human label, `id` is the editor's primary key. Example:
+
+```json
+"blockers": [
+  { "id": "starter_altar_body",  "type": "rect", "x": 500, "y": 430, "w": 225, "h": 132, "tag": "starter_altar" },
+  { "id": "torii_gate_pillars",  "type": "rect", "x": 830, "y": 60,  "w": 270, "h": 140, "tag": "torii_gate" }
+]
+```
+
+**Naming**: `<purpose>_<n>` or a semantic name. Must be unique within its array. OGF's loader will auto-inject `<section>_<idx>` ids and write them back to disk if you forgot — the warning will surface as a note in the scene editor's notes panel — but **it's much cleaner to author them correctly the first time** since the auto-injection mutates your JSON and shows up as an unexpected file change in git.
+
 ## Asset path contract — ALWAYS write to `assets/`
 
 OGF runtime reads from these hardcoded paths:

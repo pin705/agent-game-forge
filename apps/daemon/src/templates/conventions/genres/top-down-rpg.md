@@ -255,14 +255,16 @@ Two options:
   {
     "scene": "shrine_courtyard",
     "walkable": [
-      { "kind": "polygon", "points": [[120, 200], [1800, 220], [1820, 880], [100, 870]] }
+      { "id": "main_walkable_polygon", "type": "polygon", "points": [[120, 200], [1800, 220], [1820, 880], [100, 870]] }
     ],
     "blockers": [
-      { "kind": "rect", "x": 700, "y": 230, "w": 600, "h": 140, "tag": "shrine_walls" }
+      { "id": "shrine_walls", "type": "rect", "x": 700, "y": 230, "w": 600, "h": 140, "tag": "shrine_walls" }
     ]
   }
   ```
   Reference via `level.collisionSource: "data/<scene>-collision-map.json"`.
+
+  ⚠️ **Every entry MUST have an `id`** — OGF editor addresses by id for move/resize/delete. See common.md "JSON entry contract" section. Without ids, every editor drag of these shapes shows "save failed".
 
 Use the separate file when the level has organic shapes (curves around cliffs / water edges) that prop-bbox approximation gets wrong.
 
