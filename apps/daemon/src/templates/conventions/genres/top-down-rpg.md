@@ -266,6 +266,12 @@ Two options:
 
 Use the separate file when the level has organic shapes (curves around cliffs / water edges) that prop-bbox approximation gets wrong.
 
+> ⚠️ **Sidecar discipline — DO NOT mirror the level's `mapSize`/`spawn`/`zones` into the collision-map sidecar.**
+>
+> Past failure: agent wrote `data/boss_hall.json` (real level with bg + props) AND `data/boss_hall-collision-map.json` (sidecar). The sidecar carried `"mapSize": { "width": 1280, "height": 720 }`, `"spawn": {...}`, and `"zones": {...}` "for convenience". OGF's scene picker then offered the sidecar as a clickable scene; the user clicked it; the editor opened it (passes the mapSize-based level check) but rendered an empty canvas (no `background`, no `layers[]`, no `props[]`). Same field duplication also caused the runtime to read inconsistent values when level + sidecar drifted.
+>
+> **Sidecar shape allowed**: only `scene` (id pointer back), `walkable[]`, `blockers[]`, `walkBounds[]`. That's it. Everything else (mapSize, spawn, zones, exits, props) lives in the LEVEL file. The level imports the sidecar via `collisionSource`; the sidecar never duplicates level fields.
+
 ---
 
 ## Camera — rigid follow, no deadzone, no lookahead

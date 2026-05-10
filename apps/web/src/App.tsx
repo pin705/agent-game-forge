@@ -1673,12 +1673,24 @@ function isWebLevelCandidate(rel: string, knownLevels?: Set<string>): boolean {
   // with no levels.json still get something sensible.
   if (!rel.toLowerCase().endsWith('.json')) return false;
   if (!rel.startsWith('data/')) return false;
+  // *-collision-map.json files are SIDECARS, never scenes themselves.
+  // The level file references them via a `collisionSource` field. They
+  // happen to carry a `mapSize` field too (which fools the loader's
+  // isWebLevelJson check), so we have to exclude them here at the
+  // picker level — even when they appear in knownLevels by accident.
+  // Past failure: agent wrote both data/boss_hall.json (level) and
+  // data/boss_hall-collision-map.json (sidecar); the picker offered both;
+  // user clicked the sidecar; SceneEditor parsed it (it has mapSize) but
+  // found no background/layers/props → empty canvas. (test-2drpg, 2026.)
+  const base = rel.split('/').pop() ?? '';
+  if (/-collision-map\.json$/i.test(base)) return false;
   if (knownLevels && knownLevels.size > 0) {
     return knownLevels.has(rel.replace(/\\/g, '/'));
   }
-  // Heuristic fallback — name contains "collision-map" or starts with "level".
-  const base = rel.split('/').pop() ?? '';
-  if (/^(?:[^/]*-)?(?:collision-map|level)(?:-[^/]+)?\.json$/i.test(base)) return true;
+  // Heuristic fallback — filename starts with "level" (level1.json,
+  // level2.json — bootstrap stub naming). Collision-map already filtered
+  // above, so we don't need to repeat it here.
+  if (/^level(?:-?[^/]*)?\.json$/i.test(base)) return true;
   return false;
 }
 

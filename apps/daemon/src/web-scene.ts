@@ -104,11 +104,24 @@ export function isWebLevelJson(content: string): boolean {
   try {
     const data = JSON.parse(content);
     if (!data || typeof data !== 'object') return false;
-    // mapSize is the strongest signal of a level file.
-    const sz = (data as Record<string, unknown>).mapSize as
-      | { width?: unknown; height?: unknown }
-      | undefined;
-    return !!sz && typeof sz.width === 'number' && typeof sz.height === 'number';
+    const obj = data as Record<string, unknown>;
+    // mapSize is necessary but not sufficient — collision-map sidecars
+    // also carry mapSize. A real level file ALSO carries at least one
+    // visible-content field. Without this extra check, opening a sidecar
+    // (data/<scene>-collision-map.json) in the editor produced an empty
+    // canvas because the loader returned a SceneModel with no bg / layers
+    // / props. (test-2drpg, 2026 — convention also tells the agent not
+    // to put mapSize in sidecars, but old projects + drift still hit it.)
+    const sz = obj.mapSize as { width?: unknown; height?: unknown } | undefined;
+    if (!sz || typeof sz.width !== 'number' || typeof sz.height !== 'number') {
+      return false;
+    }
+    const hasBackground =
+      typeof obj.background === 'string' || isPlainObject(obj.background);
+    const hasLayers = Array.isArray(obj.layers) && obj.layers.length > 0;
+    const hasProps = Array.isArray(obj.props) && obj.props.length > 0;
+    // A sidecar has blockers/walkable/walkBounds/zones but none of the above.
+    return hasBackground || hasLayers || hasProps;
   } catch {
     return false;
   }
