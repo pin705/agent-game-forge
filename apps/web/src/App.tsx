@@ -368,6 +368,8 @@ export function App() {
   // (mv / cp / generate2dsprite Python output) without surfacing as an
   // Edit event. 5s is slow enough not to thrash the daemon and fast
   // enough that the user sees new files appearing as the agent works.
+  // The companion levels.json refresh lives below — declared after
+  // loadWebLevelRegistry so the closure resolves cleanly.
   useEffect(() => {
     if (!running || !project) return;
     const id = window.setInterval(() => {
@@ -414,6 +416,22 @@ export function App() {
       setWebLevelFiles(new Set());
     }
   }, []);
+
+  // While a turn is running, also re-load the levels.json registry on
+  // the same 5s safety-net cadence as the file tree above. Without this,
+  // agent-written levels mid-run stay invisible in the picker (strict
+  // mode) until the user manually refreshes the browser. The fetch is a
+  // single small JSON read so cost is negligible. (2DGAMERPG2, 2026:
+  // agent created spirit_village_route.json + updated levels.json, but
+  // webLevelFiles still held the bootstrap stub level1.json so strict
+  // mode hid the new level until a hard refresh.)
+  useEffect(() => {
+    if (!running || !project || project.engine !== 'web') return;
+    const id = window.setInterval(() => {
+      void loadWebLevelRegistry(project);
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [running, project, loadWebLevelRegistry]);
 
   /** Refresh the pending-pack list from the daemon. Called on project
    *  select and after each run end. */
@@ -813,13 +831,26 @@ export function App() {
         if (e.type === 'agent') {
           if (e.data.type === 'tool_use' && e.data.name === 'Edit') {
             const changes = (e.data.input as { changes?: { path?: string }[] })?.changes ?? [];
+            let touchedLevelsRegistry = false;
             for (const ch of changes) {
               if (ch.path) {
                 const rel = toRelative(ch.path, project?.path ?? '');
                 if (rel) turnChanged.add(rel);
+                if (
+                  ch.path.replace(/\\/g, '/').toLowerCase().endsWith('/data/levels.json')
+                ) {
+                  touchedLevelsRegistry = true;
+                }
               }
             }
             scheduleTreeRefresh();
+            // Mid-run: when agent rewrites levels.json (adds new level
+            // entries, removes the bootstrap stub), re-load the registry
+            // immediately so the picker's strict mode reflects what the
+            // agent just wrote — no need to wait for run-end.
+            if (touchedLevelsRegistry && project?.engine === 'web') {
+              void loadWebLevelRegistry(project);
+            }
           }
           // Synthetic image_gen events from the daemon's filesystem watcher
           // also signal new files on disk — refresh the tree so the

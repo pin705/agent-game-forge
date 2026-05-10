@@ -50,6 +50,39 @@ When the genre file describes a multi-step pipeline (top-down-rpg image-bg, side
 
 See the genre file's "Spec phase-plan expansion" section (e.g. `top-down-rpg.md`) for the exact pattern + examples for that genre.
 
+### Phase plan — split character + system phases (NOT one mega-phase)
+
+> ⚠️ Recurring failure: 2DGAMERPG2 (2026) — spec writer compressed the entire post-visuals plan into 4 phases. Phase 5 was "summoner sprites + movement + collision + Y-sort + camera + interaction + altar trigger". Phase 7 was "enemy sprites + grass encounter RNG + turn-based battle + commands + HP UI + Command Seal capture" — half the game in one phase. Outcomes: (1) daemon stall watchdog (5 min no stdout) kills the run mid-phase, (2) view_image reference chain breaks across 6+ sequential gen calls in one phase, (3) failure recovery is messy because the system is half-wired. Each compressed phase wastes 30-90 minutes when it fails.
+
+**Phase granularity rules** (apply alongside the per-scene expansion rule above):
+
+1. **One sprite-gen group ≠ one system-wire group.** Generating 6 sprite sheets is one phase's worth; wiring movement + collision + camera + interaction is another phase's worth. Combining them creates phases that are too long to verify and too risky to retry.
+
+2. **Each major character family gets its own phase for sprite gen.** Player avatar, starter trio, enemy roster, boss — each is a separate sprite-only phase. The wiring for that character (controller, AI, battle stats) goes in a follow-up phase.
+
+3. **Each system gets at least one dedicated phase.** Movement, collision, camera, interaction, dialogue, menu, save, battle FSM, encounter RNG, capture, HP UI, win/loss flow — these are separate concerns. Putting "battle FSM + encounter RNG + HP UI + capture" in one phase is the canonical anti-pattern. Each of those is one phase.
+
+4. **Verify boundaries are short**: 1 phase ≈ "user can verify ONE specific thing in Play tab or Scenes tab in under 30 seconds." If your VERIFY line lists 4+ outcomes, the phase is too big — split it.
+
+5. **Heuristic phase counts** (top-down RPG with 1 level, 1 player, 3 starters, 1 wild enemy, 1 boss):
+   - Anchor + maps + props extraction: ~4 phases (covered by the per-scene expansion rule above)
+   - Player sprite gen: 1 phase
+   - Player overworld controller (movement + collision + camera): 1 phase
+   - Interaction + dialogue + altar trigger: 1 phase
+   - Starter sprite gen (3 spirits × idle/attack): 1-2 phases (split if 6+ sheets)
+   - Starter selection menu + heroes.json wiring: 1 phase
+   - Wild enemy sprite gen: 1 phase
+   - Encounter RNG + grass zone trigger: 1 phase
+   - Battle FSM + commands + HP UI: 1 phase
+   - Capture / Command Seal flow: 1 phase
+   - Boss sprite gen: 1 phase
+   - Boss trigger + boss battle + win/loss + final dialogue: 1-2 phases
+   - **Total: 12-15 phases for the post-visuals work** (vs the failed 4-phase spec).
+
+6. **Phase title smell test**: a phase title that uses 3+ "+" connectives (e.g. "movement + collision + camera + interaction + altar trigger") is the spec writer telling you the phase is too big. Each "+" is a phase boundary that got missed.
+
+When in doubt: split. A run that completes 12 small phases is better than a run that fails on phase 7 of 8 and leaves the project half-built.
+
 ## MANDATORY: discovery form must include `genre` and `animation_richness`
 
 Before writing spec.md, emit a `<question-form>` block. The form's `fields` array MUST include at least these two keys:
