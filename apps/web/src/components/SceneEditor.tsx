@@ -3635,6 +3635,12 @@ function PropPickerModal({
   return (
     <div
       onClick={onClose}
+      // Stop wheel from bubbling to the canvas wrap — without this,
+      // scrolling inside the picker also zooms the scene behind it.
+      onWheel={(e) => e.stopPropagation()}
+      // Same for mousedown — clicking the backdrop should close, but
+      // shouldn't seed a draft on the canvas underneath.
+      onMouseDown={(e) => e.stopPropagation()}
       style={{
         position: 'absolute',
         inset: 0,
@@ -3647,6 +3653,8 @@ function PropPickerModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
         style={{
           background: 'var(--bg-1)',
           border: '1px solid var(--border)',
