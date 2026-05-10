@@ -585,13 +585,21 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
       try {
         const sidecar = JSON.parse(readFileSync(sidecarAbs, 'utf8')) as Record<string, unknown>;
 
+        // Synthetic id prefix `__i<n>` signals "no id field in JSON,
+        // address by array index N on writes". Daemon's writers detect
+        // this prefix and dispatch to applyJsonArrayEntryByIndex (index-
+        // based JSON-parse mutate) instead of the id-based line patcher
+        // which would fail to locate the entry when no `id` key exists.
+        // (rpg-gogogo, 2026: agent-written sidecars omit `id` on every
+        // blocker / walkBounds polygon — every move + delete attempt
+        // failed silently with "JSON collider not found".)
         const sidecarBlockers = Array.isArray(sidecar.blockers)
           ? (sidecar.blockers as RectLike[])
           : [];
         sidecarBlockers.forEach((b, idx) => {
           const shape = inferShapeFromEntry(b);
           if (!shape) return;
-          const id = String(b.id ?? `sidecar_blocker_${idx}`);
+          const id = typeof b.id === 'string' && b.id ? b.id : `__i${idx}`;
           const ref: ColliderRef = {
             backend: 'json',
             relPath: sidecarRel,
@@ -601,7 +609,7 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
           colliders.push({
             uid: `web:sidecar-blockers:${id}`,
             ref,
-            name: id,
+            name: typeof b.tag === 'string' ? (b.tag as string) : id,
             kind: 'blocker',
             position: entryCenterPosition(b),
             shape,
@@ -619,7 +627,7 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
           arr.forEach((b, idx) => {
             const shape = inferShapeFromEntry(b);
             if (!shape) return;
-            const id = String(b.id ?? `${fieldName}_${idx}`);
+            const id = typeof b.id === 'string' && b.id ? b.id : `__i${idx}`;
             const ref: ColliderRef = {
               backend: 'json',
               relPath: sidecarRel,
@@ -629,7 +637,7 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
             zones.push({
               uid: `web:sidecar-${fieldName}:${id}`,
               ref,
-              name: id,
+              name: typeof b.tag === 'string' ? (b.tag as string) : id,
               zoneKind: 'unknown',
               position: entryCenterPosition(b),
               shape,

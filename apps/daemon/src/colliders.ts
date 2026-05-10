@@ -487,6 +487,78 @@ export function applyJsonDictKeyedEdit(
   writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
 }
 
+/** Index-based addressing for array entries that have NO `id` field on
+ *  disk (agent-written sidecars often skip `id` for terseness). The
+ *  loader emits synthetic refs with id=`__i<n>` to mark these; writers
+ *  detect that prefix and dispatch here.
+ *
+ *  Implementation: whole-file JSON.parse + index splice/mutate +
+ *  stringify. Same trade-off as the dict-keyed path — file gets re-
+ *  prettified but agent-written JSON has no formatting worth
+ *  preserving. */
+export function isIndexId(id: string): boolean {
+  return /^__i\d+$/.test(id);
+}
+
+function parseIndexId(id: string): number {
+  const m = /^__i(\d+)$/.exec(id);
+  if (!m) throw new Error(`expected __i<n> id, got "${id}"`);
+  return Number(m[1]);
+}
+
+export function applyJsonArrayEntryByIndex(
+  rootAbs: string,
+  ref: ColliderRef & { backend: 'json' },
+  patch: { x?: number; y?: number; w?: number; h?: number; radius?: number; interactRadius?: number },
+): void {
+  const index = parseIndexId(ref.id);
+  const abs = path.join(rootAbs, ref.relPath);
+  const text = readFileSync(abs, 'utf8');
+  const json = JSON.parse(text) as Record<string, unknown>;
+  const arr = json[ref.section];
+  if (!Array.isArray(arr)) {
+    throw new Error(`section "${ref.section}" is not an array in ${ref.relPath}`);
+  }
+  if (index < 0 || index >= arr.length) {
+    throw new Error(`index ${index} out of range in "${ref.section}" (len ${arr.length})`);
+  }
+  const entry = arr[index];
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+    throw new Error(`entry at "${ref.section}[${index}]" is not an object`);
+  }
+  const target = entry as Record<string, unknown>;
+  if (patch.x !== undefined) target.x = patch.x;
+  if (patch.y !== undefined) target.y = patch.y;
+  if (patch.w !== undefined) target.w = patch.w;
+  if (patch.h !== undefined) target.h = patch.h;
+  if (patch.radius !== undefined) target.radius = patch.radius;
+  if (patch.interactRadius !== undefined) target.interactRadius = patch.interactRadius;
+
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
+}
+
+export function applyJsonArrayEntryRemoveByIndex(
+  rootAbs: string,
+  ref: ColliderRef & { backend: 'json' },
+): void {
+  const index = parseIndexId(ref.id);
+  const abs = path.join(rootAbs, ref.relPath);
+  const text = readFileSync(abs, 'utf8');
+  const json = JSON.parse(text) as Record<string, unknown>;
+  const arr = json[ref.section];
+  if (!Array.isArray(arr)) {
+    throw new Error(`section "${ref.section}" is not an array in ${ref.relPath}`);
+  }
+  if (index < 0 || index >= arr.length) {
+    throw new Error(`index ${index} out of range in "${ref.section}" (len ${arr.length})`);
+  }
+  arr.splice(index, 1);
+
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
+}
+
 /** Set (create-or-replace) a dict-keyed entry. Pairs with applyJsonDictKeyedDelete
  *  for add/remove of zones / exits stored at json[parent][key]. */
 export function applyJsonDictKeyedSet(

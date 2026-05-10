@@ -11,12 +11,15 @@ import type {
   SceneZone,
 } from '@ogf/contracts';
 import {
+  applyJsonArrayEntryByIndex,
+  applyJsonArrayEntryRemoveByIndex,
   applyJsonColliderEdit,
   applyJsonDictKeyedDelete,
   applyJsonDictKeyedEdit,
   applyJsonDictKeyedSet,
   applyJsonSingleFieldEdit,
   findCollisionJsonPath,
+  isIndexId,
   readJsonColliders,
   readTscnColliders,
   writeTscnMoveCollider,
@@ -790,6 +793,26 @@ function applyOpsToJsonScene(opts: ApplyOpsOptions): ApplyOpsResult {
           w: op.w,
           h: op.h,
         });
+      } else if (isIndexId(ref.id)) {
+        // Sidecar entries (no `id` on disk) — addressed by array index.
+        // Read current x/y/w/h to preserve visual center across resize.
+        const abs = safeJoin(opts.rootAbs, ref.relPath);
+        const json = JSON.parse(readFileSync(abs, 'utf8')) as Record<string, unknown>;
+        const arr = Array.isArray(json[ref.section]) ? (json[ref.section] as unknown[]) : [];
+        const idx = Number(ref.id.slice(3));
+        const entry = (arr[idx] as Record<string, unknown> | undefined) ?? {};
+        const oldX = typeof entry.x === 'number' ? (entry.x as number) : 0;
+        const oldY = typeof entry.y === 'number' ? (entry.y as number) : 0;
+        const oldW = typeof entry.w === 'number' ? (entry.w as number) : 0;
+        const oldH = typeof entry.h === 'number' ? (entry.h as number) : 0;
+        const cx = oldX + oldW / 2;
+        const cy = oldY + oldH / 2;
+        applyJsonArrayEntryByIndex(opts.rootAbs, ref, {
+          x: cx - op.w / 2,
+          y: cy - op.h / 2,
+          w: op.w,
+          h: op.h,
+        });
       } else {
         const colliders = readJsonColliders(opts.rootAbs, ref.relPath);
         const target = colliders.find(
@@ -815,6 +838,11 @@ function applyOpsToJsonScene(opts: ApplyOpsOptions): ApplyOpsResult {
       // Write back via dict-keyed editor so we hit the right object key.
       if (op.ref.section.includes('.')) {
         applyJsonDictKeyedEdit(opts.rootAbs, op.ref, {
+          radius: op.r,
+          interactRadius: op.r,
+        });
+      } else if (isIndexId(op.ref.id)) {
+        applyJsonArrayEntryByIndex(opts.rootAbs, op.ref, {
           radius: op.r,
           interactRadius: op.r,
         });
@@ -847,16 +875,12 @@ function applyOpsToJsonScene(opts: ApplyOpsOptions): ApplyOpsResult {
           op.entry,
         );
       } else {
-        const id = typeof op.entry.id === 'string' ? op.entry.id : '';
-        if (!id) {
-          throw new Error('add-zone on array section requires entry.id');
-        }
-        applyJsonArrayAppend(
-          opts.rootAbs,
-          op.relPath,
-          op.section,
-          op.entry as { id: string } & Record<string, unknown>,
-        );
+        // Sidecar walkBounds / walkable / blockers entries don't carry
+        // `id` on disk — the loader assigns synthetic __i<n>. The undo of
+        // a delete-zone arrives here with no id; use raw push (no dedup
+        // check on undefined id, which would false-match every existing
+        // id-less entry).
+        applyJsonArrayPush(opts.rootAbs, op.relPath, op.section, op.entry);
       }
     } else if (op.kind === 'remove-zone') {
       if (op.section.includes('.')) {
@@ -905,6 +929,27 @@ function applyJsonArrayAppend(
   writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
 }
 
+/** Push an entry to <relPath>[<section>] WITHOUT dedup-by-id checks.
+ *  For sidecar arrays where entries don't have `id` (walkBounds polygons,
+ *  walkable rects), the dedup logic in applyJsonArrayAppend would false-
+ *  match every id-less entry against undefined and throw. Use this instead
+ *  whenever the entry shape may legitimately omit `id`. */
+function applyJsonArrayPush(
+  rootAbs: string,
+  relPath: string,
+  section: string,
+  entry: Record<string, unknown>,
+): void {
+  const abs = safeJoin(rootAbs, relPath);
+  const text = readFileSync(abs, 'utf8');
+  const json = JSON.parse(text) as Record<string, unknown>;
+  const arr = Array.isArray(json[section]) ? (json[section] as unknown[]) : [];
+  arr.push(entry);
+  json[section] = arr;
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
+}
+
 function applyJsonArrayRemove(
   rootAbs: string,
   relPath: string,
@@ -918,10 +963,23 @@ function applyJsonArrayRemove(
   if (!Array.isArray(arr)) {
     throw new Error(`remove: section '${section}' is not an array in ${relPath}`);
   }
-  const before = arr.length;
-  json[section] = (arr as Array<{ id?: string }>).filter((e) => e?.id !== id);
-  if ((json[section] as unknown[]).length === before) {
-    throw new Error(`remove: id '${id}' not found in ${relPath}#${section}`);
+  // Index-addressed entry (synthetic id `__i<n>` from sidecar loader) —
+  // splice by position. Otherwise filter by id field.
+  if (isIndexId(id)) {
+    const idx = Number(id.slice(3));
+    if (idx < 0 || idx >= arr.length) {
+      throw new Error(
+        `remove: index ${idx} out of range in ${relPath}#${section} (len ${arr.length})`,
+      );
+    }
+    arr.splice(idx, 1);
+    json[section] = arr;
+  } else {
+    const before = arr.length;
+    json[section] = (arr as Array<{ id?: string }>).filter((e) => e?.id !== id);
+    if ((json[section] as unknown[]).length === before) {
+      throw new Error(`remove: id '${id}' not found in ${relPath}#${section}`);
+    }
   }
   const eol = text.includes('\r\n') ? '\r\n' : '\n';
   writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
@@ -989,6 +1047,29 @@ function applyJsonColliderEditForMove(
   // Single-object field (e.g. "heroSpawn": {x, y}) — patch directly.
   if (ref.singleField) {
     applyJsonSingleFieldEdit(rootAbs, ref, { x: centerPos.x, y: centerPos.y });
+    return;
+  }
+
+  // Index-addressed sidecar entries (no `id` field on disk).
+  // Determine center→top-left translation by reading current w/h.
+  if (isIndexId(ref.id)) {
+    const abs = safeJoin(rootAbs, ref.relPath);
+    const json = JSON.parse(readFileSync(abs, 'utf8')) as Record<string, unknown>;
+    const arr = Array.isArray(json[ref.section]) ? (json[ref.section] as unknown[]) : [];
+    const idx = Number(ref.id.slice(3));
+    const entry = (arr[idx] as Record<string, unknown> | undefined) ?? {};
+    const w = typeof entry.w === 'number' ? (entry.w as number) : 0;
+    const h = typeof entry.h === 'number' ? (entry.h as number) : 0;
+    if (w > 0 && h > 0) {
+      applyJsonArrayEntryByIndex(rootAbs, ref, {
+        x: centerPos.x - w / 2,
+        y: centerPos.y - h / 2,
+      });
+    } else {
+      // Circle / point — write center directly. Polygon falls here too;
+      // moving polygons is a TODO (would need to translate every point).
+      applyJsonArrayEntryByIndex(rootAbs, ref, { x: centerPos.x, y: centerPos.y });
+    }
     return;
   }
 
