@@ -948,21 +948,16 @@ export function App() {
         tree={fileTree}
         selectedFile={selectedFile}
         onSelectFile={(rel, fk) => {
-          // Same routing logic the EditorPane used to own — moved here since
-          // the file tree now lives in the Sidebar. Keeps tab routing consistent
-          // with whatever the user clicks.
+          // Single source of truth: same isWebLevelCandidate the picker
+          // list uses. Without this, sidebar click routing diverged from
+          // picker visibility — a level the picker showed could click
+          // through to the JSON viewer instead of the canvas editor
+          // (haunted_battlefield.json, 2DGAMERPG, 2026).
           const relPosix = rel.replace(/\\/g, '/');
           const ext = relPosix.split('.').pop()?.toLowerCase() ?? '';
           const isScene = ext === 'tscn';
-          let isWebLevel = false;
-          if (project?.engine === 'web' && ext === 'json' && relPosix.startsWith('data/')) {
-            if (webLevelFiles.size > 0) {
-              isWebLevel = webLevelFiles.has(relPosix);
-            } else {
-              isWebLevel =
-                /(?:^|\/)(?:[^/]*-)?(?:collision-map|level)(?:-[^/]+)?\.json$/i.test(relPosix);
-            }
-          }
+          const isWebLevel =
+            project?.engine === 'web' && isWebLevelCandidate(relPosix, webLevelFiles);
           setTab(isScene || isWebLevel ? 'scenes' : 'assets');
           setSelectedFile({ relPath: rel, fileKind: fk });
         }}
@@ -997,24 +992,13 @@ export function App() {
             tree={fileTree}
             selectedFile={selectedFile}
             onSelectFile={(rel, fk) => {
-              // .tscn → scenes (canvas view); web levels listed in
-              // data/levels.json → also scenes; everything else (including
-              // data/enemies.json and other catalogs) → assets.
+              // .tscn → scenes; web JSON levels per isWebLevelCandidate
+              // (single source of truth shared with the picker list).
               const relPosix = rel.replace(/\\/g, '/');
               const ext = relPosix.split('.').pop()?.toLowerCase() ?? '';
               const isScene = ext === 'tscn';
-              let isWebLevel = false;
-              if (project?.engine === 'web' && ext === 'json' && relPosix.startsWith('data/')) {
-                if (webLevelFiles.size > 0) {
-                  isWebLevel = webLevelFiles.has(relPosix);
-                } else {
-                  // No levels.json registry → permissive name-based heuristic.
-                  isWebLevel =
-                    /(?:^|\/)(?:[^/]*-)?(?:collision-map|level)(?:-[^/]+)?\.json$/i.test(
-                      relPosix,
-                    );
-                }
-              }
+              const isWebLevel =
+                project?.engine === 'web' && isWebLevelCandidate(relPosix, webLevelFiles);
               setTab(isScene || isWebLevel ? 'scenes' : 'assets');
               setSelectedFile({ relPath: rel, fileKind: fk });
             }}
@@ -1665,33 +1649,70 @@ function ScenePicker({
   );
 }
 
+/** Names in data/ that are catalogs / registries / configs — NOT scenes.
+ *  Used by the heuristic fallback when data/levels.json hasn't loaded yet
+ *  (or doesn't exist). The previous fallback was a positive-pattern regex
+ *  that only matched "level*.json" / "*-collision-map.json", which dropped
+ *  semantic level names like "haunted_battlefield.json" into the Assets
+ *  tab — the user clicked their actual scene and got a JSON viewer
+ *  instead of the canvas editor (2DGAMERPG, 2026). The new fallback
+ *  inverts the logic: anything in data/*.json that ISN'T on this
+ *  blacklist is a candidate scene. Catalog files are well-known names so
+ *  the false-positive risk is low. */
+const DATA_CATALOG_NAMES = new Set([
+  'levels.json',
+  'assets.json',
+  'enemies.json',
+  'items.json',
+  'starters.json',
+  'pickups.json',
+  'quests.json',
+  'dialogues.json',
+  'npcs.json',
+  'heroes.json',
+  'towers.json',
+  'waves.json',
+  'recipes.json',
+  'runtime.json',
+  'ui.json',
+  'music-themes.json',
+]);
+
+function isCatalogName(base: string): boolean {
+  if (DATA_CATALOG_NAMES.has(base.toLowerCase())) return true;
+  // *-config.json / *-strings.json are conventional non-scene patterns
+  // (battle-config.json, audio-config.json, battle-strings.json, ...)
+  if (/-config\.json$/i.test(base)) return true;
+  if (/-strings\.json$/i.test(base)) return true;
+  return false;
+}
+
 function isWebLevelCandidate(rel: string, knownLevels?: Set<string>): boolean {
   // Web projects: data/<level>.json files are level candidates. The
   // canonical signal is data/levels.json's `file` entries (passed in as
   // `knownLevels`). When that registry is available we use it strictly;
-  // otherwise fall back to a Sengoku-style filename heuristic so projects
-  // with no levels.json still get something sensible.
+  // otherwise fall back to a catalog-blacklist heuristic so projects with
+  // semantic level names ("village_route.json", "haunted_battlefield.json")
+  // don't get dropped during the brief async window before the registry
+  // loads.
   if (!rel.toLowerCase().endsWith('.json')) return false;
   if (!rel.startsWith('data/')) return false;
   // *-collision-map.json files are SIDECARS, never scenes themselves.
-  // The level file references them via a `collisionSource` field. They
-  // happen to carry a `mapSize` field too (which fools the loader's
-  // isWebLevelJson check), so we have to exclude them here at the
-  // picker level — even when they appear in knownLevels by accident.
-  // Past failure: agent wrote both data/boss_hall.json (level) and
-  // data/boss_hall-collision-map.json (sidecar); the picker offered both;
-  // user clicked the sidecar; SceneEditor parsed it (it has mapSize) but
-  // found no background/layers/props → empty canvas. (test-2drpg, 2026.)
+  // They carry mapSize too which fools the loader's level check, so
+  // exclude them here even when knownLevels accidentally lists one.
+  // Past failure: test-2drpg agent wrote both boss_hall.json (level) and
+  // boss_hall-collision-map.json (sidecar); user clicked sidecar; editor
+  // showed empty canvas because sidecar has no bg/layers/props.
   const base = rel.split('/').pop() ?? '';
   if (/-collision-map\.json$/i.test(base)) return false;
   if (knownLevels && knownLevels.size > 0) {
     return knownLevels.has(rel.replace(/\\/g, '/'));
   }
-  // Heuristic fallback — filename starts with "level" (level1.json,
-  // level2.json — bootstrap stub naming). Collision-map already filtered
-  // above, so we don't need to repeat it here.
-  if (/^level(?:-?[^/]*)?\.json$/i.test(base)) return true;
-  return false;
+  // Heuristic fallback — exclude catalog/config/registry filenames,
+  // accept everything else in data/*.json. Permissive on purpose: better
+  // to show a non-level JSON in Scenes (loader will reject with a clear
+  // "missing mapSize" error) than to hide a real level in Assets.
+  return !isCatalogName(base);
 }
 
 function collectScenes(node: FileNode, out: FileNode[], engine?: string, knownLevels?: Set<string>) {
