@@ -487,6 +487,61 @@ export function applyJsonDictKeyedEdit(
   writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
 }
 
+/** Set (create-or-replace) a dict-keyed entry. Pairs with applyJsonDictKeyedDelete
+ *  for add/remove of zones / exits stored at json[parent][key]. */
+export function applyJsonDictKeyedSet(
+  rootAbs: string,
+  ref: ColliderRef & { backend: 'json' },
+  entry: Record<string, unknown>,
+): void {
+  const dotIx = ref.section.indexOf('.');
+  if (dotIx <= 0) {
+    throw new Error(
+      `applyJsonDictKeyedSet: section must be "<parent>.<key>", got "${ref.section}"`,
+    );
+  }
+  const parent = ref.section.slice(0, dotIx);
+  const key = ref.section.slice(dotIx + 1);
+
+  const abs = path.join(rootAbs, ref.relPath);
+  const text = readFileSync(abs, 'utf8');
+  const json = JSON.parse(text) as Record<string, unknown>;
+  const dict = (json[parent] && typeof json[parent] === 'object' && !Array.isArray(json[parent]))
+    ? (json[parent] as Record<string, unknown>)
+    : {};
+  dict[key] = entry;
+  json[parent] = dict;
+
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
+}
+
+/** Remove a dict-keyed entry: `delete json[parent][key]`. */
+export function applyJsonDictKeyedDelete(
+  rootAbs: string,
+  ref: ColliderRef & { backend: 'json' },
+): void {
+  const dotIx = ref.section.indexOf('.');
+  if (dotIx <= 0) {
+    throw new Error(
+      `applyJsonDictKeyedDelete: section must be "<parent>.<key>", got "${ref.section}"`,
+    );
+  }
+  const parent = ref.section.slice(0, dotIx);
+  const key = ref.section.slice(dotIx + 1);
+
+  const abs = path.join(rootAbs, ref.relPath);
+  const text = readFileSync(abs, 'utf8');
+  const json = JSON.parse(text) as Record<string, unknown>;
+  const dict = json[parent];
+  if (dict && typeof dict === 'object' && !Array.isArray(dict)) {
+    delete (dict as Record<string, unknown>)[key];
+  }
+
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
+}
+
 /** Patch a single collider/prop entry's fields in JSON text. Handles BOTH
  *  one-line entries (`{ "id": ..., "x": ..., ... }`) and pretty-printed
  *  multi-line objects. Walks the section's array, tracks brace depth per

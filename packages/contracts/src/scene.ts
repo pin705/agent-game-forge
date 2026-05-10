@@ -347,6 +347,33 @@ export interface RemovePathOp {
   id: string;
 }
 
+/** Add or remove a zone entry. Section dispatches the writer:
+ *  - "<parent>.<key>" (e.g. "zones.wild_grass") → dict-keyed write
+ *    (replaces or removes json[parent][key])
+ *  - bare name (e.g. "walkBounds", "walkable") → array append/remove
+ *    by entry.id
+ *
+ *  Entry is intentionally Record<string, unknown> because zones carry
+ *  arbitrary genre-specific fields (event, target, encounterRate, ...).
+ *  The writer preserves all fields verbatim. */
+export interface AddZoneOp {
+  kind: 'add-zone';
+  relPath: string;
+  section: string;
+  /** For array sections, entry MUST include `id`. For dict sections,
+   *  the key in section determines placement; entry.id is optional. */
+  entry: Record<string, unknown>;
+}
+
+export interface RemoveZoneOp {
+  kind: 'remove-zone';
+  relPath: string;
+  section: string;
+  /** For array sections, the entry id to remove. For dict sections,
+   *  ignored (key is in section). */
+  id: string;
+}
+
 export type SceneOp =
   | MovePropOp
   | ScalePropOp
@@ -359,7 +386,9 @@ export type SceneOp =
   | AddColliderOp
   | RemoveColliderOp
   | AddPathOp
-  | RemovePathOp;
+  | RemovePathOp
+  | AddZoneOp
+  | RemoveZoneOp;
 
 export interface ApplySceneOpsRequest {
   projectPath: string;

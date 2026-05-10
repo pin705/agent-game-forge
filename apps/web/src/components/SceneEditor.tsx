@@ -1721,9 +1721,75 @@ export function SceneEditor(props: Props) {
       );
       return;
     }
-    // zones mode + zones selection: not yet supported — zones live in a
-    // top-level OBJECT keyed by zone id (not an array), so delete needs
-    // a different writer. Tracked separately.
+    if (mode === 'zones' && selectedZoneUid) {
+      const z = scene.zones.find((x) => x.uid === selectedZoneUid);
+      if (!z || z.ref.backend !== 'json') return;
+      const ref = z.ref;
+      // Reconstruct the on-disk JSON entry shape for the inverse op.
+      // We carry whatever known fields back through entry; SceneZone
+      // stores shape (rect/circle/polygon) + position (center) + fields.
+      // Convert center → top-left for rect; pass others through.
+      const entry: Record<string, unknown> = {};
+      if (ref.section.includes('.')) {
+        // Dict-keyed (zones.X / exits.X). For rect we store top-left
+        // because that's what the loader expects to read back.
+        if (z.shape.kind === 'rect') {
+          entry.x = z.position.x - z.shape.w / 2;
+          entry.y = z.position.y - z.shape.h / 2;
+          entry.w = z.shape.w;
+          entry.h = z.shape.h;
+        } else if (z.shape.kind === 'circle') {
+          entry.x = z.position.x;
+          entry.y = z.position.y;
+          // Exits use interactRadius as field name; zones use radius.
+          // Write both so whichever is original gets restored.
+          entry.radius = z.shape.r;
+          entry.interactRadius = z.shape.r;
+        } else {
+          // point — just x/y
+          entry.x = z.position.x;
+          entry.y = z.position.y;
+        }
+      } else {
+        // Array-keyed (sidecar walkBounds / walkable / etc.). Mirror
+        // the sidecar's "type" + shape-specific fields verbatim, plus
+        // an `id` so applyJsonArrayAppend can find it on undo.
+        entry.id = ref.id;
+        if (z.shape.kind === 'rect') {
+          entry.type = 'rect';
+          entry.x = z.position.x - z.shape.w / 2;
+          entry.y = z.position.y - z.shape.h / 2;
+          entry.w = z.shape.w;
+          entry.h = z.shape.h;
+        } else if (z.shape.kind === 'circle') {
+          entry.type = 'circle';
+          entry.x = z.position.x;
+          entry.y = z.position.y;
+          entry.radius = z.shape.r;
+        } else if (z.shape.kind === 'polygon') {
+          entry.type = 'polygon';
+          entry.points = z.shape.points.map((p) => [p.x, p.y]);
+        } else {
+          // 'point' on array sections is rare — skip rather than write
+          // a malformed entry.
+          return;
+        }
+      }
+      // Carry agent-authored extra fields (event, target, ...) so undo
+      // restores them. SceneZone exposes them via fields map.
+      for (const [k, v] of Object.entries(z.fields)) {
+        if (k === 'kind' || k === 'source') continue; // loader-internal
+        entry[k] = v;
+      }
+      setScene((s) => (s ? { ...s, zones: s.zones.filter((x) => x.uid !== z.uid) } : s));
+      setSelectedZoneUid(null);
+      commitOps(
+        [{ kind: 'remove-zone', relPath: ref.relPath, section: ref.section, id: ref.id }],
+        [{ kind: 'add-zone', relPath: ref.relPath, section: ref.section, entry }],
+        `delete ${z.name}`,
+      );
+      return;
+    }
   }
 
   // -------- Add polygon collider (multi-click vertex) --------
@@ -1871,6 +1937,7 @@ export function SceneEditor(props: Props) {
         const hasSel =
           (mode === 'props' && !!selectedNodePath) ||
           (mode === 'colliders' && !!selectedColliderUid) ||
+          (mode === 'zones' && !!selectedZoneUid) ||
           (mode === 'paths' && !!selectedPath);
         if (hasSel) {
           e.preventDefault();
@@ -1889,6 +1956,7 @@ export function SceneEditor(props: Props) {
     mode,
     selectedNodePath,
     selectedColliderUid,
+    selectedZoneUid,
     selectedPath,
   ]);
 
@@ -2154,6 +2222,7 @@ export function SceneEditor(props: Props) {
               polygonDraft={polygonDraft}
               hasPropSelected={!!selectedNodePath}
               hasColliderSelected={!!selectedColliderUid}
+              hasZoneSelected={!!selectedZoneUid}
               hasPathSelected={!!selectedPath}
               onOpenPropPicker={() => setPropPickerOpen(true)}
               onStartPathDraft={() => {
@@ -3409,6 +3478,7 @@ function ScenePalette({
   polygonDraft,
   hasPropSelected,
   hasColliderSelected,
+  hasZoneSelected,
   hasPathSelected,
   onOpenPropPicker,
   onStartPathDraft,
@@ -3429,6 +3499,7 @@ function ScenePalette({
   polygonDraft: { points: Vec2[] } | null;
   hasPropSelected: boolean;
   hasColliderSelected: boolean;
+  hasZoneSelected: boolean;
   hasPathSelected: boolean;
   onOpenPropPicker: () => void;
   onStartPathDraft: () => void;
@@ -3554,6 +3625,7 @@ function ScenePalette({
   const canDelete =
     (mode === 'props' && hasPropSelected) ||
     (mode === 'colliders' && hasColliderSelected) ||
+    (mode === 'zones' && hasZoneSelected) ||
     (mode === 'paths' && hasPathSelected);
 
   // If there are no add buttons AND nothing to delete, hide the palette
@@ -3571,7 +3643,7 @@ function ScenePalette({
           disabled={!canDelete}
           title={
             canDelete
-              ? `Delete selected ${mode === 'props' ? 'prop' : mode === 'colliders' ? 'collider' : mode === 'paths' ? 'path' : 'item'} (Del)`
+              ? `Delete selected ${mode === 'props' ? 'prop' : mode === 'colliders' ? 'collider' : mode === 'zones' ? 'zone' : mode === 'paths' ? 'path' : 'item'} (Del)`
               : 'Select something to delete'
           }
         >
@@ -4091,6 +4163,96 @@ function applyOpToScene(s: SceneModel, op: SceneOp): SceneModel {
           ),
       ),
     };
+  }
+  if (op.kind === 'remove-zone') {
+    return {
+      ...s,
+      zones: s.zones.filter(
+        (z) =>
+          !(
+            z.ref.backend === 'json' &&
+            z.ref.relPath === op.relPath &&
+            z.ref.section === op.section &&
+            z.ref.id === op.id
+          ),
+      ),
+    };
+  }
+  if (op.kind === 'add-zone') {
+    // Redo of an add-zone (or undo of a delete) — re-derive a SceneZone
+    // from the JSON entry. Mirrors the loader's web-scene.ts logic so
+    // the reconstructed zone behaves identically until the next refetch.
+    const exists = s.zones.some(
+      (z) =>
+        z.ref.backend === 'json' &&
+        z.ref.relPath === op.relPath &&
+        z.ref.section === op.section,
+    );
+    if (exists) return s;
+    const e = op.entry as Record<string, unknown>;
+    const isDictKeyed = op.section.includes('.');
+    const id = isDictKeyed
+      ? op.section.slice(op.section.indexOf('.') + 1)
+      : (typeof e.id === 'string' ? (e.id as string) : '');
+    if (!id) return s;
+    const ref: ColliderRef = {
+      backend: 'json',
+      relPath: op.relPath,
+      section: op.section,
+      id,
+    };
+    // Infer shape from entry — same priority as inferShapeFromEntry.
+    let shape: SceneCollider['shape'];
+    let position: Vec2;
+    if (typeof e.w === 'number' && typeof e.h === 'number') {
+      shape = { kind: 'rect', w: e.w as number, h: e.h as number };
+      const x = typeof e.x === 'number' ? (e.x as number) : 0;
+      const y = typeof e.y === 'number' ? (e.y as number) : 0;
+      position = { x: x + (e.w as number) / 2, y: y + (e.h as number) / 2 };
+    } else if (typeof e.radius === 'number' || typeof e.interactRadius === 'number') {
+      const r = typeof e.radius === 'number'
+        ? (e.radius as number)
+        : (e.interactRadius as number);
+      shape = { kind: 'circle', r };
+      position = {
+        x: typeof e.x === 'number' ? (e.x as number) : 0,
+        y: typeof e.y === 'number' ? (e.y as number) : 0,
+      };
+    } else if (Array.isArray(e.points)) {
+      const pts = (e.points as Array<[number, number]>).map(([x, y]) => ({ x, y }));
+      const cx = pts.reduce((a, p) => a + p.x, 0) / Math.max(1, pts.length);
+      const cy = pts.reduce((a, p) => a + p.y, 0) / Math.max(1, pts.length);
+      shape = { kind: 'polygon', points: pts };
+      position = { x: cx, y: cy };
+    } else {
+      shape = { kind: 'point' };
+      position = {
+        x: typeof e.x === 'number' ? (e.x as number) : 0,
+        y: typeof e.y === 'number' ? (e.y as number) : 0,
+      };
+    }
+    const fields: Record<string, string | number> = {};
+    for (const [k, v] of Object.entries(e)) {
+      if (k === 'id' || k === 'type' || k === 'x' || k === 'y' || k === 'w' || k === 'h' ||
+          k === 'radius' || k === 'interactRadius' || k === 'points') continue;
+      if (typeof v === 'string' || typeof v === 'number') fields[k] = v;
+    }
+    const zoneKind: ZoneKind = (() => {
+      if (op.section.startsWith('exits')) return 'exit';
+      if (op.section.startsWith('zones')) return 'encounter';
+      return 'unknown';
+    })();
+    const newZone: SceneZone = {
+      uid: `web:${op.section.replace('.', ':')}:${id}`,
+      ref,
+      name: id,
+      zoneKind,
+      position,
+      shape,
+      fields,
+      editable: shape.kind !== 'polygon',
+    };
+    return { ...s, zones: [...s.zones, newZone] };
   }
   return s;
 }

@@ -12,7 +12,9 @@ import type {
 } from '@ogf/contracts';
 import {
   applyJsonColliderEdit,
+  applyJsonDictKeyedDelete,
   applyJsonDictKeyedEdit,
+  applyJsonDictKeyedSet,
   applyJsonSingleFieldEdit,
   findCollisionJsonPath,
   readJsonColliders,
@@ -836,6 +838,37 @@ function applyOpsToJsonScene(opts: ApplyOpsOptions): ApplyOpsResult {
       applyJsonArrayAppend(opts.rootAbs, op.relPath, op.section ?? 'paths', op.entry);
     } else if (op.kind === 'remove-path') {
       applyJsonArrayRemove(opts.rootAbs, op.relPath, op.section ?? 'paths', op.id);
+    } else if (op.kind === 'add-zone') {
+      // Section "<parent>.<key>" → dict-keyed set; bare name → array append.
+      if (op.section.includes('.')) {
+        applyJsonDictKeyedSet(
+          opts.rootAbs,
+          { backend: 'json', relPath: op.relPath, section: op.section, id: '' },
+          op.entry,
+        );
+      } else {
+        const id = typeof op.entry.id === 'string' ? op.entry.id : '';
+        if (!id) {
+          throw new Error('add-zone on array section requires entry.id');
+        }
+        applyJsonArrayAppend(
+          opts.rootAbs,
+          op.relPath,
+          op.section,
+          op.entry as { id: string } & Record<string, unknown>,
+        );
+      }
+    } else if (op.kind === 'remove-zone') {
+      if (op.section.includes('.')) {
+        applyJsonDictKeyedDelete(opts.rootAbs, {
+          backend: 'json',
+          relPath: op.relPath,
+          section: op.section,
+          id: op.id,
+        });
+      } else {
+        applyJsonArrayRemove(opts.rootAbs, op.relPath, op.section, op.id);
+      }
     } else {
       throw new Error(
         `op '${(op as { kind: string }).kind}' not supported on .json scenes`,
