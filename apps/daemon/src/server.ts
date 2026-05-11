@@ -1749,7 +1749,7 @@ Pick 4–8 options relevant to the user's wording. Always include a \`detail\` w
 
 ### REQUIRED 2: \`completeness\` (radio, required) — COPY VERBATIM
 
-This block sets the entire token / scope budget for the rest of the project. Do NOT change wording, options, or detail strings — copy this verbatim:
+This block sets the entire token / scope budget for the rest of the project. Combat presence is a SEPARATE question (\`combat_style\` below) — these scope tiers describe the BUDGET, not what fills it. A puzzle / pure-platformer "core" project has the same token budget as an action "core" project; the spec writer reallocates the budget between platforming challenges, levels, puzzle setups, etc. when combat is absent. Do NOT bake combat counts into this block's wording — copy verbatim:
 
   {
     "key": "completeness",
@@ -1757,12 +1757,36 @@ This block sets the entire token / scope budget for the rest of the project. Do 
     "type": "radio",
     "required": true,
     "options": [
-      { "value": "minimal",  "label": "Minimal — playable demo",          "detail": "1 character × 3 anims (idle/walk/jump or attack), 1 enemy × 2 anims, 1 short level (~3 platforms + 1 encounter), real win/loss state. Plays end-to-end. ~15K tokens. 1-2 turns." },
-      { "value": "core",     "label": "Core — playable loop with variety","detail": "1 character × 4 anims, 3 enemy types × 2 anims each, 1 level + 1 boss room, basic HP UI. ~40K tokens. 3-4 turns." },
-      { "value": "polished", "label": "Polished — full vertical slice",   "detail": "2 characters × 5 anims each, 5 enemies, 3 levels, pickup system, scoring, menu. ~80K tokens. 5-7 turns." },
-      { "value": "full",     "label": "Full — substantial game",          "detail": "3+ characters × 6+ anims, 8+ enemies (incl. bosses), 5+ levels, save system, polish loops. ~200K+ tokens. 10+ turns." }
+      { "value": "minimal",  "label": "Minimal — playable demo",          "detail": "1 character × 3 anims, 1 short level, real win/loss state. Plays end-to-end. ~15K tokens. 1-2 turns." },
+      { "value": "core",     "label": "Core — playable loop with variety","detail": "1 character × 4 anims, 1 main level (+ optional small second scene like a boss room or hub), basic HUD. ~40K tokens. 3-4 turns." },
+      { "value": "polished", "label": "Polished — full vertical slice",   "detail": "2 characters × 5 anims each, 3 levels, pickup system, scoring, menu. ~80K tokens. 5-7 turns." },
+      { "value": "full",     "label": "Full — substantial game",          "detail": "3+ characters × 6+ anims, 5+ levels, save system, polish loops. ~200K+ tokens. 10+ turns." }
     ]
   }
+
+### REQUIRED 3: \`combat_style\` (radio, required) for action-capable genres
+
+Action genres (platformer / topdown-action / shmup / rpg / roguelike) MUST ask combat scope BEFORE the spec writer fills enemies/boss content. Puzzle / sandbox / sim / VN genres can SKIP this field. Copy verbatim for the action genres:
+
+  {
+    "key": "combat_style",
+    "label": "Combat focus",
+    "type": "radio",
+    "required": true,
+    "options": [
+      { "value": "none",     "label": "None — no combat",             "detail": "Pure traversal / puzzle / exploration. NO enemies, NO boss, NO attack anim on the player. Replace combat budget with platforming challenges, collectibles, timing puzzles, moving hazards, or branching paths. Examples: Celeste, INSIDE, Geometry Dash, Limbo." },
+      { "value": "light",    "label": "Light — incidental enemies",   "detail": "1-2 simple enemy types you dodge or stun, no boss. Combat is decoration, not the main loop. Examples: early Mario sections, Donkey Kong barrel scenes." },
+      { "value": "standard", "label": "Standard — combat + boss",     "detail": "Multiple enemy archetypes + 1 boss encounter. Combat is part of the core loop. Examples: Mega Man Zero, Shovel Knight, top-down Zelda." },
+      { "value": "heavy",    "label": "Heavy — combat is the focus",  "detail": "Combat-driven gameplay with multiple weapons / abilities / boss phases. Examples: Hollow Knight, Hyper Light Drifter." }
+    ]
+  }
+
+**Rule for the spec writer**: \`combat_style: none\` is binding. If the user picked it, write the spec with:
+- Empty \`data/enemies.json\` catalog (and skip the §4 "Catalogs > enemies" bullet)
+- Player animations: \`idle, walk, jump\` (or genre-equivalent). NO \`attack\` / \`bark_attack\` / \`shoot\` action.
+- Phase plan: NO enemy phases, NO boss phase. Replace those phases with platforming-challenge phases (e.g. "Phase 5: Moving platforms + timing challenges", "Phase 6: Collectible variety + secrets").
+- Win condition: keep whatever user picked (reach_goal / collect_all / survive_time). Do NOT auto-add "defeat boss".
+- Out of scope §8: list "combat, enemies, boss" explicitly as deferred to V2.
 
 ### Then 6–10 OPTIONAL fields you choose
 
@@ -1777,8 +1801,8 @@ Plus 2-4 GENRE-SPECIFIC fields. Use judgment from this menu (not exhaustive — 
 
 | Genre | Genre-specific fields to consider |
 |---|---|
-| platformer | jump_style (standard / double / wall-cling / hover), win_condition (boss / goal / collect), traversal_focus (combat / movement) |
-| topdown | combat_style (melee / ranged / hybrid / no-combat), camera (locked / scroll), exploration (linear / hub / open) |
+| platformer | jump_style (standard / double / wall-cling / hover), win_condition (reach_goal / collect_all / defeat_boss / survive_time), level_count (1 / 2 / 3+). NOTE: \`combat_style\` is already a REQUIRED field above — do not duplicate. |
+| topdown | weapon_style (melee / ranged / hybrid), camera (locked / scroll), exploration (linear / hub / open). NOTE: \`combat_style\` is REQUIRED above. |
 | td | tower_categories (count + types), path_complexity (single / branching / multi-lane), wave_progression (linear / loops) |
 | shmup | orientation (vertical / horizontal), bullet_density (light / medium / bullet-hell), powerup_system (yes / no) |
 | puzzle | solution_type (logic / spatial / action / typing), level_count (handful / many), undo_support (yes / no) |
@@ -1807,18 +1831,40 @@ Hybrid form (genre clearly platformer-action, world clearly historical-Japan):
   fields: [
     genre        (required, radio — platformer / topdown / shmup as the 3 reasonable options for "action")
     completeness (required, radio — VERBATIM block)
+    combat_style (required, radio — VERBATIM block; "action" prompt strongly suggests standard or heavy)
     premise      (textarea, optional)
     references   (textarea, optional)
     art_style    (radio — pixel / painterly / neon)
     world_setting (radio, prefilled toward feudal Japan options — historical / fantasy / horror)
     color_mood   (radio)
     jump_style   (radio — standard / double / wall-cling)  ← genre-specific
-    win_condition (radio — boss / reach_goal / survive)    ← genre-specific
+    win_condition (radio — defeat_boss / reach_goal / survive_time)  ← genre-specific
     difficulty   (radio)
     features     (checkbox)
   ]
 
-That's 11 fields — within the 8-12 cap, all load-bearing for this specific request.
+That's 12 fields — within the 8-12 cap, all load-bearing.
+
+### Worked example 2 — user prompt: "做個可愛的跳台跑酷遊戲，不要打架"
+
+Pure-platformer (no combat) cue. Form MUST capture that:
+
+  fields: [
+    genre        (required — platformer)
+    completeness (required — VERBATIM)
+    combat_style (required — VERBATIM; user said "不要打架" → strongly suggest "none" but still let user pick)
+    premise      (textarea)
+    references   (textarea, optional — Celeste, Geometry Dash for "cute platformer with no combat")
+    art_style    (radio — pixel / cartoon / minimal)
+    color_mood   (radio — bright / warm / cool)
+    jump_style   (radio — standard / double / hover for cute platformer)
+    win_condition (radio — reach_goal / collect_all / survive_time)
+    level_count  (radio — 1 / 2 / 3+)
+    difficulty   (radio)
+    features     (checkbox — music / sfx / save / particles, NOT screenshake-on-hits since no hits)
+  ]
+
+If user picks \`combat_style: none\`, the spec writer MUST honor it — empty enemies catalog, no boss phase, no attack animation, replace combat phases with platforming-challenge phases. See \`combat_style\` rule above.
 
 ### After emitting
 

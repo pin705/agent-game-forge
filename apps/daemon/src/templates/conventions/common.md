@@ -83,6 +83,20 @@ See the genre file's "Spec phase-plan expansion" section (e.g. `top-down-rpg.md`
 
 When in doubt: split. A run that completes 12 small phases is better than a run that fails on phase 7 of 8 and leaves the project half-built.
 
+### Phase plan — respect `combat_style: none`
+
+> ⚠️ Recurring failure: user picks `combat_style: none` (pure-platformer / puzzle / exploration) but spec writer still slots in 3 enemy phases + 1 boss phase because the seed and recipes are combat-flavored. Agent then writes combat code into a non-combat game. (test-2d-scroll, 2026.)
+
+If `spec.combat_style === 'none'`, your phase plan **MUST NOT** contain:
+- Any phase named "Enemy …" / "Enemies" / "Boss …" / "Combat …"
+- Any phase that generates enemy sprite sheets
+- Any phase that wires `data/enemies.json` content
+- Any boss-room scene phase
+
+Replace those phases with platforming-variety phases — moving platforms, timing puzzles, collectible secrets, decorative props, narrative beats. The token budget for "core" / "polished" / "full" stays the SAME; you reallocate from combat to traversal richness. See the per-genre convention file (e.g. `genres/side-scroll.md`'s "Pure-platformer mode" section) for the concrete phase-plan replacement template.
+
+This rule overrides any default phase plan baked into a genre file. The user's binding answer wins.
+
 ## MANDATORY: discovery form must include `genre` and `animation_richness`
 
 Before writing spec.md, emit a `<question-form>` block. The form's `fields` array MUST include at least these two keys:

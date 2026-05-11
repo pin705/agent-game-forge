@@ -1,6 +1,64 @@
 # Genre — Side-scroller / Platformer
 
-Mega Man X, Mario, Castlevania-style side-view action games.
+Side-view games. The genre splits into TWO distinct shapes based on `spec.combat_style`:
+
+| `combat_style` | Examples | Shape |
+|---|---|---|
+| `standard` / `heavy` | Mega Man X, Castlevania, Hollow Knight, Shovel Knight | **Action platformer** — player attacks, enemies, boss. Use seed + recipes as-is. |
+| `none` | Celeste, INSIDE, Geometry Dash, Limbo | **Pure platformer** — no attacks, no enemies. STRIP combat modules. See "Pure-platformer mode" section below. |
+| `light` | early Mario, Donkey Kong barrel scenes | Simple enemies as obstacles, no boss. Use full seed but skip boss phases. |
+
+**Recurring failure**: spec writer reads "side-scroll" and assumes Mega Man Zero by default — every project gets enemies + boss + attack anim. Then user complaint: "I picked reach-goal + no combat but agent gave me boss anyway." (test-2d-scroll, 2026.) `combat_style` field in the discovery form is BINDING — honor it. Pure platformer with `combat_style: none` is a real game shape (Celeste sold 1M+ copies, INSIDE won GOTY), don't fight it.
+
+## Pure-platformer mode (when `combat_style = none`)
+
+Phase 0 still copies the foundation seed verbatim. But spec writer + agent MUST then:
+
+**Delete from seed (after Phase 0 copy)** — these modules become dead weight in pure-platformer:
+- `src/entities/attack.js` — delete
+- `src/entities/enemy.js` — delete
+- `src/entities/projectiles.js` — delete
+- `data/enemies.json` — delete (or leave `[]` for catalog API symmetry)
+- `data/projectiles.json` — delete (or leave `[]`)
+
+**Update from seed**:
+- `index.html` — remove the `<script src="src/entities/attack.js"></script>`, `.../enemy.js`, `.../projectiles.js` lines. Without this, the page hits 404 on missing files and silently breaks.
+- `data/player-config.json` — drop the `attack` animation entry. Keep only `idle / walk / jump`.
+- `src/entities/player.js` — delete the `wasPressed("attack") && p.attackCooldown <= 0` branch and `startPlayerAttack()` call. Delete `attackTimer / attackCooldown / attack` state fields. Player FSM keeps `idle / walk / jump` actions only.
+- `src/render.js` — delete `drawAttacks` call from `drawLevel`. The `drawAttacks` function itself can stay (dead but harmless) or be removed.
+- `src/scene.js` `updateScene` — remove `updateAttacks(dt)` and `updateProjectiles(dt)` calls. `updateEnemies(dt)` should be wrapped in `if (state.enemies && state.enemies.length > 0)` or removed entirely.
+
+**Phase plan for `combat_style: none`** — replace the standard 10-14 phase plan with this shape:
+
+```
+Phase 1: Visual anchor
+Phase 2: Level 1 parallax map + platform library
+Phase 3: Level 1 platforming layout (platforms, hazards, pickups, checkpoints, exit)
+Phase 4: Player sprite sheets (idle / walk / jump only — no attack)
+Phase 5: Player controller (movement + double jump + camera + checkpoint respawn)
+Phase 6: Pickups + hazards (catalog + level placement + scoring)
+Phase 7: Platforming challenges (moving platforms / timing puzzles / collectibles variety / secrets)
+Phase 8: HUD + lives + save + game-over
+Phase 9: Story panels + win flow (reach-portal animation, victory state)
+Phase 10: Audio + juice (sfx, particles, screenshake on landing/death)
+```
+
+Notice: **NO enemy phases, NO boss phase**. Replace what would've been "enemy 1/2/3" + "boss" with platforming-variety phases (Phase 7 is the swap target).
+
+**Recipes that DON'T apply in pure-platformer mode**:
+- `recipes/side-scroll/combat-melee.md` — skip
+- `recipes/side-scroll/enemy-patrol.md` — skip
+- `recipes/side-scroll/projectiles.md` — skip
+
+**Recipes that DO apply**:
+- `recipes/side-scroll/parallax-layers.md`
+- `recipes/side-scroll/platform-three-piece.md`
+- `recipes/side-scroll/hazards-and-pits.md` — hazards become the main "danger" source (spikes, pits, electric, lava); kill colliders are key for one-hit-death pure-platformer (Celeste/Meat Boy)
+- `recipes/side-scroll/checkpoints-respawn.md` — checkpoints become extra critical when there's no combat HP buffer
+
+## Standard / heavy combat mode
+
+Mega Man X, Mario, Castlevania-style side-view action games. Use seed + all recipes as-is.
 
 **Canonical reference**: [Mike Hadley's Phaser 3 tilemap series](https://github.com/mikewesthad/phaser-3-tilemap-blog-posts) — author of Phaser's tilemap API. The `posts/post-2/03-drawing-platformer/` example shows everything in one place. Read it for the PATTERN.
 
