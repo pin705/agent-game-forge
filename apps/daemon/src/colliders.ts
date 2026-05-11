@@ -290,10 +290,36 @@ interface JsonBlocker {
   points?: [number, number][];
 }
 
+/** Side-scroll convention: `colliders[]` array on the level JSON.
+ *  Distinct from `blockers[]` because the entries use `type` for the
+ *  gameplay ROLE (platform / wall / hazard / kill), and a separate
+ *  `shape` field (or w/h presence) for the geometry. Mixing the two
+ *  semantics in one ingest function would create a "type" name clash. */
+interface JsonSideScrollCollider {
+  id: string;
+  /** Gameplay role (platform / wall / hazard / kill / ...). */
+  type?: string;
+  /** Optional explicit shape selector. If absent, inferred from
+   *  w/h/radius/points presence — same as the editor's loader. */
+  shape?: 'rect' | 'circle' | 'ellipse' | 'polygon';
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+  radius?: number;
+  rx?: number;
+  ry?: number;
+  points?: [number, number][];
+  oneWay?: boolean;
+  links?: string;
+}
+
 interface CollisionJson {
   blockers?: JsonBlocker[];
   buildZones?: JsonBlocker[];
   walkBounds?: JsonBlocker[];
+  /** Side-scroll level JSON's collider array. */
+  colliders?: JsonSideScrollCollider[];
 }
 
 export function readJsonColliders(rootAbs: string, jsonRel: string): SceneCollider[] {
@@ -383,6 +409,68 @@ export function readJsonColliders(rootAbs: string, jsonRel: string): SceneCollid
   ingest(parsed.blockers, 'blockers');
   ingest(parsed.buildZones, 'buildZones');
   ingest(parsed.walkBounds, 'walkBounds');
+
+  // Side-scroll colliders[] uses different shape conventions — `type`
+  // names gameplay role (platform/wall/hazard/kill), geometry inferred
+  // from `shape` or w/h presence. Without this ingest, move/resize ops
+  // on a side-scroll collider failed with "json collider not found" —
+  // the editor's loader emitted SceneColliders for them but the writer's
+  // lookup function (this one) didn't know about the `colliders[]` array.
+  // (test-2d-act, 2026.)
+  if (Array.isArray(parsed.colliders)) {
+    for (const c of parsed.colliders) {
+      if (!c?.id) continue;
+      const ref: ColliderRef = {
+        backend: 'json',
+        relPath: jsonRel,
+        section: 'colliders',
+        id: c.id,
+      };
+      const uid = `json:colliders:${c.id}`;
+      const kind = typeof c.type === 'string' ? c.type : 'collider';
+      // Shape inference order: explicit `shape` field → polygon points →
+      // circle radius → rect w/h fallback. Matches web-scene.ts loader's
+      // inferShapeFromEntry so writer and loader agree on geometry.
+      const explicit = c.shape;
+      if (explicit === 'polygon' && Array.isArray(c.points)) {
+        const points = c.points.map(([x, y]) => ({ x, y }));
+        const cx = points.reduce((a, p) => a + p.x, 0) / Math.max(1, points.length);
+        const cy = points.reduce((a, p) => a + p.y, 0) / Math.max(1, points.length);
+        out.push({
+          uid,
+          ref,
+          name: c.id,
+          kind,
+          position: { x: cx, y: cy },
+          shape: { kind: 'polygon', points },
+          editable: false,
+        });
+      } else if (explicit === 'circle' || explicit === 'ellipse') {
+        const r = Math.max(Number(c.rx ?? c.radius ?? 0), Number(c.ry ?? c.radius ?? 0));
+        out.push({
+          uid,
+          ref,
+          name: c.id,
+          kind,
+          position: { x: c.x ?? 0, y: c.y ?? 0 },
+          shape: { kind: 'circle', r },
+          editable: true,
+        });
+      } else if (typeof c.w === 'number' && typeof c.h === 'number') {
+        // Default rect path — covers explicit `shape: "rect"` AND
+        // shape-omitted entries that happen to carry w/h.
+        out.push({
+          uid,
+          ref,
+          name: c.id,
+          kind,
+          position: { x: (c.x ?? 0) + c.w / 2, y: (c.y ?? 0) + c.h / 2 },
+          shape: { kind: 'rect', w: c.w, h: c.h },
+          editable: true,
+        });
+      }
+    }
+  }
   return out;
 }
 
