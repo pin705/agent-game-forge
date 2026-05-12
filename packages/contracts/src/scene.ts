@@ -44,9 +44,21 @@ export interface SceneLayer {
    *  (foreground props). Editor uses this for visual hint only — it doesn't
    *  actually scroll-preview yet. */
   parallax?: number;
-  /** Inferred natural size if available. */
+  /** Extent the layer covers — typically equals mapSize for both tiled
+   *  and stretched layers. The editor fills (0,0) to (width,height). */
   width?: number;
   height?: number;
+  /** Tileable parallax strip: when true, the editor and runtime tile the
+   *  PNG horizontally via modulo wrap (createPattern('repeat-x') in the
+   *  editor, the `for x += img.width` loop in `src/parallax.js`). The PNG
+   *  stays at its natural size (typically 1280×720) regardless of
+   *  mapSize.width. When false/undefined, the PNG stretches to fill the
+   *  layer's width × height (legacy full-map layer behavior). */
+  repeatX?: boolean;
+  /** Tile dimensions for repeatX layers. When unset, the editor falls back
+   *  to the PNG's natural size. Mirrors `SceneBackground.tileW`/`tileH`. */
+  tileW?: number;
+  tileH?: number;
 }
 
 export interface SceneProp {

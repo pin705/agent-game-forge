@@ -397,11 +397,32 @@ export function SceneEditor(props: Props) {
     if (scene.layers && scene.layers.length > 0) {
       for (const layer of scene.layers) {
         const img = bank.imgs.get(layer.relPath);
+        const natural = bank.sizes.get(layer.relPath);
         const size =
           (layer.width && layer.height ? { w: layer.width, h: layer.height } : null) ??
-          bank.sizes.get(layer.relPath) ??
+          natural ??
           null;
-        if (img && size) {
+        if (!img || !size) continue;
+        if (layer.repeatX) {
+          // Tileable parallax strip — tile the PNG horizontally across the
+          // layer's full extent (= mapSize) to mirror the runtime's
+          // repeatX modulo wrap in src/parallax.js. tileW/tileH come from
+          // explicit JSON declaration, else fall back to PNG natural size
+          // (typically 1280×720 per the parallax-layers recipe).
+          const tileW = layer.tileW ?? natural?.w ?? img.width;
+          const tileH = layer.tileH ?? natural?.h ?? img.height;
+          const pattern = ctx.createPattern(img, 'repeat-x');
+          if (pattern) {
+            const matrix = new DOMMatrix();
+            matrix.scaleSelf(tileW / img.width, tileH / img.height);
+            pattern.setTransform(matrix);
+            ctx.fillStyle = pattern;
+            ctx.fillRect(0, 0, size.w, tileH);
+          } else {
+            ctx.drawImage(img, 0, 0, tileW, tileH);
+          }
+        } else {
+          // Stretched full-map layer (legacy / non-parallax)
           ctx.drawImage(img, 0, 0, size.w, size.h);
         }
       }

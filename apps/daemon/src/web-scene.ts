@@ -296,16 +296,33 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
       const id = String(l.id ?? `layer_${idx}`);
       const zIndex = typeof l.zIndex === 'number' ? l.zIndex : idx;
       const parallax = typeof l.parallax === 'number' ? (l.parallax as number) : undefined;
-      // Layer-specific w/h override; otherwise use the level's mapSize.
-      const layerW =
-        typeof l.width === 'number' && (l.width as number) > 0
-          ? (l.width as number)
-          : mapW;
-      const layerH =
-        typeof l.height === 'number' && (l.height as number) > 0
-          ? (l.height as number)
-          : mapH;
-      out.push({ id, relPath: img, zIndex, parallax, width: layerW, height: layerH });
+      const repeatX = l.repeatX === true;
+      const explicitW = typeof l.width === 'number' && (l.width as number) > 0
+        ? (l.width as number)
+        : undefined;
+      const explicitH = typeof l.height === 'number' && (l.height as number) > 0
+        ? (l.height as number)
+        : undefined;
+      // Width/height = the extent the layer covers (always mapSize-aligned
+      // so editor coords line up with Play). For tileable layers, the PNG
+      // is smaller than the extent — the editor tiles it. tileW/tileH carry
+      // the actual tile dimensions when explicitly declared in JSON;
+      // otherwise the editor falls back to the PNG's natural size.
+      const layerW = repeatX ? mapW : (explicitW ?? mapW);
+      const layerH = repeatX ? mapH : (explicitH ?? mapH);
+      const tileW = repeatX ? explicitW : undefined;
+      const tileH = repeatX ? explicitH : undefined;
+      out.push({
+        id,
+        relPath: img,
+        zIndex,
+        parallax,
+        width: layerW,
+        height: layerH,
+        repeatX,
+        tileW,
+        tileH,
+      });
       referenced.add(img);
     });
     if (out.length > 0) {
