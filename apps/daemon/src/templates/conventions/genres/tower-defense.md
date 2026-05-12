@@ -8,6 +8,31 @@ Kingdom Rush, Bloons-style. Path-based enemy waves, grid tower placement, single
 
 This file assumes you've read `runtime-patterns.md` (delta time, AABB, FSM, **object pooling** for projectiles).
 
+## Generation procedure — view_image + skill call as paired tool_uses
+
+EVERY `generate2dmap` / `generate2dsprite` call MUST be preceded by `view_image` of the closest existing reference, in the SAME message. See `common.md` "Visual consistency" for the canonical pattern + reasoning.
+
+```
+Phase 2 (map background — single image with path painted in):
+  tool_use 1: view_image .ogf/style-anchor.png
+  tool_use 2: generate2dmap reference: 'generated_image'
+              prompt: "[STYLE...] [VIEW: top-down 3/4...] tower-
+                       defense map background with the enemy path
+                       visibly drawn (cobblestone road / dirt
+                       trail) following these waypoints: ..."
+
+Phase 3+ (towers, enemies — reference anchor for first; reference prior tower for tower family):
+  tool_use 1: view_image .ogf/style-anchor.png    ← first tower
+              (or assets/sprites/towers/archer/sprite.png ← later towers, same family)
+  tool_use 2: generate2dsprite reference: 'generated_image'
+```
+
+Skipping view_image → blind generation → degenerate output, towers don't share a visual family, enemies clash with map palette.
+
+### Process strategy for tower / enemy / boss action sheets
+
+When you run `scripts/generate2dsprite.py process` on tower / enemy / boss sheets, use **`--scale-strategy preserve --align feet`** for ALL their actions. Same tower / enemy = same strategy across every sheet. `fit` is for: projectiles (arrows, cannon balls, magic bolts), hit-spark / impact FX, UI sprites. See `common.md` and `generate2dsprite/SKILL.md` for the full rule.
+
 ## Level data — hybrid: grid + polyline path
 
 TD doesn't fit Tiled/LDtk well — the path is a graph, not tiles. Use custom JSON:
@@ -148,6 +173,54 @@ data/
 4. **Tower placement allowing overlap** — always check `buildSpots[].allowed` AND that the spot is unoccupied.
 5. **Background image dim ≠ mapSize** — coordinate misalignment between Scene tab and Play tab.
 6. **Per-bullet `new Bullet()`** — GC stutter. Pool projectiles.
+
+## Recommended module split (tower defense)
+
+Per `common.md` "Module architecture (universal)", every project gets the universal modules. Tower defense adds these on top:
+
+| Module | Responsibility | Approx LOC |
+|---|---|---|
+| `src/path.js` | Polyline path interpolation, position-along-path, distance lookups | 100-200 |
+| `src/towers.js` | Tower placement / removal, target selection, fire timer per tower | 300-500 |
+| `src/projectiles.js` | Projectile spawn, travel, hit, AOE — pooled | 200-400 |
+| `src/enemies.js` | Enemy update along path, HP, contact damage at end, death payouts | 200-400 |
+| `src/waves.js` | Wave script: timed enemy spawns, between-wave pause, win at last wave clear | 150-300 |
+| `src/economy.js` | Gold, lives, build cost, sell value, between-wave income | 100-200 |
+| `src/build-mode.js` | Cursor follow, valid-tile highlighting, place/sell/upgrade UI | 200-400 |
+| `src/hud.js` | Gold / lives / wave counter / next-wave button | 150-250 |
+
+Total per-project: ~14-19 src files, 2,000-3,500 LOC.
+
+Genre-specific config files:
+
+| File | Holds |
+|---|---|
+| `data/tower-stats.json` | Per-tower: cost, damage, range, fire-rate, AOE radius, upgrade tree |
+| `data/enemy-stats.json` | Per-enemy: HP, speed, gold-on-death, end-damage |
+| `data/wave-script.json` | Per-wave: spawn list, intervals, boss flag |
+| `data/economy-config.json` | Starting gold/lives, between-wave bonus, sell-back % |
+| `data/audio-config.json` | sfx tones |
+
+Identity files:
+
+| File | Holds |
+|---|---|
+| `data/levels.json` | Map registry |
+| `data/<level_id>.json` | Background, path waypoints, build slots, spawn point, end point |
+| `data/towers.json` | Tower catalog (id, name, sprite, base type) |
+| `data/enemies.json` | Enemy catalog (id, sprite, animations) |
+
+## Reference implementation
+
+OGF does not yet have a strong tower-defense reference project. **For Phase planning + module shape, use `D:/Sengoku-Era-ogf` as the architectural baseline** (state.js + config split + thin game.js + per-subsystem modules). Translate to TD:
+
+| Sengoku-Era-ogf module | TD equivalent |
+|---|---|
+| `src/battle.js` | `src/towers.js` + `src/projectiles.js` (continuous, real-time) |
+| `src/menu.js` | `src/build-mode.js` + `src/hud.js` |
+| `src/progression.js` | usually not needed (or `src/upgrades.js` for tower-tree upgrades) |
+| `src/overworld.js` | `src/path.js` + `src/enemies.js` (enemies follow path, no free movement) |
+| `data/battle-config.json` | `data/tower-stats.json` + `data/wave-script.json` + `data/economy-config.json` |
 
 ## Reference repos
 

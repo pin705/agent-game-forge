@@ -1,0 +1,41 @@
+{
+  "xp": {
+    "base": 5,
+    "linear": 3,
+    "powerScale": 2,
+    "exponent": 1.2
+  },
+  "mitamaGrowth": {
+    "evolved": {
+      "hp": 5.8,
+      "atk": 1.35,
+      "art": 1.45,
+      "guard": 1.05
+    },
+    "single": {
+      "hp": 4.4,
+      "atk": 1,
+      "art": 1.05,
+      "guard": 0.9
+    },
+    "formStage": {
+      "hp": 14,
+      "atk": 4,
+      "art": 4,
+      "guard": 3
+    }
+  },
+  "enemyGrowth": {
+    "capturableMultiplier": 0.92,
+    "hp": 5.2,
+    "atk": 1.05,
+    "art": 1.08,
+    "guard": 0.85
+  },
+  "grassLevel": {
+    "min": 2,
+    "max": 18,
+    "offsetMin": -1,
+    "offsetRange": 3
+  }
+}

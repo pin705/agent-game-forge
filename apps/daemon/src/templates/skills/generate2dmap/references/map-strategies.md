@@ -69,7 +69,7 @@ Then deliver platform tiles/objects, terrain chunks, hazards, doors, checkpoints
 
 Choose one `stage_canvas` before generation. The primary parallax plates, stage reference, and QA preview must share the same pixel dimensions, aspect ratio, camera framing, horizon, and top-left anchor. Default to the project camera aspect ratio; when unknown, use a 16:9 side-scroller canvas such as `1536x864`.
 
-For playable side-scrollers, also choose `stage_segment_count` before generation. Default to 2 camera-width segments for a normal playable level. Use 1 only for explicit one-screen rooms, boss arenas, fixed battle rooms, or background-only requests. Avoid one ultra-wide generated map image; use same-sized segments, loopable parallax plates, or per-segment parallax plates plus shared object metadata.
+For playable side-scrollers, also choose `stage_segment_count` before generation. **Default to 5 camera-width segments (≈5120px) for a normal playable level** — tileable parallax (1280×720 strips with `repeatX: true`) means longer levels carry no extra art cost. Use 1 only for explicit one-screen rooms, boss arenas, fixed battle rooms, or background-only requests; 3-4 for short side-quest levels; 6-8 for long story levels. Avoid one ultra-wide generated map image; keep parallax layers at 1280×720 and tile them via `repeatX: true` across the level width.
 
 For platformers and side-view action games, treat platforms as structural runtime geometry. The stable pattern is explicit platform rectangles or engine-native platform objects skinned by a shared platform strip/tile library. Use compact prop packs for decoration and small pickups, not for the main floors, ledges, bridges, walls, ladders, slopes, or long hazards.
 
@@ -165,7 +165,7 @@ A side-scroll stage should be long because its runtime object layout is long, no
 Default structure:
 
 - `stage_canvas`: one camera-sized canvas shared by primary parallax plates, stage references, and previews.
-- `stage_segment_count`: 2 by default for a normal playable side-scroller.
+- `stage_segment_count`: 5 by default for a normal playable side-scroller (≈5120px). 1 for boss/one-screen rooms, 3-4 short, 6-8 long.
 - `stage_length`: camera width multiplied by segment count, or the existing engine world width when present.
 - `segments`: predictable ids such as `segment-01` and `segment-02`, each with its own placement ranges and optional parallax plates.
 - `shared_platform_library`: platform strips, platform tiles, or terrain chunks used across all segments.

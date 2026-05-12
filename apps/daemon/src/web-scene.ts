@@ -19,7 +19,7 @@
 //     "props":      [ { "id", "image", "x", "y", "w", "h", "sortY"? } ]
 //   }
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type {
   ColliderRef,
@@ -95,6 +95,44 @@ function entryCenterPosition(entry: RectLike): Vec2 {
 
 const SINGLE_POINT_FIELDS = ['spawn', 'heroSpawn', 'playerSpawn', 'npc', 'boss', 'rest'] as const;
 
+/** Section names that have a 1:1 catalog file under `data/<section>.json`.
+ *  Matches the convention in side-scroll seed's `src/catalogs.js` — agent
+ *  may add more (e.g. weapons) but these are the universal set. */
+const CATALOG_SECTIONS = new Set([
+  'hazards',
+  'pickups',
+  'enemies',
+  'items',
+  'projectiles',
+  'doors',
+  'checkpoints',
+]);
+
+interface CatalogEntry {
+  id?: unknown;
+  sprite?: unknown;
+  animations?: Record<string, unknown>;
+  [k: string]: unknown;
+}
+
+/** Read a section's catalog file (e.g. data/hazards.json) once per loader
+ *  call. Returns null if the file is missing or malformed — call sites
+ *  should fall back to their non-catalog defaults. */
+function loadCatalogForSection(
+  rootAbs: string,
+  section: string,
+): CatalogEntry[] | null {
+  if (!CATALOG_SECTIONS.has(section)) return null;
+  try {
+    const abs = safeJoin(rootAbs, `data/${section}.json`);
+    if (!existsSync(abs)) return null;
+    const parsed = JSON.parse(readFileSync(abs, 'utf8'));
+    return Array.isArray(parsed) ? (parsed as CatalogEntry[]) : null;
+  } catch {
+    return null;
+  }
+}
+
 interface CollectImagesOpts {
   rootAbs: string;
   paths: Set<string>;
@@ -104,15 +142,84 @@ export function isWebLevelJson(content: string): boolean {
   try {
     const data = JSON.parse(content);
     if (!data || typeof data !== 'object') return false;
-    // mapSize is the strongest signal of a level file.
-    const sz = (data as Record<string, unknown>).mapSize as
-      | { width?: unknown; height?: unknown }
-      | undefined;
-    return !!sz && typeof sz.width === 'number' && typeof sz.height === 'number';
+    const obj = data as Record<string, unknown>;
+    // mapSize is necessary but not sufficient — collision-map sidecars
+    // also carry mapSize. A real level file ALSO carries at least one
+    // visible-content field. Without this extra check, opening a sidecar
+    // (data/<scene>-collision-map.json) in the editor produced an empty
+    // canvas because the loader returned a SceneModel with no bg / layers
+    // / props. (test-2drpg, 2026 — convention also tells the agent not
+    // to put mapSize in sidecars, but old projects + drift still hit it.)
+    const sz = obj.mapSize as { width?: unknown; height?: unknown } | undefined;
+    if (!sz || typeof sz.width !== 'number' || typeof sz.height !== 'number') {
+      return false;
+    }
+    const hasBackground =
+      typeof obj.background === 'string' || isPlainObject(obj.background);
+    const hasLayers = Array.isArray(obj.layers) && obj.layers.length > 0;
+    const hasProps = Array.isArray(obj.props) && obj.props.length > 0;
+    // A sidecar has blockers/walkable/walkBounds/zones but none of the above.
+    return hasBackground || hasLayers || hasProps;
   } catch {
     return false;
   }
 }
+
+/** Walk the named arrays in `data` and inject `id: "<section>_<idx>"` on
+ *  any entry missing one. Returns the list of arrays that were mutated
+ *  so the caller can decide whether to write the file back to disk.
+ *  Per common.md "JSON entry contract": every entry needs an id for OGF
+ *  editor writes to address it. Auto-injection is the safety net when
+ *  the agent forgot. */
+function autoInjectIds(
+  data: Record<string, unknown>,
+  arrayNames: readonly string[],
+): boolean {
+  let dirty = false;
+  for (const name of arrayNames) {
+    const arr = data[name];
+    if (!Array.isArray(arr)) continue;
+    let nextSeq = 0;
+    const used = new Set<string>();
+    for (const e of arr) {
+      if (e && typeof e === 'object' && !Array.isArray(e)) {
+        const id = (e as { id?: unknown }).id;
+        if (typeof id === 'string' && id) used.add(id);
+      }
+    }
+    arr.forEach((e, idx) => {
+      if (!e || typeof e !== 'object' || Array.isArray(e)) return;
+      const obj = e as Record<string, unknown>;
+      if (typeof obj.id === 'string' && obj.id) return; // already has id
+      // Find a unique synthetic id. Most arrays will collide-check trivially
+      // since other entries also lack ids, but if the user has a mix we
+      // still want uniqueness within the array.
+      let candidate = `${name}_${idx}`;
+      while (used.has(candidate)) {
+        candidate = `${name}_${idx}_${nextSeq++}`;
+      }
+      obj.id = candidate;
+      used.add(candidate);
+      dirty = true;
+    });
+  }
+  return dirty;
+}
+
+const LEVEL_ARRAYS_NEEDING_ID = [
+  'props',
+  'npcs',
+  'pickups',
+  'hazards',
+  'colliders',
+  'blockers',
+  'walkBounds',
+  'walkable',
+  'paths',
+  'spawn_points',
+];
+
+const SIDECAR_ARRAYS_NEEDING_ID = ['blockers', 'walkBounds', 'walkable'];
 
 export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneResponse {
   const abs = safeJoin(rootAbs, relPath);
@@ -123,6 +230,15 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
     data = JSON.parse(text);
   } catch (err) {
     throw new Error(`level JSON parse error: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Strategy 2 — auto-inject missing ids and persist. Side effect on
+  // first load of an agent-written file that omitted ids; subsequent
+  // loads see the ids and this is a no-op. Editor writers can then
+  // address every entry by id without the index-based fallback path.
+  if (autoInjectIds(data, LEVEL_ARRAYS_NEEDING_ID)) {
+    const eol = text.includes('\r\n') ? '\r\n' : '\n';
+    writeFileSync(abs, JSON.stringify(data, null, 2) + eol, 'utf8');
   }
 
   const props: SceneProp[] = [];
@@ -218,16 +334,33 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
       const id = String(l.id ?? `layer_${idx}`);
       const zIndex = typeof l.zIndex === 'number' ? l.zIndex : idx;
       const parallax = typeof l.parallax === 'number' ? (l.parallax as number) : undefined;
-      // Layer-specific w/h override; otherwise use the level's mapSize.
-      const layerW =
-        typeof l.width === 'number' && (l.width as number) > 0
-          ? (l.width as number)
-          : mapW;
-      const layerH =
-        typeof l.height === 'number' && (l.height as number) > 0
-          ? (l.height as number)
-          : mapH;
-      out.push({ id, relPath: img, zIndex, parallax, width: layerW, height: layerH });
+      const repeatX = l.repeatX === true;
+      const explicitW = typeof l.width === 'number' && (l.width as number) > 0
+        ? (l.width as number)
+        : undefined;
+      const explicitH = typeof l.height === 'number' && (l.height as number) > 0
+        ? (l.height as number)
+        : undefined;
+      // Width/height = the extent the layer covers (always mapSize-aligned
+      // so editor coords line up with Play). For tileable layers, the PNG
+      // is smaller than the extent — the editor tiles it. tileW/tileH carry
+      // the actual tile dimensions when explicitly declared in JSON;
+      // otherwise the editor falls back to the PNG's natural size.
+      const layerW = repeatX ? mapW : (explicitW ?? mapW);
+      const layerH = repeatX ? mapH : (explicitH ?? mapH);
+      const tileW = repeatX ? explicitW : undefined;
+      const tileH = repeatX ? explicitH : undefined;
+      out.push({
+        id,
+        relPath: img,
+        zIndex,
+        parallax,
+        width: layerW,
+        height: layerH,
+        repeatX,
+        tileW,
+        tileH,
+      });
       referenced.add(img);
     });
     if (out.length > 0) {
@@ -324,6 +457,68 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
     const arr = value as RectLike[];
     if (arr.length === 0) continue;
 
+    // Catalog-size fallback — pickups/enemies typically write
+    // `{type, x, y}` without explicit w/h because the runtime pulls
+    // size from `data/<section>.json` at load time. Compute effective
+    // (w, h) so the editor can show + resize those entries; without
+    // this they'd be filtered out (no w/h) and silently invisible.
+    const sectionCatalog = loadCatalogForSection(rootAbs, section);
+    function catalogSizeFor(entry: RectLike): { w: number; h: number } | null {
+      const type = (entry as { type?: unknown }).type;
+      if (typeof type !== 'string' || !sectionCatalog) return null;
+      const hit = sectionCatalog.find((c) => c?.id === type);
+      const sz = (hit as { size?: unknown } | undefined)?.size;
+      if (!sz || typeof sz !== 'object') return null;
+      const w = Number((sz as { w?: unknown }).w);
+      const h = Number((sz as { h?: unknown }).h);
+      return Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0
+        ? { w, h }
+        : null;
+    }
+    function effectiveSize(entry: RectLike): { w: number; h: number } | null {
+      if (
+        typeof entry?.w === 'number' &&
+        typeof entry?.h === 'number' &&
+        entry.w > 0 &&
+        entry.h > 0
+      ) {
+        return { w: entry.w, h: entry.h };
+      }
+      return catalogSizeFor(entry);
+    }
+    /** Pull `hitbox: {w,h,offsetX?,offsetY?}` from the entry first, then
+     *  fall back to the catalog. Centered within the visual rect at the
+     *  editor + runtime — see SceneProp.hitbox docstring. */
+    function effectiveHitbox(
+      entry: RectLike,
+    ): { w: number; h: number; offsetX?: number; offsetY?: number } | null {
+      const fromEntry = (entry as { hitbox?: unknown }).hitbox;
+      const sources: unknown[] = [fromEntry];
+      if (sectionCatalog) {
+        const type = (entry as { type?: unknown }).type;
+        if (typeof type === 'string') {
+          const hit = sectionCatalog.find((c) => c?.id === type);
+          sources.push((hit as { hitbox?: unknown } | undefined)?.hitbox);
+        }
+      }
+      for (const src of sources) {
+        if (!src || typeof src !== 'object') continue;
+        const obj = src as { w?: unknown; h?: unknown; offsetX?: unknown; offsetY?: unknown };
+        const w = Number(obj.w);
+        const h = Number(obj.h);
+        if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) continue;
+        const ox = Number(obj.offsetX);
+        const oy = Number(obj.offsetY);
+        return {
+          w,
+          h,
+          offsetX: Number.isFinite(ox) ? ox : undefined,
+          offsetY: Number.isFinite(oy) ? oy : undefined,
+        };
+      }
+      return null;
+    }
+
     // An entry is editable if it has at minimum a position + size rect.
     // Image is OPTIONAL — entries without image (e.g. platforms[] with
     // collision-only kind: 'earth_rampart') still render as outlined
@@ -333,10 +528,7 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
       (e) =>
         typeof e?.x === 'number' &&
         typeof e?.y === 'number' &&
-        typeof e?.w === 'number' &&
-        typeof e?.h === 'number' &&
-        Number(e.w) > 0 &&
-        Number(e.h) > 0,
+        effectiveSize(e) !== null,
     );
     if (editable.length === 0) continue;
     if (editable.length * 2 < arr.length) continue;
@@ -400,8 +592,37 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
       return null;
     }
 
+    // Catalog fallback — hazards/pickups/enemies (and similar) carry
+    // `type: "<catalog_id>"` referencing data/<section>.json. The runtime
+    // resolves type → catalog.sprite via byId(); the editor needs the same
+    // resolution or it draws an empty outlined rect.
+    function pickImageFromCatalog(entry: RectLike): string | null {
+      const type = (entry as { type?: unknown }).type;
+      if (typeof type !== 'string') return null;
+      const catalog = loadCatalogForSection(rootAbs, section);
+      if (!catalog) return null;
+      const hit = catalog.find((c) => c?.id === type);
+      if (!hit) return null;
+      // Catalogs typically use `sprite` (single image) or
+      // `animations.<name>.sprite` (animated). Take sprite first, else fall
+      // back to the first animation frame the agent registered. The
+      // sprite-forge skill writes sheets at `assets/sprites/<kind>/sheet-transparent.png`
+      // which is what the runtime uses; we hand that to the editor too.
+      const trim = (s: string) => s.replace(/^\.?\//, '');
+      if (typeof hit.sprite === 'string') return trim(hit.sprite);
+      if (hit.animations && typeof hit.animations === 'object') {
+        for (const anim of Object.values(hit.animations)) {
+          if (anim && typeof anim === 'object') {
+            const sp = (anim as { sprite?: unknown }).sprite;
+            if (typeof sp === 'string') return trim(sp);
+          }
+        }
+      }
+      return null;
+    }
+
     editable.forEach((p, idx) => {
-      const direct = pickImagePath(p);
+      const direct = pickImagePath(p) ?? pickImageFromCatalog(p);
       const tileKey = (p as { tile?: unknown }).tile;
       const libEntry = direct ? null : resolveLibraryEntry(tileKey);
       const tilePieces = buildTilePieces(libEntry);
@@ -420,8 +641,11 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
       // Texture is the renderer's primary image — use the entry's mid as a
       // safe fallback so existing single-img branches still draw something.
       const image = direct ?? tilePieces?.mid.image ?? null;
-      const w = Number(p.w);
-      const h = Number(p.h);
+      // Effective size = entry.w/h when present, else catalog.size.w/h
+      // (pickups/enemies often omit w/h since runtime reads from catalog).
+      const eff = effectiveSize(p) ?? { w: 0, h: 0 };
+      const w = eff.w;
+      const h = eff.h;
       const id = String(p.id ?? `${section}_${idx}`);
       if (image) referenced.add(image);
       if (tilePieces?.left?.image) referenced.add(tilePieces.left.image);
@@ -432,6 +656,7 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
       if (typeof p.sortY === 'number') meta.sortY = String(p.sortY);
       if (typeof p.kind === 'string') meta.kind = p.kind as string;
       if (typeof p.type === 'string') meta.type = p.type as string;
+      const hitbox = effectiveHitbox(p) ?? undefined;
       props.push({
         nodePath: `${section}/${id}`,
         name: id,
@@ -444,6 +669,7 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
         ref: { backend: 'json', relPath, section, id },
         renderMode,
         tilePieces,
+        hitbox,
       });
     });
   }
@@ -550,6 +776,103 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
     });
   });
 
+  // ---- Sidecar collision data (Sengoku top-down RPG pattern) ----
+  //
+  // Top-down RPG levels often store the bulk of collision in a separate
+  // file referenced by `collisionSource: "data/<scene>-collision-map.json"`.
+  // The runtime loads it at scene-enter time; without ALSO loading it
+  // here, the editor's Colliders + Zones tabs would silently miss every
+  // entry the agent wrote to the sidecar (rpg-gogogo, 2026 — user saw a
+  // green walkable polygon in Play but nothing in the editor's zones
+  // tab because walkBounds lives in the sidecar, not the main level).
+  //
+  // Each sidecar entry's ColliderRef points at the SIDECAR path (not the
+  // level), so subsequent move/resize ops write back to the right file
+  // and stay consistent with what the runtime reads.
+  const collisionSource =
+    typeof data.collisionSource === 'string' ? (data.collisionSource as string) : '';
+  if (collisionSource) {
+    const sidecarRel = collisionSource.replace(/^\.?\//, '');
+    const sidecarAbs = safeJoin(rootAbs, sidecarRel);
+    if (existsSync(sidecarAbs)) {
+      try {
+        const sidecarText = readFileSync(sidecarAbs, 'utf8');
+        const sidecar = JSON.parse(sidecarText) as Record<string, unknown>;
+
+        // Strategy 2 — auto-inject ids into sidecar entries that omit
+        // them, then persist. Subsequent loads see the ids and this is
+        // a no-op; editor writers find each entry by its real id.
+        // The `__i<n>` synthetic-id fallback in writers stays in place
+        // as a safety net (covers files that fail to write back, etc.)
+        // but normally won't fire after the first load of an agent file.
+        if (autoInjectIds(sidecar, SIDECAR_ARRAYS_NEEDING_ID)) {
+          const eol = sidecarText.includes('\r\n') ? '\r\n' : '\n';
+          writeFileSync(sidecarAbs, JSON.stringify(sidecar, null, 2) + eol, 'utf8');
+        }
+
+        const sidecarBlockers = Array.isArray(sidecar.blockers)
+          ? (sidecar.blockers as RectLike[])
+          : [];
+        sidecarBlockers.forEach((b, idx) => {
+          const shape = inferShapeFromEntry(b);
+          if (!shape) return;
+          const id = typeof b.id === 'string' && b.id ? b.id : `__i${idx}`;
+          const ref: ColliderRef = {
+            backend: 'json',
+            relPath: sidecarRel,
+            section: 'blockers',
+            id,
+          };
+          colliders.push({
+            uid: `web:sidecar-blockers:${id}`,
+            ref,
+            name: typeof b.tag === 'string' ? (b.tag as string) : id,
+            kind: 'blocker',
+            position: entryCenterPosition(b),
+            shape,
+            editable: shape.kind !== 'polygon',
+          });
+        });
+
+        // walkBounds and walkable both exist in some sidecars (agent
+        // duplicates them for safety). Treat both as walkable zones —
+        // the editor shows them in the zones tab with neutral coloring.
+        for (const fieldName of ['walkBounds', 'walkable'] as const) {
+          const arr = Array.isArray(sidecar[fieldName])
+            ? (sidecar[fieldName] as RectLike[])
+            : [];
+          arr.forEach((b, idx) => {
+            const shape = inferShapeFromEntry(b);
+            if (!shape) return;
+            const id = typeof b.id === 'string' && b.id ? b.id : `__i${idx}`;
+            const ref: ColliderRef = {
+              backend: 'json',
+              relPath: sidecarRel,
+              section: fieldName,
+              id,
+            };
+            zones.push({
+              uid: `web:sidecar-${fieldName}:${id}`,
+              ref,
+              name: typeof b.tag === 'string' ? (b.tag as string) : id,
+              zoneKind: 'unknown',
+              position: entryCenterPosition(b),
+              shape,
+              fields: { kind: 'walkable', source: 'sidecar' },
+              editable: shape.kind !== 'polygon',
+            });
+          });
+        }
+      } catch {
+        // Sidecar exists but failed to parse — surface as a note so the
+        // user sees something visible in the editor.
+        notes.push(
+          `collisionSource ${sidecarRel} failed to parse — colliders + walkBounds from the sidecar will not appear in the editor.`,
+        );
+      }
+    }
+  }
+
   // ---- Zones (named rect) ----
   const rawZones = isPlainObject(data.zones) ? (data.zones as Record<string, RectLike>) : null;
   if (rawZones) {
@@ -570,7 +893,9 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
         position: entryCenterPosition(z),
         shape,
         fields: {},
-        editable: false, // dict-keyed zones need a dedicated writer (later)
+        // Editable since dict-keyed writer (applyJsonDictKeyedEdit) landed.
+        // ref.section is `zones.<id>` so the writer knows the parent + key.
+        editable: true,
       });
     }
   }
@@ -596,7 +921,10 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
           ? { kind: 'circle', r: Number(ex.interactRadius) }
           : { kind: 'point' },
         fields: targetField ? { target: targetField } : {},
-        editable: false, // dict-keyed; needs dedicated writer later
+        // Editable: move works for point + circle; resize works for circle
+        // (writes both `radius` and `interactRadius` so the runtime field
+        // gets updated whichever name it expects).
+        editable: true,
       });
     }
   }
@@ -674,6 +1002,20 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
     }
   }
 
+  // collidersJsonPath drives where the editor's "+ rect / + circle /
+  // + poly" tools write NEW colliders. When the level has a sidecar, the
+  // agent's convention is to put blockers there — so new editor-drawn
+  // colliders should join the sidecar too. Without this, new colliders
+  // would land in the main level JSON while existing ones live in the
+  // sidecar, producing inconsistent collision data on the next reload.
+  const sidecarRelForRoute =
+    typeof data.collisionSource === 'string'
+      ? (data.collisionSource as string).replace(/^\.?\//, '')
+      : '';
+  const sidecarExists =
+    sidecarRelForRoute.length > 0 && existsSync(safeJoin(rootAbs, sidecarRelForRoute));
+  const collidersJsonPathFinal = sidecarExists ? sidecarRelForRoute : relPath;
+
   const scene: SceneModel = {
     scenePath: relPath,
     rootName: typeof data.id === 'string' ? data.id : path.posix.basename(relPath, '.json'),
@@ -681,7 +1023,7 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
     layers,
     props,
     colliders,
-    collidersJsonPath: relPath,
+    collidersJsonPath: collidersJsonPathFinal,
     zones,
     zonesJsonPath: relPath,
     paths: scenePaths,

@@ -29,7 +29,7 @@ Use `map_mode` as the first decision. It is a product-level preset that chooses 
 
 - `tile_mode`: editable tile/grid maps for RPGs, monster-taming games, platformers, tactical maps, factory games, and engines/editors that already use tiles. Default axes: `tilemap` or `layered_tilemap` + `interactive_scene_objects + scene_hooks` + `tile_collision + trigger_zones`.
 - `scene_mode`: base map plus separate props for tower defense, survivors-like arenas, cozy demos, top-down adventure scenes, and visual showcase maps. Default axes: `layered_raster` + `separate_props` or `y_sorted_props + interactive_scene_objects + scene_hooks` + `precise_shapes + trigger_zones`.
-- `side_scroll_mode`: parallax side-scroller stages for action platformers, runners, Metroidvania rooms, side-view shooters, and beat-em-up stages. Default axes: `parallax_layers` + `platform_objects + interactive_scene_objects + foreground_occluders + scene_hooks` + `precise_shapes`.
+- `side_scroll_mode`: parallax side-scroller stages for action platformers, runners, Metroidvania rooms, side-view shooters, and beat-em-up stages. Default axes: `parallax_layers` + `platform_objects + interactive_scene_objects + foreground_occluders + scene_hooks` + `precise_shapes`. **Parallax layers MUST be 1280×720 tileable strips with magenta-bg transparency for far/mid/near layers (sky stays opaque)** — see "Parallax layer authoring" section below and `recipes/side-scroll/parallax-layers.md`.
 - `grid_mode`: rule-heavy grid scenes for tactical RPGs, factory/automation games, board/card battlers, build grids, and terrain-cost maps. Default axes: `layered_tilemap` or `tilemap` + `interactive_scene_objects + scene_hooks` + `tile_collision` or grid metadata.
 - `room_chunk_mode`: modular rooms/chunks for roguelikes, Metroidvania rooms, dungeon rooms, and procedural level assembly. Default axes: `layered_tilemap` or `parallax_layers` or `layered_raster` + object layers + exits/connection metadata + collision.
 - `baked_scene_mode`: fixed battle backgrounds, title/menu screens, boss-room concept art, visual novel scenes, point-and-click backgrounds, or other explicitly flat/non-editable scenes. Default axes: `baked_raster` + `none` or `coarse_shapes`.
@@ -90,6 +90,27 @@ The base/background/foundation layer must not contain runtime-controlled objects
 
 If a generated base/background already contains those runtime objects, do not use it as the runtime base. Regenerate a cleaner foundation-only base or demote that image to a concept/reference artifact. The next in-world reference mockup is where proposed objects may appear, and the final runtime must still use separate generated props, platform objects, object layers, tile layers, collision, zones, and scene-hook metadata as appropriate.
 
+## Base/Foundation prompt — MANDATORY exclusion clause
+
+> ⚠️ Recurring failure: agents read the spec's level description ("village with shrine gate, trainer house, wild-spirit grass, dojo entrance"), copy the whole sentence into the base prompt, and the model dutifully renders shrines + houses + dojos + grass into the BASE — defeating the entire 3-step pipeline. The reference step then produces a near-identical image because there is nothing left to add.
+
+Every base/foundation prompt for a playable map (top-down RPG base, scene_mode base, side_scroll background plate, tile_mode foundation tiles) MUST include this exclusion clause **verbatim** at the end of the prompt:
+
+> EXCLUSION CLAUSE — Foundation-only terrain. The output must contain ONLY ground materials (paths, grass, water, cliffs, sand, stone floor, dirt, snow, tatami flooring, wooden floor, etc.). NO buildings, NO houses, NO shrines, NO dojos, NO temples, NO gates, NO doors, NO fences, NO walls (except natural terrain edges like cliff faces), NO lanterns, NO banners, NO altars, NO statues, NO trees (texture only, not standalone tree props), NO bushes, NO crates, NO signs, NO weapon racks, NO furniture, NO interior fixtures, NO NPCs, NO characters, NO actors, NO pickups, NO chests, NO movable objects of any kind. If the scene requires those, they are added later in the reference step — leave their footprint as empty terrain (e.g. an empty paved courtyard where a dojo will be placed; an empty grass clearing where a shrine will be placed).
+
+Before sending the prompt, scan it for these words:
+**building / house / shrine / dojo / temple / gate / door / fence / wall / lantern / banner / altar / statue / tree / bush / crate / sign / weapon rack / table / chair / npc / character**.
+
+If any appear in your prompt's *positive description* (not inside the EXCLUSION CLAUSE), STOP. Move them to a separate "props to place in reference step" list and rewrite the base prompt with empty-footprint phrasing ("paved courtyard area", "open clearing", "stone plaza").
+
+### Verification after base generation
+
+If after generation the base image visibly contains buildings or props the runtime should control: **regenerate**. Do not proceed to the reference step on a contaminated base — the reference step cannot un-add what is baked into the base, and it will produce a near-duplicate.
+
+### Verification after reference generation
+
+The reference image MUST be visually distinct from the base (it should have all the props composited on top). Quick check: byte-compare base.png and reference.png. If identical: the reference step was skipped or no-op'd. Redo the reference step with `view_image base.png` + an explicit "ADD the following props on top of the loaded base: [prop list with positions]" prompt.
+
 ## Parameter Contract
 
 User-facing parameters may be stated in natural language:
@@ -116,7 +137,7 @@ When unspecified:
 - Use `scene_mode` for tower defense, survivors-like, cozy/top-down showcase maps, and base-map-plus-props requests.
 - Use `side_scroll_mode` for side-scrollers, platformers, runners, side-view action, brawlers, Metroidvania side rooms, Mega Man-like, Castlevania-like, Contra-like, and parallax background requests.
 - For `side_scroll_mode`, choose a canonical `stage_canvas` before image generation. Use the project camera/viewport aspect when available; otherwise default to a 16:9 side-scroller canvas such as `1536x864`. All primary parallax plates, stage references, and previews must preserve this same size/aspect.
-- For playable `side_scroll_mode`, choose `stage_segment_count` before image generation. Default to 2 camera-width segments for a normal playable scrolling level. Use 1 only for explicit one-screen rooms, boss arenas, title-like scenes, or fixed battle rooms; use 3 or more only when the user asks for a longer stage or the existing game already has that scope.
+- For playable `side_scroll_mode`, choose `stage_segment_count` before image generation. **Default to 5 camera-width segments (5120px) for a normal playable scrolling level** — tileable parallax layers (1280×720 with `repeatX: true`) decouple level length from art cost, so short levels are no longer cheaper. Use 1 only for explicit one-screen rooms, boss arenas, title-like scenes, or fixed battle rooms; 3-4 for short side-quest levels; 6-8 for long story levels.
 - For playable `side_scroll_mode`, default `platform_strategy` to `platform_rects_with_shared_tiles`: write platform rectangles or engine-native platform objects as the gameplay source of truth, then skin them with a shared generated platform tile/strip library. Do not rely on a generated background or generic prop pack for platform shape.
 - Use `grid_mode` for tactical RPGs, factory/automation maps, board/card battlers, build grids, and terrain-cost maps.
 - Use `room_chunk_mode` for modular rooms, roguelike rooms, procedural room assembly, or Metroidvania room-chunk planning.
@@ -245,6 +266,47 @@ Reference-only output is incomplete for any playable map, layered map with props
 
 For prop packs or object packs generated after a reference mockup, the prompt must be derived from the visible reference mockup and original base/background, not from memory or filenames. It should list the exact objects being generated and preserve the art style, lighting, perspective, and scale cues from the original base/background.
 
+## Parallax layer authoring (side-scroll)
+
+When `map_mode: side_scroll_mode` produces `parallax_layers`, generate each layer as a 1280×720 (or 1664×720 — must be ÷16 for gpt-image-2) **tileable strip**, NOT a single full-mapSize-wide image. The runtime tiles each layer horizontally via `repeatX: true` to fill any level width, so generation cost stays bounded regardless of how long the level is.
+
+**Per-layer contract** — 4 layers minimum:
+
+| Layer | Size | Opacity | Magenta? | parallax | Content |
+|---|---|---|---|---|---|
+| `sky` | 1280×720 | OPAQUE | NO — prompt explicitly forbids magenta | 0.02-0.06 | clouds, gradient, stars, sunset |
+| `far_bg` | 1280×720 | TRANSPARENT above silhouette | YES — entire frame outside silhouette = #FF00FF | 0.15-0.25 | distant mountains / city horizon |
+| `mid_bg` | 1280×720 | TRANSPARENT outside silhouette | YES — same convention | 0.40-0.55 | mid-distance buildings / trees |
+| `near_bg` | 1280×720 | TRANSPARENT outside silhouette | YES — same convention | 0.75-0.95 | foreground silhouettes / grass / fence |
+
+**Why magenta for far/mid/near**: 4 stacked opaque images = only the top one (near_bg) shows. Parallax depth requires the upper layers to be transparent above their silhouette line so the layers BEHIND show through.
+
+**Tileable requirement**: leftmost pixel column must visually match rightmost pixel column so the image tiles seamlessly as the camera scrolls. Tile-seam stringency is proportional to parallax speed: near_bg seams will be obvious; sky seams almost never are.
+
+**Post-processing each layer**:
+
+```bash
+# For far/mid/near (default — chroma-key magenta to transparent):
+python .agents/skills/generate2dmap/scripts/process_parallax_layer.py \
+  --input <raw image_gen output path> \
+  --output assets/maps/<level_id>/<layer_id>.png
+
+# For sky (no chroma-key — keep opaque):
+python .agents/skills/generate2dmap/scripts/process_parallax_layer.py \
+  --input <raw image_gen output path> \
+  --output assets/maps/<level_id>/sky.png \
+  --keep-magenta
+```
+
+The script:
+1. Resizes raw image_gen output (typically 1672×941) to 1280×720 via LANCZOS — clean 16:9 → 16:9 downscale, no aspect distortion.
+2. (Unless `--keep-magenta`) chroma-keys magenta pixels + flood-fills the magenta fringe so anti-aliasing doesn't leave pink edges.
+3. Diagnostic: prints left-vs-right edge color distance so the agent can detect non-tileable output and regenerate if needed.
+
+**For prompts + complete recipe**, see `.ogf/recipes/side-scroll/parallax-layers.md`.
+
+> ⚠️ **DO NOT** generate a single 5120×720 (or any full-mapSize-wide) parallax layer. The raw image_gen output is ~1672×941 — upscaling to 5120 produces blurry, aspect-distorted images. ALWAYS tile via repeatX from a 1280-wide native source. (test-2d-scroll-game, 2026.)
+
 ## Side-Scroll Stage Segments
 
 Playable side-scroll stages should be planned as camera-width segments, not as one huge generated map image. This keeps image generation readable while allowing the runtime level to be longer than a single picture.
@@ -252,7 +314,7 @@ Playable side-scroll stages should be planned as camera-width segments, not as o
 Default contract:
 
 - Use one `stage_canvas` for every segment, primary parallax plate, stage reference, stage preview, and normalization target.
-- Use `stage_segment_count: 2` by default for a normal playable platformer or action side-scroller. Use `1` only for explicit one-screen rooms, boss arenas, fixed battle rooms, or background-only requests.
+- Use `stage_segment_count: 5` by default for a normal playable platformer or action side-scroller (5120px ≈ 4 viewport-widths of scrolling play). Tileable parallax layers tile via `repeatX: true` so longer levels carry no extra art cost. Use `1` only for explicit one-screen rooms, boss arenas, fixed battle rooms, or background-only requests; use 3-4 for short side-quest levels and 6-8 for long story levels.
 - Compute `stage_length` from the engine camera width and segment count, or from the existing project coordinate system when available.
 - Name segment files predictably, such as `segment-01`, `segment-02`, and keep each segment aligned to the same top-left camera frame.
 - Generate either per-segment parallax plates or loopable parallax plates, but record the choice in metadata. Do not mix image sizes or aspect ratios across segments.
@@ -287,9 +349,9 @@ Do not put platform strips, floors, ledges, bridges, ladders, walls, slopes, lon
 For playable side-view scrolling/action maps, an in-world stage reference mockup is mandatory before generating final scene objects or scene metadata. This applies across art styles and game styles, including pixel art, clean HD, side-scrollers, platformers, runners, shooters, brawlers, scrolling combat stages, and Megaman-like or Castlevania-like stages:
 
 0. Choose and record one `stage_canvas`, for example `1536x864` for a default 16:9 HD side-scroller when the project has no explicit camera size. Choose and record `stage_segment_count` before art generation. All primary parallax layers, stage references, and stage previews must share this exact size unless a layer is explicitly marked as a repeatable strip.
-   - For normal playable platformer/action stages, default to `stage_segment_count: 2`. This means at least two camera-width segments that share one platform/object art library.
-   - Use `stage_segment_count: 1` only for explicit one-screen rooms, boss arenas, fixed battle rooms, or background-only requests.
-   - Do not make a longer level by asking for one ultra-wide generated painting. Keep each generated segment at `stage_canvas` size and assemble the runtime stage from segments plus object metadata.
+   - For normal playable platformer/action stages, default to `stage_segment_count: 5` (≈5120px / 4 viewport-widths of scrolling play). Tileable parallax (1280×720 strips with `repeatX: true`) makes longer levels free; the old default of 2 was set when each segment needed its own background.
+   - Use `stage_segment_count: 1` only for explicit one-screen rooms, boss arenas, fixed battle rooms, or background-only requests. Use 3-4 for short side-quest levels; 6-8 for long story levels.
+   - Do not make a longer level by asking for one ultra-wide generated painting. Parallax layers are always **1280×720 tileable strips** (per the side-scroll genre convention) — the runtime tiles them across `mapSize.width` via `repeatX: true`. Platform/prop libraries stay shared across segments.
 1. Generate named parallax scenery layers as separate runtime images: `assets/map/<name>-sky.png`, `assets/map/<name>-far-bg.png`, `assets/map/<name>-mid-bg.png`, `assets/map/<name>-near-bg.png`, and optional `assets/map/<name>-foreground-overlay.png`.
 - These layers are scenery only, not playable foreground. They may contain sky, clouds, mountains, distant buildings, distant castle walls, silhouettes, atmosphere, and non-colliding far depth.
 - Do not collapse these layers into only `assets/map/<name>-background.png` for a playable `side_scroll_mode` stage. A single scenery background is allowed only when the user explicitly requests a flat/non-parallax background; in that case still continue with stage reference, separate objects, collision, camera bounds, and QA preview.
@@ -351,7 +413,7 @@ For a playable side-view scrolling/action stage:
 
 - image-generated parallax scenery layers such as `assets/map/<name>-sky.png`, `assets/map/<name>-far-bg.png`, `assets/map/<name>-mid-bg.png`, `assets/map/<name>-near-bg.png`, and optional `assets/map/<name>-foreground-overlay.png`
 - one recorded `stage_canvas` shared by the primary parallax layers, `stage-reference`, and `stage-preview`
-- one recorded `stage_segment_count` and `stage_length`; default to at least 2 camera-width segments for a normal playable scrolling level
+- one recorded `stage_segment_count` and `stage_length`; default to 5 camera-width segments (5120px) for a normal playable scrolling level
 - per-segment parallax layer metadata or loopable parallax metadata, with consistent dimensions and anchors
 - `assets/map/<name>-background.prompt.txt` and prompt files/manifests for other generated visual assets
 - `assets/map/<name>-stage-reference.png` as an in-world reference mockup for platform/object placement

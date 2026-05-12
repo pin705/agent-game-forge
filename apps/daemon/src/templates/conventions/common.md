@@ -38,6 +38,65 @@ These get decided at `generate2dmap` / `generate2dsprite` invocation time. Letti
 
 If the user explicitly requests a number ("I want 8-frame walk"), record it in spec section 2 as `walk frames: 8 (user-specified)` — but structural decisions stay with the skill defaults unless overridden.
 
+### Phase plan — expand multi-step pipelines per scene
+
+> ⚠️ Recurring failure: spec writer reads a genre file's pipeline phases ("Phase 2 = base, Phase 3 = reference, Phase 4..N = props") as **abstract pipeline labels**, then for an N-scene project writes "Phase 2 = scene_A base, Phase 3 = scene_B base" — collapsing N scenes into N base phases and skipping reference + props entirely. The agent dutifully generates clean bases, then moves to level data because reference + props phases are not in the plan. test-2d-rpg4 hit exactly this.
+
+When the genre file describes a multi-step pipeline (top-down-rpg image-bg, side-scroll parallax segments, etc.), **expand it per scene/level** in spec.md §7:
+
+- N scenes × M pipeline steps = N×M visual phases (plus 1 anchor + 1 wiring)
+- Do NOT flatten to "Phase A: scene_1 step_1, Phase B: scene_2 step_1" and stop there
+- Per-scene grouping: keep all of one scene's pipeline steps adjacent (scene_A base → scene_A reference → scene_A props → scene_B base → scene_B reference → scene_B props), so a phase failure can resume from the broken scene without redoing earlier scenes
+
+See the genre file's "Spec phase-plan expansion" section (e.g. `top-down-rpg.md`) for the exact pattern + examples for that genre.
+
+### Phase plan — split character + system phases (NOT one mega-phase)
+
+> ⚠️ Recurring failure: 2DGAMERPG2 (2026) — spec writer compressed the entire post-visuals plan into 4 phases. Phase 5 was "summoner sprites + movement + collision + Y-sort + camera + interaction + altar trigger". Phase 7 was "enemy sprites + grass encounter RNG + turn-based battle + commands + HP UI + Command Seal capture" — half the game in one phase. Outcomes: (1) daemon stall watchdog (5 min no stdout) kills the run mid-phase, (2) view_image reference chain breaks across 6+ sequential gen calls in one phase, (3) failure recovery is messy because the system is half-wired. Each compressed phase wastes 30-90 minutes when it fails.
+
+**Phase granularity rules** (apply alongside the per-scene expansion rule above):
+
+1. **One sprite-gen group ≠ one system-wire group.** Generating 6 sprite sheets is one phase's worth; wiring movement + collision + camera + interaction is another phase's worth. Combining them creates phases that are too long to verify and too risky to retry.
+
+2. **Each major character family gets its own phase for sprite gen.** Player avatar, starter trio, enemy roster, boss — each is a separate sprite-only phase. The wiring for that character (controller, AI, battle stats) goes in a follow-up phase.
+
+3. **Each system gets at least one dedicated phase.** Movement, collision, camera, interaction, dialogue, menu, save, battle FSM, encounter RNG, capture, HP UI, win/loss flow — these are separate concerns. Putting "battle FSM + encounter RNG + HP UI + capture" in one phase is the canonical anti-pattern. Each of those is one phase.
+
+4. **Verify boundaries are short**: 1 phase ≈ "user can verify ONE specific thing in Play tab or Scenes tab in under 30 seconds." If your VERIFY line lists 4+ outcomes, the phase is too big — split it.
+
+5. **Heuristic phase counts** (top-down RPG with 1 level, 1 player, 3 starters, 1 wild enemy, 1 boss):
+   - Anchor + maps + props extraction: ~4 phases (covered by the per-scene expansion rule above)
+   - Player sprite gen: 1 phase
+   - Player overworld controller (movement + collision + camera): 1 phase
+   - Interaction + dialogue + altar trigger: 1 phase
+   - Starter sprite gen (3 spirits × idle/attack): 1-2 phases (split if 6+ sheets)
+   - Starter selection menu + heroes.json wiring: 1 phase
+   - Wild enemy sprite gen: 1 phase
+   - Encounter RNG + grass zone trigger: 1 phase
+   - Battle FSM + commands + HP UI: 1 phase
+   - Capture / Command Seal flow: 1 phase
+   - Boss sprite gen: 1 phase
+   - Boss trigger + boss battle + win/loss + final dialogue: 1-2 phases
+   - **Total: 12-15 phases for the post-visuals work** (vs the failed 4-phase spec).
+
+6. **Phase title smell test**: a phase title that uses 3+ "+" connectives (e.g. "movement + collision + camera + interaction + altar trigger") is the spec writer telling you the phase is too big. Each "+" is a phase boundary that got missed.
+
+When in doubt: split. A run that completes 12 small phases is better than a run that fails on phase 7 of 8 and leaves the project half-built.
+
+### Phase plan — respect `combat_style: none`
+
+> ⚠️ Recurring failure: user picks `combat_style: none` (pure-platformer / puzzle / exploration) but spec writer still slots in 3 enemy phases + 1 boss phase because the seed and recipes are combat-flavored. Agent then writes combat code into a non-combat game. (test-2d-scroll, 2026.)
+
+If `spec.combat_style === 'none'`, your phase plan **MUST NOT** contain:
+- Any phase named "Enemy …" / "Enemies" / "Boss …" / "Combat …"
+- Any phase that generates enemy sprite sheets
+- Any phase that wires `data/enemies.json` content
+- Any boss-room scene phase
+
+Replace those phases with platforming-variety phases — moving platforms, timing puzzles, collectible secrets, decorative props, narrative beats. The token budget for "core" / "polished" / "full" stays the SAME; you reallocate from combat to traversal richness. See the per-genre convention file (e.g. `genres/side-scroll.md`'s "Pure-platformer mode" section) for the concrete phase-plan replacement template.
+
+This rule overrides any default phase plan baked into a genre file. The user's binding answer wins.
+
 ## MANDATORY: discovery form must include `genre` and `animation_richness`
 
 Before writing spec.md, emit a `<question-form>` block. The form's `fields` array MUST include at least these two keys:
@@ -70,6 +129,16 @@ Before writing spec.md, emit a `<question-form>` block. The form's `fields` arra
         { "value": "standard", "label": "Standard", "detail": "skill picks per-action (idle 2×2, walk 2×3-2×4, attack 2×3)" },
         { "value": "rich",     "label": "Rich",     "detail": "bigger grids: walk 2×4-2×6, attack 2×4, death 2×4" }
       ]
+    },
+    {
+      "key": "module_style",
+      "label": "How should the source code be organized?",
+      "type": "radio",
+      "default": "simple",
+      "options": [
+        { "value": "simple", "label": "Simple — script tags + globals", "detail": "Sengoku-Era-ogf style. <script src=...> in index.html, shared global state.js, easy to inspect in DevTools, easy to add modules. Default — best for prototyping and iterative tweaks." },
+        { "value": "modern", "label": "Modern — ES modules", "detail": "import/export per file, scoped modules. Slightly more ceremony when adding a module (update import graph). Pick this if you plan to ship to a bundler later." }
+      ]
     }
     /* … add other discovery questions: title, palette, references, etc. … */
   ]
@@ -81,21 +150,57 @@ Add other discovery questions (title, world setting, palette, etc) as needed. **
 After form submission, write **Visual decisions** into spec.md §1 Identity:
 
 ```
-- **Visual decisions**: genre=<chosen>, animation_richness=<chosen>
+- **Visual decisions**: genre=<chosen>, animation_richness=<chosen>, module_style=<chosen>
 ```
 
 Then read `.ogf/conventions/genres/<chosen-genre>.md` for the genre-specific patterns the spec + later phases must follow.
 
-## Skill invocation precedence
+## How to invoke the skills (READ THIS — common misconception)
 
-Skills `generate2dmap` and `generate2dsprite` have TWO components:
+`generate2dsprite` and `generate2dmap` are **procedure bundles**, not standalone callable tools. There is no `$generate2dsprite` MCP tool, no `skill registry`, no separate CLI command to look up. Stop searching for one — you will not find it, and the absence is not a blocker.
 
-1. **Rules** — markdown files at `.agents/skills/<name>/{SKILL.md, agents/openai.yaml, references/*.md}`. Read at Phase 0 + every time you plan visuals.
-2. **Scripts** — Python files at `.agents/skills/<name>/scripts/*.py`. Codex spawns these when you invoke the skill via `$generate2dsprite` / `$generate2dmap`. **Don't run the scripts directly with `python`** — go through the codex skill invocation so context (SKILL.md + references) gets injected.
+The bundle has TWO components:
 
-NEVER hand-roll the workflow. If you call `image_gen` directly and write your own postprocess, you lose: chroma cleanup, frame extraction, edge-touch QC, anchor alignment, pipeline-meta.json output. The skills exist precisely so OGF assets are uniform.
+1. **SKILL.md + references** at `.agents/skills/<name>/{SKILL.md, agents/openai.yaml, references/*.md}` — these are **instructions** that Codex auto-loads into your context. Read SKILL.md at Phase 0 + every time you plan visuals.
+2. **Python scripts** at `.agents/skills/<name>/scripts/*.py` — `build-prompt`, `process`, `list-options`. You run these via `python` / `bash` like any other script.
 
-If `$generate2dsprite` invocation fails (skill registry missing, codex CLI doesn't see the bundle): STOP and report. Don't fall back to ad-hoc `image_gen`.
+### To "invoke the skill" means execute this 3-step procedure in your turn:
+
+```
+Step 1: Build the prompt manually following the template in SKILL.md /
+        references/prompt-rules.md. (Optional: shell out to
+        `python .agents/skills/<name>/scripts/<name>.py build-prompt ...`
+        for a starting draft, but you usually write it yourself.)
+
+Step 2: Call your built-in `image_gen` tool with that prompt.
+        ← image_gen IS the tool. Codex has it built in. Use it.
+
+Step 3: Postprocess by shelling out to the script:
+        `python .agents/skills/<name>/scripts/<name>.py process ...`
+        This does chroma-key cleanup, frame extraction, QC, anchor alignment,
+        transparent export, prompt-used.txt audit log.
+```
+
+That is the entire mechanism. SKILL.md is the manual; `image_gen` + the postprocess script are the tools.
+
+### "Never use raw image_gen" — what this actually means
+
+Earlier convention versions said "never raw image_gen" to stop agents from skipping the SKILL.md template + postprocess. **It does NOT mean image_gen is forbidden.** image_gen is REQUIRED — it's the only image-producing tool you have. The rule is about the wrapper, not the tool:
+
+- ❌ Wrong reading: "image_gen is banned, find another tool" → search for a non-existent `$generate2dsprite` tool, give up, declare environment broken.
+- ✅ Right reading: "image_gen must be used through the SKILL.md procedure" → build prompt per template, call image_gen, run postprocess script.
+
+If you cannot find a callable named `generate2dsprite` / `generate2dmap`: that is normal and expected. Proceed with image_gen + the script. Do **not** write a "skill registry missing" blocker into spec.md — there is no registry, just SKILL.md + scripts + image_gen, and all three are present in any OGF project.
+
+### When to actually stop
+
+Real blockers (these are rare):
+
+- `image_gen` tool genuinely missing from your tool list (not codex — escalate to user).
+- The `.agents/skills/<name>/scripts/<name>.py` file is missing or corrupted.
+- The script raises a Python error you cannot fix.
+
+In all other cases — including "I can't find a tool named generate2dsprite" — keep going.
 
 ## The contract — short version
 
@@ -163,6 +268,161 @@ Use **inline** when the entity appears once or twice and doesn't need shared sta
 4. `.agents/skills/generate2dsprite/SKILL.md`
 
 These contain everything about: side-scroll segment counts, platform strategies, parallax layer organization, prop pack vs strip vs tilemap, sprite frame layouts per action, anchor + collision extraction, magenta cleanup, QC. **OGF defers to them.** If they contradict this file, the skill files win.
+
+## Phase 0 — install foundation seed (BEFORE Phase 1)
+
+Before running Phase 1 of your spec's phase plan, decide whether you can adopt a hand-built reference scaffold instead of generating every src/ and data/ file from scratch. This step takes 30 seconds and saves hours.
+
+**Procedure** (run exactly once at the start of phase execution):
+
+1. Read your spec to confirm the genre (Identity §1).
+
+2. Check whether `.ogf/foundation-seeds/<genre>/seed/` exists in the project. The genre folder name matches your `genres/<genre>.md` convention file's basename. Currently shipped seeds:
+   - `top-down-rpg` → full Sengoku-Era-derived 36-file scaffold
+   - (other genres: not yet — you build from scratch)
+
+3. **If the seed directory exists**:
+   a. Read `.ogf/foundation-seeds/<genre>/seed/SEED.md` first to understand what you're inheriting (universal vs starter vs recipe-fillable modules).
+   b. Copy every file from `.ogf/foundation-seeds/<genre>/seed/` into the project root, preserving the `src/` and `data/` subfolder structure. Overwrite the inline minimal stubs (index.html, src/game.js, etc.) that bootstrap dropped at create time.
+   c. The `data/*.json` catalog files ship empty — leave them empty for now; you'll fill them per spec during the relevant phases.
+   d. After copying, the project root should mirror the seed layout. Verify by listing `src/` (should be the seed's module count, not the bootstrap's 5 stubs).
+
+4. **If the seed directory does NOT exist for your genre**:
+   a. Build the file structure from scratch using the **Module architecture** rules (universal across all genres) and the **File layout** section in your `genres/<genre>.md` convention.
+   b. Aim for the same module count and split shape: 14–20 src files, config-vs-identity split, thin game.js entry, script-tag default loading.
+   c. Keep the bootstrap's inline 5 stubs as your starting point — extend rather than rewrite where the stub already covers the universal module.
+
+5. Whichever path you take, this is a **one-time procedure**. Do not revisit Phase 0 mid-game; only re-run if the user explicitly asks for a fresh scaffold.
+
+This MUST happen before any `generate2dsprite` or `generate2dmap` call — those skills read `data/levels.json` and similar files that the seed defines, and a missing seed means broken loaders later.
+
+## Recipes — read at phase execution time
+
+`.ogf/recipes/<genre>/<recipe>.md` contains paste-ready code patterns + adaptation guidance for every common subsystem (battle FSM, menu navigation, dialogue box, save/load, progression, FX layer, etc.). The Phase 0 foundation seed (when one exists for your genre) gives you the universal scaffolding; recipes show you how to fill the genre-specific subsystem files. When no seed exists for your genre, recipes are doubly important — they're the only proven-pattern reference you have.
+
+**Mandatory read points** (during phase execution):
+
+| Implementing | Read this recipe FIRST |
+|---|---|
+| `src/battle.js` (turn-based combat) | `.ogf/recipes/<genre>/battle-turn-based.md` |
+| `src/battle.js` (ATB / real-time variant) | corresponding recipe (or write from scratch if not present) |
+| `src/menu.js` (party / inventory / dex) | `.ogf/recipes/<genre>/menu-stack.md` |
+| `src/dialogue.js` (NPC + post-battle text) | `.ogf/recipes/<genre>/dialogue-box.md` |
+| Save game / migration | `.ogf/recipes/<genre>/save-load.md` |
+| XP / level-up / evolution | `.ogf/recipes/<genre>/progression.md` |
+| Elemental FX on hit | `.ogf/recipes/<genre>/fx-layer.md` |
+
+Each recipe has a "When to use / When NOT to use" section. **If your project's mechanic differs (ATB instead of turn-based, sandbox instead of combat, tactical instead of action), the recipe explicitly tells you to skip it or fork.** Recipes are starting points, not contracts.
+
+If a recipe doesn't exist for what you need, the fallback is: read the closest neighbor recipe + write the new pattern from scratch using the same shape (when-to-use → files-affected → dependencies → pattern → adaptation knobs → common mistakes → reference).
+
+## JSON entry contract — every array entry needs an `id`
+
+Every entry in these JSON arrays MUST carry a unique `id` string field, regardless of whether the runtime uses it or not:
+
+| File | Arrays that require `id` on every entry |
+|---|---|
+| `data/<level>.json` | `props[]`, `npcs[]`, `colliders[]`, `blockers[]`, `walkBounds[]`, `walkable[]`, `paths[]`, `pickups[]`, `hazards[]` |
+| `data/<level>-collision-map.json` (sidecar) | `blockers[]`, `walkBounds[]`, `walkable[]` |
+
+**Why**: OGF's scene editor addresses entries by `id` for every move / resize / delete operation. Without it, the editor's writers can't locate the entry to patch — every drag attempt fails with "save failed" until the user gives up. This is one of the most expensive recurring bug classes in OGF, more painful than any phase-plan or asset-path issue.
+
+**Rule**: when generating JSON, populate `id` on EVERY entry, even when the entry already has a `tag` or other descriptive field. The two are different — `tag` is a human label, `id` is the editor's primary key. Example:
+
+```json
+"blockers": [
+  { "id": "starter_altar_body",  "type": "rect", "x": 500, "y": 430, "w": 225, "h": 132, "tag": "starter_altar" },
+  { "id": "torii_gate_pillars",  "type": "rect", "x": 830, "y": 60,  "w": 270, "h": 140, "tag": "torii_gate" }
+]
+```
+
+**Naming**: `<purpose>_<n>` or a semantic name. Must be unique within its array. OGF's loader will auto-inject `<section>_<idx>` ids and write them back to disk if you forgot — the warning will surface as a note in the scene editor's notes panel — but **it's much cleaner to author them correctly the first time** since the auto-injection mutates your JSON and shows up as an unexpected file change in git.
+
+## Asset path contract — ALWAYS write to `assets/`
+
+OGF runtime reads from these hardcoded paths:
+- `assets/maps/<scene_id>/base.png` — scene background
+- `assets/sprites/<entity_id>/<action>/sheet.png` — character / NPC / enemy sprites
+- `assets/props/<prop_id>/prop.png` — overworld / scene props
+- `assets/fx/<element>/sheet-transparent.png` — elemental FX
+- `assets/items/<item_id>/icon.png` — inventory item icons
+- `assets/battle/<battle_bg>.png` — battle backgrounds
+
+These paths are referenced from `src/assets.js` + `data/assets.json` + per-scene `data/<scene>-collision-map.json`. **If you write generated assets anywhere else, the runtime will not find them and Play tab stays empty.**
+
+Past failure: test-2d-rpg9's agent ran an early `apply_patch` that failed for a non-permission reason (likely encoding / format), then concluded "Windows ACL blocks writes inside daemon-created folders" and switched to `generated_assets/` as a workaround. This was **wrong** — earlier projects (test-2d-rpg5, test-2d-rpg6) prove writes to `assets/maps/`, `assets/sprites/` etc. work fine.
+
+If you see a write failure inside `assets/` or `data/`:
+- Try a different write method (shell `Set-Content` instead of `apply_patch`, or vice versa)
+- Verify the parent dir exists (`Test-Path` first, `New-Item -ItemType Directory -Force` if missing)
+- Check the actual error message — file format / encoding / line endings can cause apparent "permission" errors
+- DO NOT create `generated_assets/` or any other root-level workaround folder
+
+## Style anchor — depict user's actual subject, not a generic mascot
+
+The Phase 1 style anchor sets the visual canon every later asset references via `view_image`. **Whatever the anchor depicts becomes the project's visual identity.** Picking the wrong subject for the anchor cascades.
+
+Past failure: user asked for "戰國武將 Pokemon-like RPG" (Sengoku general / human warrior + monster-taming structure). Agent picked anchor subject = "war-spirit fox-dragon mascot in samurai armor". Result: the project became chibi-creature-themed instead of warrior-themed. The anchor essentially overwrote user's stated theme.
+
+**Anchor subject rule**:
+
+1. **Read user's prompt for the MAIN PLAYABLE SUBJECT.** "戰國武將" = human general. "野獸馴服師" = beast-master human + creature partner. "通靈師" = spirit medium human. "妖怪變身者" = creature shapeshifter. The subject they NAME is the subject the anchor depicts.
+2. **If user named a creature/monster theme** (Pokemon, Digimon, Slime ranch), anchor depicts the most representative starter creature.
+3. **If user named a human theme** (samurai RPG, ninja game, cyberpunk hacker), anchor depicts the player human in their canonical pose.
+4. **If user named a hybrid** (medium + spirit, knight + dragon), anchor depicts BOTH together — human + companion.
+5. **Default ambiguous case**: pick HUMAN. Most RPG protagonists are human-shaped; safer baseline.
+
+**Anchor prompt template**:
+```
+Style: <Style directive verbatim from spec §1>
+Subject: <User-named main subject — be specific>.
+       Example: "Young Sengoku tactician in lacquered armor, holding a war fan,
+        confident pose, kabuto helmet visible, age 18-25."
+       NOT: "war-spirit mascot creature with samurai armor."
+Constraint: This anchor defines the project's visual identity. Every later
+character / monster / NPC will be generated with view_image of this image —
+so the proportions, color treatment, and rendering style here propagate.
+```
+
+If the first anchor comes back wrong (mascot when you wanted hero, monster when you wanted human), **regenerate before moving on**. A wrong anchor wastes every subsequent gen call.
+
+## Style directive specificity — for restrictive art styles
+
+Image_gen has strong defaults: bright chibi anime, full color, glossy rendering. To produce something OUTSIDE that bias (ink wash, brutalist pixel, monochrome retro, hand-drawn lineart), the prompt needs **explicit negatives** plus **positive examples**.
+
+The `Style directive` from spec §1 must include both for restrictive styles. Examples:
+
+**水墨 (ink wash) — restrictive**:
+```
+Style: traditional East Asian ink-wash painting, monochromatic black and grey
+with ONE muted color accent maximum (vermilion seal red OR moss green, not
+both). Visible brush strokes, ink bleed at edges, parchment background.
+NOT chibi, NOT anime, NOT brightly colored. Sumi-e brush technique.
+References: Sesshu Toyo, Hasegawa Tohaku ink scrolls.
+```
+
+**Brutalist pixel — restrictive**:
+```
+Style: high-contrast 8-bit pixel art, exactly 16-color palette, hard pixel
+edges with NO anti-aliasing, NES-era constraint. Each character fits
+in 16x16 or 24x24 cell. NOT 16-bit, NOT detailed, NOT smoothed pixels.
+Reference: Castlevania (NES), Mega Man (NES).
+```
+
+**Cute cartoon — permissive (default-aligned)**:
+```
+Style: bright cartoon 2D, cute readable silhouettes, simple shading.
+```
+(Less constraint needed — image_gen defaults to this.)
+
+**Hand-drawn editorial — restrictive**:
+```
+Style: editorial pencil-and-watercolor illustration, visible paper grain,
+hand-drawn linework with weight variation, muted watercolor wash. NOT
+digital, NOT chibi, NOT vector. Reference: Studio Ghibli concept sketches.
+```
+
+**Rule**: if the user picks a non-default style (ink_painterly, retro_pixel, hand_drawn, brutalist, monochrome, etc.), the Style directive MUST include explicit "NOT X, NOT Y" negatives + "Reference: <real-world artist or game>" anchors. Otherwise image_gen reverts to its default chibi-anime aesthetic and the user feels every project looks the same.
 
 ## Style directive — every gen call uses it
 
@@ -249,16 +509,67 @@ The template is mechanical — copy spec.md §1 Style directive verbatim, append
 
 After every gen call, open `prompt-used.txt` next to the new asset and verify the saved prompt matches the template. If the saved prompt is short / missing style: the skill received your shortened version, the asset is degraded, regenerate with the full template.
 
-## Visual consistency — reference image workflow is MANDATORY
+## Visual consistency — view_image is a HARD procedural step
 
-Drift across generated assets (same character looking like 4 different people across animations) is the #1 quality-killer. Before every `generate2dsprite` / `generate2dmap` call after the first:
+> ⚠️ This is the #1 quality-killer when skipped. Read carefully.
 
-1. Pick the closest existing reference: same-character sheet > same-family sibling > project anchor (`.ogf/style-anchor.png`).
-2. `view_image` it so the bytes enter context.
-3. Pass `reference: 'generated_image'` to the skill.
-4. State the role explicitly: "Same character, new animation — preserve identity, change action only" OR "Same family, new asset — match palette/line/lighting, different subject".
+Past projects produced flat-vector geometric output when the user asked for "16-bit pixel art" — including a recent test-2d-rpg project where the map came back looking like a child's drawing. Why: the agent **mentioned** the style anchor in the prompt text but **never invoked `view_image`** to load it into context. The model generated blind, interpreted "pixel art" with no visual anchor as "flat vector shapes", and produced unusable output.
 
-Skipping this means the model generates blind and you get drift.
+**Mentioning a reference path in prompt text is NOT a substitute for view_image.** view_image is the only mechanism that loads asset bytes into the model's context. Text-only mentions read as "fyi this file exists" — the model can't see it.
+
+### MANDATORY procedure for every generate2dsprite / generate2dmap call
+
+In the SAME message that invokes the skill, you MUST emit TWO tool_uses in this order:
+
+1. **`view_image`** — load the chosen reference path into context.
+2. **`generate2dsprite` / `generate2dmap`** — call the skill with `reference: 'generated_image'`.
+
+Reference selection priority (pick the closest existing):
+
+```
+same-character sheet  >  same-family sibling  >  project anchor (.ogf/style-anchor.png)
+```
+
+Examples:
+
+```
+Phase 1 (style anchor — first ever gen, no prior reference exists):
+  tool_use 1: generate2dsprite asset_type='style_anchor' (no view_image, this IS the anchor)
+
+Phase 2 (first map gen — anchor now exists):
+  tool_use 1: view_image .ogf/style-anchor.png
+  tool_use 2: generate2dmap reference: 'generated_image' prompt: '...'
+
+Phase 4+ (player walk sheet — idle already exists):
+  tool_use 1: view_image assets/sprites/player/idle/sheet.png
+  tool_use 2: generate2dsprite reference: 'generated_image' prompt: '...'
+```
+
+### Forbidden patterns
+
+- ❌ "Reference: project style anchor at .ogf/style-anchor.png" (text only — model can't see it).
+- ❌ Sending the skill call alone in a message, view_image in a separate prior message — the bytes don't carry across messages reliably.
+- ❌ Calling generate2dmap with `reference: 'none'` for any phase after the first — explicit opt-out from anchoring is wrong unless this IS the very first asset.
+- ❌ Re-using a stale reference (e.g. view_image-ing an old idle sheet to generate the boss) — ALWAYS pick the closest matching one.
+
+### Repair if the asset comes back degenerate
+
+Symptoms of skipped view_image:
+- Map looks like flat vector shapes when "pixel art" was requested
+- Sprite palette doesn't match project palette
+- Character proportions / face / costume drift across animations
+
+Fix: re-do the generation with proper view_image. The skill's `prompt-used.txt` next to the asset will reveal whether reference was actually loaded — look for `reference: 'generated_image'` in the args (vs `'none'` or absent).
+
+### State the reference role explicitly in the prompt
+
+After view_image, the prompt to the skill must state how to USE the reference:
+
+- **Same character, new animation**: "Use the loaded image as the visual reference. PRESERVE the subject's identity exactly: silhouette, palette, face/eye features, costume marks, accessories, body proportions. Generate the SAME character in a different animation: <action>."
+- **Same family, sibling asset**: "Use the loaded image as a STYLE reference. Match: art style, palette, line weight, lighting, proportions. The new asset is a DIFFERENT subject (<id>) in the same world — do not copy the subject, only the rendering."
+- **Style anchor**: "Use the loaded image as a STYLE reference. Match: palette, line weight, overall aesthetic. The new asset is unrelated to the figure shown — only the rendering style must match."
+
+Pick one of these three phrasings; do not invent a fourth.
 
 ## Generating ≠ done — wire it into game data
 
@@ -304,17 +615,25 @@ Not editable in Scene tab (chat the user instead):
 - Wave timeline (use a future Timeline tab when shipped)
 - Code patches
 
-## Background dimensions MUST equal level.mapSize
+## Background dimensions
 
-For every level, the background PNG (or each parallax layer) MUST be exactly `mapSize.width × mapSize.height`. Generated PNGs that don't match get rejected by OGF's loader OR cause coordinate misalignment between Scene tab and Play tab.
+Two distinct cases — DO NOT confuse them:
 
-After every `generate2dmap` call:
+### Case A — single full-map `background.image` (top-down RPG, locked-camera boss room)
 
-1. Read PNG natural size (Pillow / PNG IHDR header bytes 16-23).
-2. If width ≠ mapSize.width OR height ≠ mapSize.height: resize via `Image.resize((mapSize.width, mapSize.height), Image.LANCZOS)`.
-3. Save back to the same path.
+The image MUST be exactly `mapSize.width × mapSize.height`. If `generate2dmap` returns a different size, resize via `Image.resize((mapSize.width, mapSize.height), Image.LANCZOS)` and save back.
 
-For multi-layer parallax, every layer file must independently match mapSize.
+### Case B — parallax `layers[]` with `repeatX: true` (side-scroll, scrolling levels)
+
+Each layer image is a **tileable strip at viewport-native size (1280×720)**, NOT mapSize-wide. The runtime tiles it horizontally via modulo wrap. Do NOT resize to mapSize.width — that would defeat tileable parallax (produces blurry stretched art and pins level length).
+
+| | width × height | resize after gen? |
+|---|---|---|
+| Full-map background (top-down RPG) | `mapSize.width × mapSize.height` | YES (to mapSize) |
+| Locked-camera boss room background | `viewport.w × viewport.h` (=mapSize) | YES (to mapSize) |
+| Tileable parallax layer (side-scroll, repeatX:true) | **1280 × 720** (or 1664×720 — divisible by 16) | downscale 1672×941 → 1280×720 via `process_parallax_layer.py`; NEVER stretch to mapSize.width |
+
+For side-scroll parallax: `mapSize.width` is decoupled from layer image width — level can be 5120 or 10240 with the same 1280×720 layer PNGs.
 
 ## Engine selection
 
@@ -322,57 +641,116 @@ For multi-layer parallax, every layer file must independently match mapSize.
 - **Godot**: still supported for legacy projects but no longer the default.
 - **Unity / Unreal / WebGL+Three.js**: not supported for new projects.
 
-## File layout (web engine)
+## Module architecture (universal across all genres)
+
+> ⚠️ Past OGF projects shipped with weak engines because the spec template recommended only 4-6 files. test-2d-rpg5's combat.js was 138 lines for an entire turn-based battle system; test-scroll's whole game was 465 LOC. Compare to `D:/Sengoku-Era-ogf` — same RPG genre, 20 modules, 3,052 LOC, full battle FSM + menu + dialogue + progression + transitions + audio. The thin engine isn't a model limitation; it's a spec template that didn't ask for enough modules.
+
+### Five universal rules
+
+These apply to EVERY genre. Per-genre module recipes appear in each genre file.
+
+**1. One responsibility per file.** Aim for 100-500 LOC per module. A 138-line combat.js that handles turn FSM + animation timing + capture math + state transitions is too crowded — split into `battle.js` (FSM) + `menu.js` (commands) + `progression.js` (XP). Sengoku-Era-ogf's battle.js is 537 lines doing ONLY the battle FSM with 30+ small functions; that's the depth target.
+
+**2. Shared global `state.js`.** One canonical state object held in `src/state.js`. All other modules read/mutate it directly. No prop drilling, no React-style nested state, no per-entity stores. Keeps cross-module wiring trivial:
+
+```js
+// src/state.js
+const state = {
+  mode: "overworld",     // overworld | battle | menu | choose | transition
+  scene: "outdoor",
+  player: { x: 0, y: 0, hp: 100, ... },
+  party: [],
+  inventory: {},
+  battle: null,          // populated when mode === 'battle'
+  transition: null,
+  keys: new Set(),
+  // ... whatever the game needs
+};
+```
+
+**3. Config split: tuning vs identity.** Two kinds of JSON under `data/`:
+- `*-config.json` — TUNING (numbers the user wants to tweak: HP curves, damage multipliers, animation durations, ease curves, audio volumes, camera follow speed)
+- `*.json` (no `-config` suffix) — IDENTITY (catalog entries: enemies/items/heroes/levels — what THINGS exist)
+
+Why split: balance changes touch ONE file (`battle-config.json`), don't risk breaking catalog parsers. User can tweak game feel without reading code. Examples from Sengoku-Era-ogf:
+- `data/enemies.json` — enemy ids, names, sprite paths (identity)
+- `data/battle-config.json` — transition timings, finish delays, FX durations (tuning)
+- `data/audio-config.json` — tone frequencies, gain levels (tuning)
+- `data/progression-config.json` — XP curve, stat growth per level (tuning)
+
+**4. Thin `game.js` entry.** ~50 lines max. Just: load assets → init state → start main loop → wire DOM event handlers. All gameplay logic lives in subsystem modules. Sengoku-Era-ogf's game.js is 46 lines.
+
+**5. Script tag loading is the default.** Use classic `<script src="src/x.js">` tags in index.html, not ES modules. Each module declares functions at the top level (globals). This sounds old-school but is RIGHT for OGF's prototype-and-modify niche:
+- Agent adds new module = add file + one `<script>` line. No import graph to update.
+- User can inspect any global in DevTools without import tracking.
+- Zero bundler overhead, fastest reload.
+- Order-sensitivity is the only downside — declare load order in index.html (constants → state → subsystems → game.js entry last). For 5-25 module projects this is fine.
+
+If the user explicitly opts into ES modules via the discovery form (`module_style: modern`), use `<script type="module">` and `import/export` instead. Default is `simple`.
+
+### File layout (web engine, script-tag default)
 
 ```
 project-root/
-├── index.html
+├── index.html             ← <script> tags load src/* in order
 ├── styles.css
 ├── src/
-│   ├── game.js              ← entry: boots renderer + scene + input + frame loop
-│   ├── render.js            ← all canvas drawing
-│   ├── scene.js             ← level state + per-frame update
-│   ├── input.js             ← keyboard + gamepad
-│   ├── assets.js            ← image preloader + cache
-│   ├── collision.js         ← AABB + tilemap collision
-│   ├── combat.js            ← if game has combat
-│   ├── entities/
-│   │   ├── player.js
-│   │   ├── enemy.js
-│   │   └── projectile.js
-│   ├── ui.js                ← HUD overlay
-│   └── audio.js             ← WebAudio cues
+│   ├── constants.js       ← VIEW.w/h, frame budget, fixed values
+│   ├── config.js          ← load + cache *-config.json
+│   ├── catalogs.js        ← load + cache identity *.json
+│   ├── dom.js             ← cached DOM refs
+│   ├── state.js           ← shared global state object
+│   ├── assets.js          ← image preloader
+│   ├── audio.js           ← WebAudio cues (tones + noise, no .mp3)
+│   ├── input.js           ← keyboard + gamepad
+│   ├── touch.js           ← mobile touch (optional, only if mobile in scope)
+│   ├── collision.js       ← AABB + level-collision-map
+│   ├── render.js          ← canvas drawing (calls into per-mode draw functions)
+│   ├── scene.js           ← scene/level switching
+│   ├── transition.js      ← fade/zoom over the canvas (battle entry, scene change)
+│   ├── dialogue.js        ← text-reveal box (only if game has dialogue)
+│   ├── interaction.js     ← NPC / object interact triggers
+│   │
+│   ├── <genre subsystem 1>.js   ← see your genre file for recipe
+│   ├── <genre subsystem 2>.js
+│   ├── <genre subsystem N>.js
+│   │
+│   └── game.js            ← entry: load → init → main loop. ~50 lines.
 ├── data/
-│   ├── levels.json          ← registry: { id, file, displayName? }[]
-│   ├── <level_id>.json      ← per level
-│   ├── enemies.json         ← catalog (one per kind)
-│   ├── heroes.json
-│   ├── pickups.json
-│   ├── hazards.json
-│   ├── projectiles.json
+│   ├── levels.json
+│   ├── <level_id>.json
+│   ├── <level_id>-collision-map.json
+│   │
+│   ├── <catalog>.json     ← identity (enemies / items / heroes / pickups)
+│   ├── <catalog>.json
+│   │
+│   ├── <subsystem>-config.json  ← tuning (battle-config / audio-config / progression-config)
+│   ├── <subsystem>-config.json
 │   └── ...
 ├── assets/
-│   ├── maps/<level_id>/{layers}.png + per-asset folders
+│   ├── maps/<level_id>/{base,reference,...}.png
 │   └── sprites/<entity_id>/<action>/sheet.png + pipeline-meta.json
 ├── .ogf/
 │   ├── spec.md
 │   ├── style-anchor.png
-│   ├── conventions/         ← these conventions files
-│   │   ├── common.md
-│   │   ├── runtime-patterns.md
-│   │   └── genres/<your-genre>.md
-│   └── ...
+│   └── conventions/
 └── .agents/
-    └── skills/              ← codex skills bundle (auto-discovered)
+    └── skills/
 ```
 
-## Module split rules (when to break out a new file)
+Every project gets the universal modules (constants/config/catalogs/dom/state/assets/audio/input/collision/render/scene/transition + game.js). Genre-specific modules and config files are listed in each genre file's `## Recommended module split` section. Most playable-tier projects land at 12-20 src/ files + 5-10 data/ files.
 
-- A function is a state machine ≥ 4 states → its own file.
-- A subsystem has ≥ 3 entry points called from elsewhere → its own file.
-- A file passes ~250 lines OR mixes 2 concerns → split.
+### When to split further
 
-Don't pre-emptively split. Most game-jam-scale projects fit in 4-6 files in `src/` + entities folder.
+- A function is a state machine ≥ 4 states → its own file
+- A subsystem has ≥ 3 entry points called from elsewhere → its own file
+- A file passes ~500 lines OR mixes 2 concerns → split
+
+Don't pre-emptively split single-state systems into their own files. Don't merge unrelated concerns to "save a file."
+
+### Reference implementations to read
+
+Each genre file lists `## Reference implementation` paths to known-good projects. When implementing engine code in any phase, view_image the relevant module from the reference and follow its shape rather than reinventing.
 
 ## What NOT to do (project-wide)
 

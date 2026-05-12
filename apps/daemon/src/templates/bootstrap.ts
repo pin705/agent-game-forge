@@ -98,6 +98,93 @@ function vendoredConventionFiles(): ScaffoldFile[] {
   return out;
 }
 
+// ── Vendored foundation seeds (per-genre starter scaffolds) ────────────
+//
+// Foundation seed = the richer scaffolding extracted from a known-good
+// reference project. Each genre that has a hand-built reference gets its
+// own seed under foundation/<genre>/seed/. Currently shipped:
+//   foundation/top-down-rpg/seed/   (Sengoku-Era-ogf-derived, 36 files)
+//
+// At project create time we DO NOT copy these to the project root —
+// the genre is unknown until the spec is approved. Instead we stage
+// every available seed under .ogf/foundation-seeds/<genre>/seed/. The
+// agent picks its own genre's seed during Phase 0 (see
+// conventions/common.md) and either copies it to root verbatim or, when
+// no seed exists for the chosen genre, builds the file structure from
+// scratch using the module-architecture rules in the conventions.
+const FOUNDATION_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  'foundation',
+);
+
+/** Walk every foundation/<genre>/seed/ tree and produce ScaffoldFile
+ *  entries rooted at .ogf/foundation-seeds/<genre>/seed/ — preserving
+ *  the inner src/ and data/ subfolders. Skips the legacy flat layout
+ *  (foundation/seed/) if it still exists from an in-progress migration. */
+function vendoredFoundationSeedFiles(): ScaffoldFile[] {
+  if (!existsSync(FOUNDATION_DIR)) return [];
+  const out: ScaffoldFile[] = [];
+  for (const genre of readdirSync(FOUNDATION_DIR)) {
+    const genreDir = path.join(FOUNDATION_DIR, genre);
+    if (!statSync(genreDir).isDirectory()) continue;
+    const seedDir = path.join(genreDir, 'seed');
+    if (!existsSync(seedDir) || !statSync(seedDir).isDirectory()) continue;
+    const walk = (absDir: string, relSegments: string[]): void => {
+      for (const entry of readdirSync(absDir)) {
+        const absChild = path.join(absDir, entry);
+        const stat = statSync(absChild);
+        if (stat.isDirectory()) {
+          walk(absChild, [...relSegments, entry]);
+          continue;
+        }
+        const projectRel = [
+          '.ogf',
+          'foundation-seeds',
+          genre,
+          'seed',
+          ...relSegments,
+          entry,
+        ].join('/');
+        out.push({ rel: projectRel, body: readFileSync(absChild, 'utf8') });
+      }
+    };
+    walk(seedDir, []);
+  }
+  return out;
+}
+
+// ── Vendored recipes (per-genre paste-ready code patterns) ─────────────
+//
+// Recipes are markdown files with paste-ready code snippets and "when
+// to use / when NOT to use" guidance. Agent reads them at phase-execute
+// time to decide whether/how to apply each pattern. Land in
+// .ogf/recipes/{universal,top-down-rpg,...}/ so agent can find them
+// alongside conventions.
+const RECIPES_SRC_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  'recipes',
+);
+
+function vendoredRecipeFiles(): ScaffoldFile[] {
+  if (!existsSync(RECIPES_SRC_DIR)) return [];
+  const out: ScaffoldFile[] = [];
+  const walk = (absDir: string, relSegments: string[]): void => {
+    for (const entry of readdirSync(absDir)) {
+      const absChild = path.join(absDir, entry);
+      const stat = statSync(absChild);
+      if (stat.isDirectory()) {
+        walk(absChild, [...relSegments, entry]);
+        continue;
+      }
+      if (!entry.endsWith('.md')) continue;
+      const projectRel = ['.ogf', 'recipes', ...relSegments, entry].join('/');
+      out.push({ rel: projectRel, body: readFileSync(absChild, 'utf8') });
+    }
+  };
+  walk(RECIPES_SRC_DIR, []);
+  return out;
+}
+
 interface ScaffoldFile {
   rel: string;
   body: string;
@@ -198,6 +285,7 @@ function godotFiles(name: string, conventions: string): ScaffoldFile[] {
     // a short pointer/legacy shim, NOT the authoritative content.
     { rel: '.ogf/conventions.md', body: conventions },
     ...vendoredConventionFiles(),
+    ...vendoredRecipeFiles(),
     ...vendoredSkillFiles(),
     { rel: 'data/.gitkeep', body: '' },
     { rel: 'assets/.gitkeep', body: '' },
@@ -455,6 +543,13 @@ node_modules/
 `;
 
 function webFiles(name: string, conventions: string): ScaffoldFile[] {
+  // OGF v2: project root always gets the minimal inline scaffold (5
+  // tiny files) so dev mode runs immediately. The full per-genre seeds
+  // are staged under .ogf/foundation-seeds/<genre>/seed/ and the agent
+  // copies the matching one to root during Phase 0 (see
+  // conventions/common.md). For genres without a seed, the agent builds
+  // the file structure from scratch using the module-architecture rules
+  // and the inline stubs as a runnable starting point.
   return [
     { rel: 'index.html', body: WEB_INDEX(name) },
     { rel: 'styles.css', body: WEB_STYLES },
@@ -466,15 +561,11 @@ function webFiles(name: string, conventions: string): ScaffoldFile[] {
     { rel: 'data/levels.json', body: WEB_LEVELS_JSON },
     { rel: 'data/level1.json', body: WEB_LEVEL1_JSON },
     { rel: '.gitignore', body: WEB_GITIGNORE },
-    // .ogf/conventions.md kept as a thin index that points the agent at
-    // the new genre-aware structure under .ogf/conventions/. The big
-    // monolithic conventions.ts was split into common.md + runtime-
-    // patterns.md + genres/<name>.md so each project loads only what's
-    // relevant to its genre. The `conventions` string passed in is now
-    // a short pointer/legacy shim, NOT the authoritative content.
     { rel: '.ogf/conventions.md', body: conventions },
     ...vendoredConventionFiles(),
+    ...vendoredRecipeFiles(),
     ...vendoredSkillFiles(),
+    ...vendoredFoundationSeedFiles(), // staged under .ogf/foundation-seeds/
     { rel: 'assets/maps/.gitkeep', body: '' },
     { rel: 'assets/sprites/.gitkeep', body: '' },
   ];

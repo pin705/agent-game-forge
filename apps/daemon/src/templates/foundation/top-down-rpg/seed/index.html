@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>晴嵐御魂錄</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="game-shell" aria-label="晴嵐御魂錄">
+      <div class="game-stage">
+        <canvas id="game" width="1280" height="720"></canvas>
+
+        <section id="choicePanel" class="choice-panel" aria-live="polite">
+          <div class="choice-copy">
+            <p class="eyebrow">戰國末年 / 晴嵐神社</p>
+            <h1>晴嵐御魂錄</h1>
+            <p>
+              山城之火未歇，黑甲怨靈封住了通往戰場的山道。作為神社新任御魂使，
+              你要先與一位御魂締結盟約，再踏入草叢與演武場守門者交手。
+            </p>
+          </div>
+          <div class="starter-grid" id="starterGrid"></div>
+        </section>
+
+        <section id="hud" class="hud hidden" aria-live="polite">
+          <div>
+            <span class="area-name">晴嵐神社</span>
+            <span id="partnerBadge" class="partner-badge"></span>
+          </div>
+          <div class="hud-actions">
+            <span>M 選單</span>
+          </div>
+        </section>
+
+        <section id="dialogue" class="dialogue hidden" aria-live="polite">
+          <p id="dialogueText"></p>
+          <button id="dialogueNext" type="button">續</button>
+        </section>
+
+        <section id="menuPanel" class="menu-panel hidden" aria-live="polite">
+          <div class="menu-box">
+            <div class="menu-list" id="menuOptions"></div>
+            <div class="menu-status" id="menuStatus"></div>
+          </div>
+        </section>
+
+        <section id="battlePanel" class="battle-panel hidden" aria-live="polite">
+          <div class="battle-status">
+            <div class="status-card ally">
+              <div class="status-row">
+                <strong id="allyName"></strong>
+                <span id="allyHpText"></span>
+              </div>
+              <div class="hp-track"><div id="allyHpBar" class="hp-fill"></div></div>
+            </div>
+            <div class="status-card enemy">
+              <div class="status-row">
+                <strong id="enemyName"></strong>
+                <span id="enemyHpText"></span>
+              </div>
+              <div class="hp-track"><div id="enemyHpBar" class="hp-fill danger"></div></div>
+            </div>
+          </div>
+          <div id="battleLog" class="battle-log"></div>
+          <div class="battle-actions">
+            <button id="attackBtn" type="button">攻擊</button>
+            <button id="bindBtn" type="button">道具</button>
+            <button id="switchBtn" type="button">換御魂</button>
+            <button id="runBtn" type="button">撤退</button>
+          </div>
+        </section>
+
+      </div>
+
+      <section id="mobileControls" class="mobile-controls hidden" aria-label="觸控操作">
+        <div id="touchJoystick" class="touch-joystick" aria-label="移動">
+          <div id="touchStick" class="touch-stick"></div>
+        </div>
+        <div class="touch-buttons">
+          <button id="touchMenu" class="touch-button small" type="button">選單</button>
+          <button id="touchBack" class="touch-button" type="button">B</button>
+          <button id="touchAction" class="touch-button primary" type="button">A</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="src/config.js"></script>
+    <script src="src/audio.js"></script>
+    <script src="src/catalogs.js"></script>
+    <script src="src/dom.js"></script>
+    <script src="src/constants.js"></script>
+    <script src="src/assets.js"></script>
+    <script src="src/scene.js"></script>
+    <script src="src/collision.js"></script>
+    <script src="src/progression.js"></script>
+    <script src="src/state.js"></script>
+    <script src="src/dialogue.js"></script>
+    <script src="src/render.js"></script>
+    <script src="src/overworld.js"></script>
+    <script src="src/battle.js"></script>
+    <script src="src/menu.js"></script>
+    <script src="src/transition.js"></script>
+    <script src="src/interaction.js"></script>
+    <script src="src/input.js"></script>
+    <script src="src/touch.js"></script>
+    <script src="src/game.js"></script>
+  </body>
+</html>

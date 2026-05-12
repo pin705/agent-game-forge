@@ -10,6 +10,32 @@ Vampire Survivors, Brotato style. Open arena, camera follows player, enemies spa
 
 This file assumes you've read `runtime-patterns.md` (delta time, AABB, **object pooling for projectiles + enemies**, FSM).
 
+## Generation procedure — view_image + skill call as paired tool_uses
+
+EVERY `generate2dmap` / `generate2dsprite` call MUST be preceded by `view_image` of the closest existing reference, in the SAME message. See `common.md` "Visual consistency" for the canonical pattern + reasoning.
+
+```
+Phase 2 (background tile):
+  tool_use 1: view_image .ogf/style-anchor.png
+  tool_use 2: generate2dmap reference: 'generated_image'
+              prompt: "[STYLE...] [VIEW...] tileable arena ground..."
+
+Phase 3 (player idle, first sprite):
+  tool_use 1: view_image .ogf/style-anchor.png
+  tool_use 2: generate2dsprite reference: 'generated_image'
+
+Phase 3+ (player walk, enemies — chain off existing same-character/family asset):
+  tool_use 1: view_image assets/sprites/player/idle/sheet.png  ← prior animation
+  tool_use 2: generate2dsprite reference: 'generated_image'
+              prompt: "Same character, new animation: ..."
+```
+
+Skipping view_image → blind generation → degenerate output (palette drift, character identity inconsistent across animations).
+
+### Process strategy for character action sheets
+
+When you run `scripts/generate2dsprite.py process` on player / enemy / boss sheets, use **`--scale-strategy preserve --align feet`** for ALL their actions. Same character = same strategy across every sheet — never mix preserve with fit on one character (mixing produces 25-36% body-height drift between actions). `fit` is for: projectiles, pickups, XP orbs, hit-spark / muzzle-flash FX, UI sprites. See `common.md` and `generate2dsprite/SKILL.md` for the full strategy rule.
+
 ## Level data — custom JSON, NOT tilemap
 
 VS-style: arena is "infinite" (very large or wrapping). Brotato-style: arena is fixed bounded rectangle. Both share the same data shape:
@@ -199,6 +225,53 @@ data/
 4. **`closestEnemy` for every projectile every frame** — quadratic. Cache target per weapon, refresh every N frames.
 5. **Trying to add tilemap walls** — doesn't fit the genre. If walls needed, use rect colliders, but most VS-likes are open arena.
 6. **Adding parallax** — not VS-pattern. Single tiled background only.
+
+## Recommended module split (arena survivor)
+
+Per `common.md` "Module architecture (universal)", every project gets the universal modules. Arena survivor adds these on top:
+
+| Module | Responsibility | Approx LOC |
+|---|---|---|
+| `src/pool.js` | Object pool factory (enemies, projectiles, xp orbs, pickups). MANDATORY — never `new`/GC in hot loop | 100-200 |
+| `src/weapons.js` | Auto-fire weapon timers, target acquisition, projectile spawn per weapon | 300-500 |
+| `src/enemies.js` | Enemy update + AI (chase player, contact damage), wave-density driven | 200-400 |
+| `src/spawner.js` | Time-based difficulty curve, wave director, enemy ring around camera | 150-300 |
+| `src/xp.js` | XP orb collection, magnet radius, level-up trigger | 100-200 |
+| `src/levelup.js` | Pause + 3-card upgrade choice screen, weapon evolution rules | 200-400 |
+| `src/hud.js` | HP bar, XP bar, timer, kill count, weapon icons | 150-250 |
+
+Total per-project: ~14-19 src files, 2,000-3,500 LOC.
+
+Genre-specific config files:
+
+| File | Holds |
+|---|---|
+| `data/weapon-stats.json` | Per-weapon: cooldown, damage, projectile speed, area, level-up curve |
+| `data/enemy-spawn-curve.json` | Time → spawn-rate / enemy-mix / boss-trigger schedule |
+| `data/level-curve.json` | XP needed per level, upgrade-card pool weights |
+| `data/audio-config.json` | sfx tones |
+
+Identity files:
+
+| File | Holds |
+|---|---|
+| `data/levels.json` | Map registry (usually 1-3 arenas) |
+| `data/<arena_id>.json` | Background tile, mapSize, player spawn, ambient props, music theme |
+| `data/enemies.json` | Enemy catalog (id, sprite, base stats — not balance curves) |
+| `data/weapons.json` | Weapon catalog (id, sprite, behavior type) |
+| `data/upgrades.json` | Upgrade card catalog (id, name, effect) |
+
+## Reference implementation
+
+OGF does not yet have a strong arena-survivor reference project. **For Phase planning + module shape, use `D:/Sengoku-Era-ogf` as the architectural baseline** (state.js + config split + thin game.js + per-subsystem modules). Translate to arena-survivor:
+
+| Sengoku-Era-ogf module | Arena-survivor equivalent |
+|---|---|
+| `src/battle.js` | `src/weapons.js` + `src/enemies.js` (continuous combat) |
+| `src/menu.js` | `src/levelup.js` (the only menu — appears on level up) |
+| `src/progression.js` | `src/xp.js` + parts of `src/levelup.js` |
+| `src/overworld.js` | `src/spawner.js` (spawn director instead of NPC overworld) |
+| `data/battle-config.json` | `data/weapon-stats.json` + `data/enemy-spawn-curve.json` |
 
 ## Reference repos
 

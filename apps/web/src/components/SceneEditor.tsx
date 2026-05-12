@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  AddColliderOp,
   ColliderRef,
   CommentAnchor,
   CommentThread,
@@ -20,9 +21,12 @@ import {
   createCommentThread,
   deleteCommentThread,
   fetchComments,
+  fetchFileContent,
+  fetchFileTree,
   fetchScene,
   updateCommentThread,
 } from '../lib/api.js';
+import type { FileNode } from '@ogf/contracts';
 import { I } from './icons.js';
 
 type EditMode = 'props' | 'colliders' | 'zones' | 'paths' | 'comments';
@@ -40,6 +44,10 @@ const MAX_UNDO = 200;
 interface Props {
   projectPath: string;
   relPath: string;
+  /** Engine used by the project — needed for scene-context payload so the
+   *  agent reads the right value back. Used to be hardcoded 'godot' (legacy
+   *  Godot-only era). Fallback to 'web' if not provided. */
+  engine?: string;
   /** Bumped by App on Codex run end so the editor refetches the scene from
    *  disk after the agent edits files. Initial value 0 = no reload yet. */
   reloadKey?: number;
@@ -150,6 +158,29 @@ export function SceneEditor(props: Props) {
   const [savingState, setSavingState] = useState<'idle' | 'saving' | 'error' | 'saved'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [camera, setCamera] = useState<Camera>({ scale: 0.5, panX: 0, panY: 0 });
+  // "+ Prop" picker modal — only meaningful for JSON-backed (web) scenes.
+  const [propPickerOpen, setPropPickerOpen] = useState(false);
+  // "+ rect" / "+ circle" / "+ poly" sub-toolbar arming. When set,
+  // click-drag (rect/circle) or click-click (polygon) in empty colliders-
+  // mode canvas draws a new shape instead of panning. ESC clears.
+  const [addShapeKind, setAddShapeKind] = useState<null | 'rect' | 'circle' | 'polygon'>(null);
+  // Live preview geometry while the user is mid-drag — drives a dashed
+  // overlay in the render loop.
+  const [draftShape, setDraftShape] = useState<
+    | { kind: 'rect'; x1: number; y1: number; x2: number; y2: number }
+    | { kind: 'circle'; cx: number; cy: number; cur: Vec2 }
+    | null
+  >(null);
+  // In-progress new path (paths mode + + path button). Each click adds a
+  // point; Enter / double-click commits when ≥ 2 points; Backspace pops
+  // the last point; ESC cancels.
+  const [pathDraft, setPathDraft] = useState<{ points: Vec2[] } | null>(null);
+  // Cursor world position while drafting a path or polygon — drives the
+  // "rubber band" segment from the last placed point to the cursor.
+  const [pathDraftCursor, setPathDraftCursor] = useState<Vec2 | null>(null);
+  // Polygon collider draft. Same multi-click pattern as pathDraft, but
+  // commits as a polygon SceneCollider (≥ 3 points required).
+  const [polygonDraft, setPolygonDraft] = useState<{ points: Vec2[] } | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -280,6 +311,7 @@ export function SceneEditor(props: Props) {
           selectedZoneUid,
           selectedPath,
         },
+        props.engine ?? 'web',
       );
     }, 500);
     return () => {
@@ -365,11 +397,32 @@ export function SceneEditor(props: Props) {
     if (scene.layers && scene.layers.length > 0) {
       for (const layer of scene.layers) {
         const img = bank.imgs.get(layer.relPath);
+        const natural = bank.sizes.get(layer.relPath);
         const size =
           (layer.width && layer.height ? { w: layer.width, h: layer.height } : null) ??
-          bank.sizes.get(layer.relPath) ??
+          natural ??
           null;
-        if (img && size) {
+        if (!img || !size) continue;
+        if (layer.repeatX) {
+          // Tileable parallax strip — tile the PNG horizontally across the
+          // layer's full extent (= mapSize) to mirror the runtime's
+          // repeatX modulo wrap in src/parallax.js. tileW/tileH come from
+          // explicit JSON declaration, else fall back to PNG natural size
+          // (typically 1280×720 per the parallax-layers recipe).
+          const tileW = layer.tileW ?? natural?.w ?? img.width;
+          const tileH = layer.tileH ?? natural?.h ?? img.height;
+          const pattern = ctx.createPattern(img, 'repeat-x');
+          if (pattern) {
+            const matrix = new DOMMatrix();
+            matrix.scaleSelf(tileW / img.width, tileH / img.height);
+            pattern.setTransform(matrix);
+            ctx.fillStyle = pattern;
+            ctx.fillRect(0, 0, size.w, tileH);
+          } else {
+            ctx.drawImage(img, 0, 0, tileW, tileH);
+          }
+        } else {
+          // Stretched full-map layer (legacy / non-parallax)
           ctx.drawImage(img, 0, 0, size.w, size.h);
         }
       }
@@ -494,6 +547,115 @@ export function SceneEditor(props: Props) {
       }
     }
 
+    // Draft shape preview while user drags out a new collider — dashed
+    // outline in the same coord space as everything else above.
+    if (draftShape) {
+      ctx.save();
+      ctx.strokeStyle = '#7cf';
+      ctx.lineWidth = Math.max(1, 2 / camera.scale);
+      ctx.setLineDash([8 / camera.scale, 6 / camera.scale]);
+      if (draftShape.kind === 'rect') {
+        const x = Math.min(draftShape.x1, draftShape.x2);
+        const y = Math.min(draftShape.y1, draftShape.y2);
+        const w = Math.abs(draftShape.x2 - draftShape.x1);
+        const h = Math.abs(draftShape.y2 - draftShape.y1);
+        ctx.strokeRect(x, y, w, h);
+      } else {
+        const dx = draftShape.cur.x - draftShape.cx;
+        const dy = draftShape.cur.y - draftShape.cy;
+        const r = Math.hypot(dx, dy);
+        ctx.beginPath();
+        ctx.arc(draftShape.cx, draftShape.cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Draft path preview — committed segments solid, rubber-band to cursor
+    // dashed. Dots at every committed point so the user can count.
+    if (pathDraft && pathDraft.points.length > 0) {
+      ctx.save();
+      const lineW = Math.max(1, 2 / camera.scale);
+      ctx.strokeStyle = '#7cf';
+      ctx.lineWidth = lineW;
+      ctx.beginPath();
+      ctx.moveTo(pathDraft.points[0].x, pathDraft.points[0].y);
+      for (let i = 1; i < pathDraft.points.length; i++) {
+        ctx.lineTo(pathDraft.points[i].x, pathDraft.points[i].y);
+      }
+      ctx.stroke();
+      // Rubber band from last point to cursor.
+      if (pathDraftCursor) {
+        const last = pathDraft.points[pathDraft.points.length - 1];
+        ctx.setLineDash([8 / camera.scale, 6 / camera.scale]);
+        ctx.beginPath();
+        ctx.moveTo(last.x, last.y);
+        ctx.lineTo(pathDraftCursor.x, pathDraftCursor.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      // Dot at each committed waypoint.
+      ctx.fillStyle = '#7cf';
+      for (const p of pathDraft.points) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, Math.max(2, 4 / camera.scale), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Polygon draft preview — same rubber-band pattern as paths, plus an
+    // extra dashed segment back to the first point so the user can see how
+    // the polygon will close.
+    if (polygonDraft && polygonDraft.points.length > 0) {
+      ctx.save();
+      const lineW = Math.max(1, 2 / camera.scale);
+      ctx.strokeStyle = '#fc7';
+      ctx.fillStyle = 'rgba(255, 204, 119, 0.18)';
+      ctx.lineWidth = lineW;
+      // Filled tentative polygon to make the inside obvious.
+      if (polygonDraft.points.length >= 3) {
+        ctx.beginPath();
+        ctx.moveTo(polygonDraft.points[0].x, polygonDraft.points[0].y);
+        for (let i = 1; i < polygonDraft.points.length; i++) {
+          ctx.lineTo(polygonDraft.points[i].x, polygonDraft.points[i].y);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+      // Solid edges between committed vertices.
+      ctx.beginPath();
+      ctx.moveTo(polygonDraft.points[0].x, polygonDraft.points[0].y);
+      for (let i = 1; i < polygonDraft.points.length; i++) {
+        ctx.lineTo(polygonDraft.points[i].x, polygonDraft.points[i].y);
+      }
+      ctx.stroke();
+      // Rubber band from last vertex to cursor + closing hint to first.
+      if (pathDraftCursor) {
+        const last = polygonDraft.points[polygonDraft.points.length - 1];
+        ctx.setLineDash([8 / camera.scale, 6 / camera.scale]);
+        ctx.beginPath();
+        ctx.moveTo(last.x, last.y);
+        ctx.lineTo(pathDraftCursor.x, pathDraftCursor.y);
+        if (polygonDraft.points.length >= 2) {
+          ctx.moveTo(pathDraftCursor.x, pathDraftCursor.y);
+          ctx.lineTo(polygonDraft.points[0].x, polygonDraft.points[0].y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      // Dots at each vertex; first one a bit larger so the close-target is
+      // obvious.
+      ctx.fillStyle = '#fc7';
+      polygonDraft.points.forEach((p, i) => {
+        const r = i === 0 ? Math.max(3, 6 / camera.scale) : Math.max(2, 4 / camera.scale);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+
     ctx.restore();
 
     // HUD
@@ -510,6 +672,10 @@ export function SceneEditor(props: Props) {
     visibleThreads,
     selectedThreadId,
     draftAnchor,
+    draftShape,
+    pathDraft,
+    pathDraftCursor,
+    polygonDraft,
   ]);
 
   useEffect(() => {
@@ -575,6 +741,20 @@ export function SceneEditor(props: Props) {
         origin: Vec2;
         startWorld: Vec2;
         startPoint: Vec2;
+      }
+    | {
+        // User is drawing a brand-new rect collider. start = mousedown world
+        // point, current = mousemove tracker. Finalized on mouseup.
+        kind: 'add-rect-draft';
+        startWorld: Vec2;
+        currentWorld: Vec2;
+      }
+    | {
+        // Same for circles. start = center, currentWorld = cursor; radius =
+        // distance(start, current).
+        kind: 'add-circle-draft';
+        startWorld: Vec2;
+        currentWorld: Vec2;
       };
   const dragRef = useRef<DragState | null>(null);
   const saveTimerRef = useRef<number | null>(null);
@@ -786,6 +966,19 @@ export function SceneEditor(props: Props) {
 
     // ----- Paths mode -----
     if (mode === 'paths' && e.button === 0 && !e.altKey) {
+      // 0) Drafting a new path? Each click appends a waypoint. Snap to
+      //    integer pixels unless Shift is held.
+      if (pathDraft) {
+        const snap = !e.shiftKey;
+        const pt = {
+          x: snap ? Math.round(w.x) : w.x,
+          y: snap ? Math.round(w.y) : w.y,
+        };
+        setPathDraft({ points: [...pathDraft.points, pt] });
+        // No drag — return without attaching window listeners. Scene render
+        // updates from the state change above.
+        return;
+      }
       const hit = findPathPointAt(w);
       if (hit) {
         setSelectedPath({ uid: hit.path.uid, pointIdx: hit.index });
@@ -824,6 +1017,52 @@ export function SceneEditor(props: Props) {
 
     // ----- Shape modes (colliders or zones) -----
     if ((mode === 'colliders' || mode === 'zones') && e.button === 0 && !e.altKey) {
+      // 0a) Polygon click append? Polygons use multi-click (not drag), so
+      //     once the draft is started, every colliders-mode click adds a
+      //     vertex until Enter / dbl-click commits or ESC cancels.
+      if (polygonDraft) {
+        const snap = !e.shiftKey;
+        const pt = {
+          x: snap ? Math.round(w.x) : w.x,
+          y: snap ? Math.round(w.y) : w.y,
+        };
+        setPolygonDraft({ points: [...polygonDraft.points, pt] });
+        return;
+      }
+      // 0b) Add-shape draft? When the toolbar armed addShapeKind, the next
+      //    click-drag in empty space draws a new shape instead of selecting
+      //    or panning. Hit-test for existing shapes still wins so the user
+      //    can grab a handle by accident-proofing — but we skip the body
+      //    hit-test below so an empty-space click goes straight into draft.
+      if (addShapeKind && mode === 'colliders') {
+        if (addShapeKind === 'polygon') {
+          // First click on polygon = seed the draft with one vertex.
+          // Subsequent clicks land in the 0a branch above on next mousedown.
+          const snap = !e.shiftKey;
+          const pt = {
+            x: snap ? Math.round(w.x) : w.x,
+            y: snap ? Math.round(w.y) : w.y,
+          };
+          setPolygonDraft({ points: [pt] });
+          // Disarm the toolbar — once drafting, the draft itself is the
+          // mode signal until commit or cancel.
+          setAddShapeKind(null);
+          return;
+        }
+        // Don't grab from a resize handle on the selected shape — let the
+        // existing resize path own that interaction.
+        if (!findResizeHandle(w) && !findCircleRadiusHandle(w)) {
+          if (addShapeKind === 'rect') {
+            dragRef.current = { kind: 'add-rect-draft', startWorld: w, currentWorld: w };
+            setDraftShape({ kind: 'rect', x1: w.x, y1: w.y, x2: w.x, y2: w.y });
+          } else if (addShapeKind === 'circle') {
+            dragRef.current = { kind: 'add-circle-draft', startWorld: w, currentWorld: w };
+            setDraftShape({ kind: 'circle', cx: w.x, cy: w.y, cur: w });
+          }
+          attachWindowDrag();
+          return;
+        }
+      }
       // 1) Resize handle on selected rect?
       const handle = findResizeHandle(w);
       if (handle) {
@@ -1070,6 +1309,25 @@ export function SceneEditor(props: Props) {
       setScene((s) => updatePathPoint(s, ds.uid, ds.index, next));
       return;
     }
+    if (ds.kind === 'add-rect-draft') {
+      const w = clientToWorld(ev);
+      ds.currentWorld = w;
+      const snap = !ev.shiftKey;
+      const x1 = snap ? Math.round(ds.startWorld.x) : ds.startWorld.x;
+      const y1 = snap ? Math.round(ds.startWorld.y) : ds.startWorld.y;
+      const x2 = snap ? Math.round(w.x) : w.x;
+      const y2 = snap ? Math.round(w.y) : w.y;
+      setDraftShape({ kind: 'rect', x1, y1, x2, y2 });
+      return;
+    }
+    if (ds.kind === 'add-circle-draft') {
+      const w = clientToWorld(ev);
+      ds.currentWorld = w;
+      const snap = !ev.shiftKey;
+      const cur = snap ? { x: Math.round(w.x), y: Math.round(w.y) } : w;
+      setDraftShape({ kind: 'circle', cx: ds.startWorld.x, cy: ds.startWorld.y, cur });
+      return;
+    }
   }
 
   function onMouseUp() {
@@ -1177,6 +1435,37 @@ export function SceneEditor(props: Props) {
           [{ kind: 'resize-circle-collider', ref: ds.ref, r: ds.startR }],
           `resize ${cur.name ?? ds.bucket}`,
         );
+      }
+      return;
+    }
+    if (ds.kind === 'add-rect-draft') {
+      // Build the rect from the draft and commit. Skip 0-area rects (a
+      // simple click instead of a drag) so the user doesn't accidentally
+      // pollute the JSON with empty shapes.
+      const x1 = Math.round(Math.min(ds.startWorld.x, ds.currentWorld.x));
+      const y1 = Math.round(Math.min(ds.startWorld.y, ds.currentWorld.y));
+      const x2 = Math.round(Math.max(ds.startWorld.x, ds.currentWorld.x));
+      const y2 = Math.round(Math.max(ds.startWorld.y, ds.currentWorld.y));
+      const w = x2 - x1;
+      const h = y2 - y1;
+      setDraftShape(null);
+      if (w >= 4 && h >= 4) {
+        addColliderShape({ kind: 'rect', x: x1, y: y1, w, h });
+      }
+      return;
+    }
+    if (ds.kind === 'add-circle-draft') {
+      const dx = ds.currentWorld.x - ds.startWorld.x;
+      const dy = ds.currentWorld.y - ds.startWorld.y;
+      const r = Math.round(Math.hypot(dx, dy));
+      setDraftShape(null);
+      if (r >= 3) {
+        addColliderShape({
+          kind: 'circle',
+          x: Math.round(ds.startWorld.x),
+          y: Math.round(ds.startWorld.y),
+          radius: r,
+        });
       }
       return;
     }
@@ -1295,6 +1584,493 @@ export function SceneEditor(props: Props) {
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // -------- Add collider (from drag-to-draw) --------
+  //
+  // Called by onMouseUp when an add-rect-draft / add-circle-draft drag
+  // finishes. Writes to the SceneModel's collidersJsonPath under the
+  // 'blockers' section (the most universal default; users can rename later
+  // by editing JSON). Locally splices a SceneCollider so the new shape
+  // renders + becomes selectable without waiting for a refetch.
+  function addColliderShape(
+    shape:
+      | { kind: 'rect'; x: number; y: number; w: number; h: number }
+      | { kind: 'circle'; x: number; y: number; radius: number },
+  ): void {
+    if (!scene) return;
+    const relPath = scene.collidersJsonPath;
+    if (!relPath) {
+      setSaveError(
+        'No collision-map JSON for this scene. Generate one via the agent first.',
+      );
+      setSavingState('error');
+      return;
+    }
+    const section = 'blockers';
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const id = `${shape.kind}_${suffix}`;
+    const ref: ColliderRef = { backend: 'json', relPath, section, id };
+
+    const entry =
+      shape.kind === 'rect'
+        ? { id, type: 'rect' as const, x: shape.x, y: shape.y, w: shape.w, h: shape.h }
+        : {
+            id,
+            type: 'circle' as const,
+            x: shape.x,
+            y: shape.y,
+            radius: shape.radius,
+          };
+
+    const newCollider: SceneCollider =
+      shape.kind === 'rect'
+        ? {
+            uid: `json:${section}:${id}`,
+            ref,
+            name: id,
+            kind: 'blocker',
+            position: { x: shape.x + shape.w / 2, y: shape.y + shape.h / 2 },
+            shape: { kind: 'rect', w: shape.w, h: shape.h },
+            editable: true,
+          }
+        : {
+            uid: `json:${section}:${id}`,
+            ref,
+            name: id,
+            kind: 'blocker',
+            position: { x: shape.x, y: shape.y },
+            shape: { kind: 'circle', r: shape.radius },
+            editable: true,
+          };
+
+    setScene((s) => (s ? { ...s, colliders: [...s.colliders, newCollider] } : s));
+    setSelectedColliderUid(newCollider.uid);
+    commitOps(
+      [{ kind: 'add-collider', relPath, section, entry }],
+      [{ kind: 'remove-collider', relPath, section, id }],
+      `add ${id}`,
+    );
+    // Disarm so the next click doesn't draw another shape unintentionally.
+    setAddShapeKind(null);
+  }
+
+  // -------- Delete current selection --------
+  //
+  // Drives both the floating-palette delete button and the Delete /
+  // Backspace keyboard shortcut. Whatever is selected in the active mode
+  // gets removed; the inverse op restores it via undo. JSON-backed entries
+  // only — Godot .tscn deletes need a separate backend writer.
+  function deleteSelection(): void {
+    if (!scene) return;
+    if (mode === 'props' && selectedNodePath) {
+      const p = scene.props.find((x) => x.nodePath === selectedNodePath);
+      if (!p || !p.ref || p.ref.backend !== 'json') return;
+      const entry = {
+        id: p.ref.id,
+        image: p.texture ?? '',
+        x: p.position.x,
+        y: p.position.y,
+        w: p.displaySize?.x ?? 0,
+        h: p.displaySize?.y ?? 0,
+        ...(p.metadata.sortY ? { sortY: Number(p.metadata.sortY) } : {}),
+      };
+      setScene((s) => (s ? { ...s, props: s.props.filter((x) => x.nodePath !== p.nodePath) } : s));
+      setSelectedNodePath(null);
+      commitOps(
+        [{ kind: 'remove-prop', relPath: p.ref.relPath, section: p.ref.section, id: p.ref.id }],
+        [{ kind: 'add-prop', relPath: p.ref.relPath, section: p.ref.section, entry }],
+        `delete ${p.ref.id}`,
+      );
+      return;
+    }
+    if (mode === 'colliders' && selectedColliderUid) {
+      const c = scene.colliders.find((x) => x.uid === selectedColliderUid);
+      if (!c || c.ref.backend !== 'json') return;
+      const ref = c.ref;
+      // Reconstruct the JSON entry shape so undo can re-add.
+      let entry: AddColliderOp['entry'];
+      if (c.shape.kind === 'rect') {
+        entry = {
+          id: ref.id,
+          type: 'rect',
+          x: c.position.x - c.shape.w / 2,
+          y: c.position.y - c.shape.h / 2,
+          w: c.shape.w,
+          h: c.shape.h,
+        };
+      } else if (c.shape.kind === 'circle') {
+        entry = {
+          id: ref.id,
+          type: 'circle',
+          x: c.position.x,
+          y: c.position.y,
+          radius: c.shape.r,
+        };
+      } else if (c.shape.kind === 'polygon') {
+        entry = {
+          id: ref.id,
+          type: 'polygon',
+          points: c.shape.points.map((p) => [p.x, p.y]),
+        };
+      } else {
+        // 'point' — no on-disk shape; skip delete for now.
+        return;
+      }
+      setScene((s) => (s ? { ...s, colliders: s.colliders.filter((x) => x.uid !== c.uid) } : s));
+      setSelectedColliderUid(null);
+      commitOps(
+        [{ kind: 'remove-collider', relPath: ref.relPath, section: ref.section, id: ref.id }],
+        [{ kind: 'add-collider', relPath: ref.relPath, section: ref.section, entry }],
+        `delete ${ref.id}`,
+      );
+      return;
+    }
+    if (mode === 'paths' && selectedPath) {
+      const p = scene.paths.find((x) => x.uid === selectedPath.uid);
+      if (!p || p.ref.backend !== 'json') return;
+      const ref = p.ref;
+      const entry = {
+        id: ref.id,
+        points: p.points.map((pt) => ({ x: pt.x, y: pt.y })),
+      };
+      setScene((s) => (s ? { ...s, paths: s.paths.filter((x) => x.uid !== p.uid) } : s));
+      setSelectedPath(null);
+      commitOps(
+        [{ kind: 'remove-path', relPath: ref.relPath, section: ref.section, id: ref.id }],
+        [{ kind: 'add-path', relPath: ref.relPath, section: ref.section, entry }],
+        `delete ${ref.id}`,
+      );
+      return;
+    }
+    if (mode === 'zones' && selectedZoneUid) {
+      const z = scene.zones.find((x) => x.uid === selectedZoneUid);
+      if (!z || z.ref.backend !== 'json') return;
+      const ref = z.ref;
+      // Reconstruct the on-disk JSON entry shape for the inverse op.
+      // We carry whatever known fields back through entry; SceneZone
+      // stores shape (rect/circle/polygon) + position (center) + fields.
+      // Convert center → top-left for rect; pass others through.
+      const entry: Record<string, unknown> = {};
+      if (ref.section.includes('.')) {
+        // Dict-keyed (zones.X / exits.X). For rect we store top-left
+        // because that's what the loader expects to read back.
+        if (z.shape.kind === 'rect') {
+          entry.x = z.position.x - z.shape.w / 2;
+          entry.y = z.position.y - z.shape.h / 2;
+          entry.w = z.shape.w;
+          entry.h = z.shape.h;
+        } else if (z.shape.kind === 'circle') {
+          entry.x = z.position.x;
+          entry.y = z.position.y;
+          // Exits use interactRadius as field name; zones use radius.
+          // Write both so whichever is original gets restored.
+          entry.radius = z.shape.r;
+          entry.interactRadius = z.shape.r;
+        } else {
+          // point — just x/y
+          entry.x = z.position.x;
+          entry.y = z.position.y;
+        }
+      } else {
+        // Array-keyed (sidecar walkBounds / walkable / etc.). Mirror
+        // the sidecar's "type" + shape-specific fields verbatim, plus
+        // an `id` so applyJsonArrayAppend can find it on undo.
+        entry.id = ref.id;
+        if (z.shape.kind === 'rect') {
+          entry.type = 'rect';
+          entry.x = z.position.x - z.shape.w / 2;
+          entry.y = z.position.y - z.shape.h / 2;
+          entry.w = z.shape.w;
+          entry.h = z.shape.h;
+        } else if (z.shape.kind === 'circle') {
+          entry.type = 'circle';
+          entry.x = z.position.x;
+          entry.y = z.position.y;
+          entry.radius = z.shape.r;
+        } else if (z.shape.kind === 'polygon') {
+          entry.type = 'polygon';
+          entry.points = z.shape.points.map((p) => [p.x, p.y]);
+        } else {
+          // 'point' on array sections is rare — skip rather than write
+          // a malformed entry.
+          return;
+        }
+      }
+      // Carry agent-authored extra fields (event, target, ...) so undo
+      // restores them. SceneZone exposes them via fields map.
+      for (const [k, v] of Object.entries(z.fields)) {
+        if (k === 'kind' || k === 'source') continue; // loader-internal
+        entry[k] = v;
+      }
+      setScene((s) => (s ? { ...s, zones: s.zones.filter((x) => x.uid !== z.uid) } : s));
+      setSelectedZoneUid(null);
+      commitOps(
+        [{ kind: 'remove-zone', relPath: ref.relPath, section: ref.section, id: ref.id }],
+        [{ kind: 'add-zone', relPath: ref.relPath, section: ref.section, entry }],
+        `delete ${z.name}`,
+      );
+      return;
+    }
+  }
+
+  // -------- Add polygon collider (multi-click vertex) --------
+  function commitPolygonDraft(): void {
+    const draft = polygonDraft;
+    setPolygonDraft(null);
+    setPathDraftCursor(null);
+    if (!draft || draft.points.length < 3) return;
+    if (!scene) return;
+    const relPath = scene.collidersJsonPath;
+    if (!relPath) {
+      setSaveError(
+        'No collision-map JSON for this scene. Generate one via the agent first.',
+      );
+      setSavingState('error');
+      return;
+    }
+    const section = 'blockers';
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const id = `poly_${suffix}`;
+    const ref: ColliderRef = { backend: 'json', relPath, section, id };
+    // JSON convention stores polygon points as [x, y] tuple arrays; the
+    // in-memory SceneCollider uses Vec2.
+    const tuples: [number, number][] = draft.points.map((p) => [p.x, p.y]);
+    const cx = draft.points.reduce((a, p) => a + p.x, 0) / draft.points.length;
+    const cy = draft.points.reduce((a, p) => a + p.y, 0) / draft.points.length;
+
+    const newCollider: SceneCollider = {
+      uid: `json:${section}:${id}`,
+      ref,
+      name: id,
+      kind: 'blocker',
+      position: { x: cx, y: cy },
+      shape: { kind: 'polygon', points: draft.points.map((p) => ({ x: p.x, y: p.y })) },
+      // Match the loader's behavior so post-refresh state stays consistent
+      // (polygon vertex editing isn't wired yet — Phase 4 territory).
+      editable: false,
+    };
+    setScene((s) => (s ? { ...s, colliders: [...s.colliders, newCollider] } : s));
+    setSelectedColliderUid(newCollider.uid);
+    commitOps(
+      [{ kind: 'add-collider', relPath, section, entry: { id, type: 'polygon', points: tuples } }],
+      [{ kind: 'remove-collider', relPath, section, id }],
+      `add ${id}`,
+    );
+  }
+
+  // -------- Add path (multi-click waypoint) --------
+  //
+  // Called on Enter / "finish" / double-click. Builds the entry from the
+  // pathDraft, splices a ScenePath into local state, commits, and exits
+  // draft mode. Skips draft with < 2 points (a single click isn't a path).
+  function commitPathDraft(): void {
+    const draft = pathDraft;
+    setPathDraft(null);
+    setPathDraftCursor(null);
+    if (!draft || draft.points.length < 2) return;
+    if (!scene) return;
+    const relPath = props.relPath;
+    const section = 'paths';
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const id = `path_${suffix}`;
+    const ref: ColliderRef = { backend: 'json', relPath, section, id };
+    const points = draft.points.map((p) => ({ x: p.x, y: p.y }));
+
+    const newPath: ScenePath = {
+      uid: `web:paths:${id}`,
+      ref,
+      name: id,
+      origin: { x: 0, y: 0 },
+      points,
+      hasBezierHandles: false,
+      editable: true,
+    };
+    setScene((s) => (s ? { ...s, paths: [...s.paths, newPath] } : s));
+    setSelectedPath({ uid: newPath.uid, pointIdx: null });
+    commitOps(
+      [{ kind: 'add-path', relPath, section, entry: { id, points } }],
+      [{ kind: 'remove-path', relPath, section, id }],
+      `add ${id}`,
+    );
+  }
+
+  // ESC cancels an in-progress draft AND disarms add mode. We don't bother
+  // removing the mousemove/mouseup window listeners — they self-bail when
+  // dragRef is null and clean themselves up on the next mouseup.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        if (draftShape) setDraftShape(null);
+        if (
+          dragRef.current?.kind === 'add-rect-draft' ||
+          dragRef.current?.kind === 'add-circle-draft'
+        ) {
+          dragRef.current = null;
+        }
+        if (addShapeKind) setAddShapeKind(null);
+        if (pathDraft) {
+          setPathDraft(null);
+          setPathDraftCursor(null);
+        }
+        if (polygonDraft) {
+          setPolygonDraft(null);
+          setPathDraftCursor(null);
+        }
+        return;
+      }
+      const active = document.activeElement as HTMLElement | null;
+      const inEditable =
+        !!active &&
+        (/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable);
+      if (inEditable) return;
+      // Enter = commit; Backspace = pop last vertex. Same behavior for
+      // path and polygon drafts — they are mutually exclusive.
+      if (pathDraft) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commitPathDraft();
+        } else if (e.key === 'Backspace') {
+          e.preventDefault();
+          setPathDraft({ points: pathDraft.points.slice(0, -1) });
+        }
+        return;
+      }
+      if (polygonDraft) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commitPolygonDraft();
+        } else if (e.key === 'Backspace') {
+          e.preventDefault();
+          const next = polygonDraft.points.slice(0, -1);
+          if (next.length === 0) {
+            setPolygonDraft(null);
+            setPathDraftCursor(null);
+          } else {
+            setPolygonDraft({ points: next });
+          }
+        }
+        return;
+      }
+      // Delete / Backspace deletes the current selection (no draft active).
+      // Backspace doubles as "remove last vertex" while drafting, so we only
+      // route it to delete when no draft is mid-flight.
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const hasSel =
+          (mode === 'props' && !!selectedNodePath) ||
+          (mode === 'colliders' && !!selectedColliderUid) ||
+          (mode === 'zones' && !!selectedZoneUid) ||
+          (mode === 'paths' && !!selectedPath);
+        if (hasSel) {
+          e.preventDefault();
+          deleteSelection();
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    draftShape,
+    addShapeKind,
+    pathDraft,
+    polygonDraft,
+    mode,
+    selectedNodePath,
+    selectedColliderUid,
+    selectedZoneUid,
+    selectedPath,
+  ]);
+
+  // -------- Add prop (from picker modal) --------
+  //
+  // Loads the chosen image to learn its natural size, drops it at camera
+  // center using the JSON web-prop convention (x, y = bottom-center / feet),
+  // commits an add-prop op, and seeds the local image bank so the new prop
+  // renders without waiting for a scene refetch.
+  async function addPropFromAsset(image: string): Promise<void> {
+    if (!scene) return;
+    const wrap = containerRef.current;
+    if (!wrap) return;
+
+    // 1) Load image bytes to read naturalWidth/Height. Without this the
+    //    placed prop has w/h = 0 and renders as nothing.
+    let img: HTMLImageElement;
+    try {
+      const res = await fetchFileContent(props.projectPath, image);
+      if (!res.base64) throw new Error('image content missing base64');
+      img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = () => reject(new Error('image decode failed'));
+        i.src = `data:image/png;base64,${res.base64}`;
+      });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+      setSavingState('error');
+      return;
+    }
+    const w = img.naturalWidth || 64;
+    const h = img.naturalHeight || 64;
+
+    // 2) Camera-center in world coords. Web prop convention puts (x,y) at
+    //    feet, so visual center y = entry.y - h/2. Place feet such that the
+    //    visual center sits at camera center.
+    const r = wrap.getBoundingClientRect();
+    const cx = r.width / 2 / camera.scale + camera.panX;
+    const cy = r.height / 2 / camera.scale + camera.panY;
+    const x = Math.round(cx);
+    const y = Math.round(cy + h / 2);
+
+    // 3) Unique id from the image basename + 6-char suffix. Suffix avoids
+    //    collisions when the same image appears twice in one scene.
+    const base = image.split('/').pop()?.replace(/\.png$/i, '') ?? 'prop';
+    const folder = image.split('/').slice(-2, -1)[0]; // prefer "...assets/props/<dir>/prop.png"
+    const stem = (folder && /^[a-z0-9_-]+$/i.test(folder) ? folder : base)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '') || 'prop';
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const id = `${stem}_${suffix}`;
+
+    const entry = { id, image, x, y, w, h, sortY: y };
+    const section = 'props';
+    const ref: ColliderRef = {
+      backend: 'json',
+      relPath: props.relPath,
+      section,
+      id,
+    };
+
+    // 4) Seed the bank so the new prop renders immediately.
+    setBank((prev) => {
+      const imgs = new Map(prev.imgs);
+      const sizes = new Map(prev.sizes);
+      imgs.set(image, img);
+      sizes.set(image, { w, h });
+      return { imgs, sizes };
+    });
+
+    // 5) Mirror the daemon insert in local SceneModel state, then commit.
+    const newProp: SceneProp = {
+      nodePath: `props/${id}`,
+      name: id,
+      position: { x, y },
+      spriteOffset: { x: 0, y: -h / 2 },
+      scale: { x: 1, y: 1 },
+      texture: image,
+      metadata: { sortY: String(y) },
+      displaySize: { x: w, y: h },
+      ref,
+    };
+    setScene((s) => (s ? { ...s, props: [...s.props, newProp] } : s));
+    commitOps(
+      [{ kind: 'add-prop', relPath: props.relPath, section, entry }],
+      [{ kind: 'remove-prop', relPath: props.relPath, section, id }],
+      `add ${id}`,
+    );
+    setSelectedNodePath(newProp.nodePath);
+    setPropPickerOpen(false);
+  }
 
   const pendingOpsRef = useRef<SceneOp[]>([]);
 
@@ -1424,6 +2200,22 @@ export function SceneEditor(props: Props) {
           data-mode={mode}
           onMouseDown={onMouseDown}
           onWheel={onWheel}
+          onMouseMove={(e) => {
+            // Path / polygon rubber-band: track cursor in world coords for
+            // the live preview line. Cheap because both drafts are null in
+            // the common case — early-bail before clientToWorld.
+            if (!pathDraft && !polygonDraft) return;
+            setPathDraftCursor(clientToWorld(e));
+          }}
+          onDoubleClick={() => {
+            if (pathDraft && pathDraft.points.length >= 2) {
+              commitPathDraft();
+              return;
+            }
+            if (polygonDraft && polygonDraft.points.length >= 3) {
+              commitPolygonDraft();
+            }
+          }}
           style={{
             position: 'relative',
             overflow: 'hidden',
@@ -1431,12 +2223,46 @@ export function SceneEditor(props: Props) {
             cursor:
               dragRef.current?.kind === 'pan'
                 ? 'grabbing'
-                : mode === 'comments'
+                : mode === 'comments' || addShapeKind || pathDraft || polygonDraft
                 ? 'crosshair'
                 : 'default',
           }}
         >
           <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
+          {/* Floating contextual tool palette — sits inside the canvas so
+              its width changing across modes never shifts the mode tabs in
+              the toolbar header. */}
+          {scene && mode !== 'comments' && (
+            <ScenePalette
+              mode={mode}
+              relPath={props.relPath}
+              scene={scene}
+              addShapeKind={addShapeKind}
+              setAddShapeKind={setAddShapeKind}
+              pathDraft={pathDraft}
+              polygonDraft={polygonDraft}
+              hasPropSelected={!!selectedNodePath}
+              hasColliderSelected={!!selectedColliderUid}
+              hasZoneSelected={!!selectedZoneUid}
+              hasPathSelected={!!selectedPath}
+              onOpenPropPicker={() => setPropPickerOpen(true)}
+              onStartPathDraft={() => {
+                setPathDraft({ points: [] });
+                setSelectedPath(null);
+              }}
+              onCommitPathDraft={commitPathDraft}
+              onCancelPathDraft={() => {
+                setPathDraft(null);
+                setPathDraftCursor(null);
+              }}
+              onCommitPolygonDraft={commitPolygonDraft}
+              onCancelPolygonDraft={() => {
+                setPolygonDraft(null);
+                setPathDraftCursor(null);
+              }}
+              onDelete={deleteSelection}
+            />
+          )}
           {loading && (
             <div className="scene-overlay">Loading scene…</div>
           )}
@@ -1469,6 +2295,15 @@ export function SceneEditor(props: Props) {
                 } catch {
                   // best-effort
                 }
+              }}
+            />
+          )}
+          {propPickerOpen && (
+            <PropPickerModal
+              projectPath={props.projectPath}
+              onClose={() => setPropPickerOpen(false)}
+              onPick={(image) => {
+                void addPropFromAsset(image);
               }}
             />
           )}
@@ -2243,6 +3078,7 @@ async function dumpSceneContext(
   camera: { scale: number; panX: number; panY: number },
   containerEl: HTMLDivElement | null,
   sel: SelectionSnapshot,
+  engine: string = 'web',
 ): Promise<void> {
   // Compute viewport in world coords from the canvas size + camera.
   const viewport = (() => {
@@ -2316,7 +3152,7 @@ async function dumpSceneContext(
   const payload = {
     version: 1,
     updatedAt: Date.now(),
-    project: { path: projectPath, engine: 'godot' },
+    project: { path: projectPath, engine },
     scene: {
       relPath: scene.scenePath,
       rootName: scene.rootName,
@@ -2641,6 +3477,370 @@ function UndoRedo({
   );
 }
 
+// ScenePalette — floating in-canvas tool palette. Replaced the inline
+// header buttons because adding/removing them from the toolbar shifted the
+// mode tabs sideways across mode switches — bad muscle-memory experience.
+//
+// Per-mode contents:
+//   props      → + prop  | delete (when prop selected)
+//   colliders  → + rect, + circle, + poly   | delete   (or finish/cancel
+//                while a polygonDraft is in progress)
+//   paths      → + path                     | delete   (or finish/cancel
+//                while a pathDraft is in progress)
+//   zones      → delete only (add not supported yet — zones are object-
+//                keyed in JSON, not array)
+function ScenePalette({
+  mode,
+  relPath,
+  scene,
+  addShapeKind,
+  setAddShapeKind,
+  pathDraft,
+  polygonDraft,
+  hasPropSelected,
+  hasColliderSelected,
+  hasZoneSelected,
+  hasPathSelected,
+  onOpenPropPicker,
+  onStartPathDraft,
+  onCommitPathDraft,
+  onCancelPathDraft,
+  onCommitPolygonDraft,
+  onCancelPolygonDraft,
+  onDelete,
+}: {
+  mode: EditMode;
+  relPath: string;
+  scene: SceneModel;
+  addShapeKind: null | 'rect' | 'circle' | 'polygon';
+  setAddShapeKind: (
+    f: (k: null | 'rect' | 'circle' | 'polygon') => null | 'rect' | 'circle' | 'polygon',
+  ) => void;
+  pathDraft: { points: Vec2[] } | null;
+  polygonDraft: { points: Vec2[] } | null;
+  hasPropSelected: boolean;
+  hasColliderSelected: boolean;
+  hasZoneSelected: boolean;
+  hasPathSelected: boolean;
+  onOpenPropPicker: () => void;
+  onStartPathDraft: () => void;
+  onCommitPathDraft: () => void;
+  onCancelPathDraft: () => void;
+  onCommitPolygonDraft: () => void;
+  onCancelPolygonDraft: () => void;
+  onDelete: () => void;
+}) {
+  const isJson = relPath.toLowerCase().endsWith('.json');
+
+  // Stop pointer events from reaching the canvas. Without this, clicking
+  // a palette button while addShapeKind is armed triggers the canvas's
+  // mousedown right after the button click — user thinks they clicked
+  // "+ rect" but it also seeded a draft at button-click coords.
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+
+  // ---- Polygon draft mode: replace add buttons with finish/cancel ----
+  if (mode === 'colliders' && polygonDraft) {
+    return (
+      <div className="scene-tool-palette" onMouseDown={stop} onClick={stop}>
+        <button
+          className="btn btn-sm"
+          onClick={onCommitPolygonDraft}
+          disabled={polygonDraft.points.length < 3}
+          title="Close polygon (Enter)"
+        >
+          finish ({polygonDraft.points.length} pt)
+        </button>
+        <button
+          className="btn btn-sm btn-ghost"
+          onClick={onCancelPolygonDraft}
+          title="Cancel (Esc)"
+        >
+          cancel
+        </button>
+        <span className="palette-hint">Click vertex · Backspace undo · Enter close</span>
+      </div>
+    );
+  }
+
+  // ---- Path draft mode: replace add buttons with finish/cancel ----
+  if (mode === 'paths' && pathDraft) {
+    return (
+      <div className="scene-tool-palette" onMouseDown={stop} onClick={stop}>
+        <button
+          className="btn btn-sm"
+          onClick={onCommitPathDraft}
+          disabled={pathDraft.points.length < 2}
+          title="Finish path (Enter)"
+        >
+          finish ({pathDraft.points.length} pt)
+        </button>
+        <button
+          className="btn btn-sm btn-ghost"
+          onClick={onCancelPathDraft}
+          title="Cancel (Esc)"
+        >
+          cancel
+        </button>
+        <span className="palette-hint">Click waypoint · Backspace undo · Enter finish</span>
+      </div>
+    );
+  }
+
+  // ---- Default per-mode buttons ----
+  const buttons: React.ReactNode[] = [];
+
+  if (mode === 'props' && isJson) {
+    buttons.push(
+      <button
+        key="add-prop"
+        className="btn btn-sm"
+        onClick={onOpenPropPicker}
+        title="Add a prop to this scene (image picker)"
+      >
+        + prop
+      </button>,
+    );
+  }
+  if (mode === 'colliders' && scene.collidersJsonPath) {
+    buttons.push(
+      <button
+        key="add-rect"
+        className={`btn btn-sm ${addShapeKind === 'rect' ? 'active' : ''}`}
+        onClick={() => setAddShapeKind((k) => (k === 'rect' ? null : 'rect'))}
+        title="Drag in empty space to draw a rectangle blocker"
+      >
+        + rect
+      </button>,
+      <button
+        key="add-circle"
+        className={`btn btn-sm ${addShapeKind === 'circle' ? 'active' : ''}`}
+        onClick={() => setAddShapeKind((k) => (k === 'circle' ? null : 'circle'))}
+        title="Drag in empty space to draw a circle blocker"
+      >
+        + circle
+      </button>,
+      <button
+        key="add-poly"
+        className={`btn btn-sm ${addShapeKind === 'polygon' ? 'active' : ''}`}
+        onClick={() => setAddShapeKind((k) => (k === 'polygon' ? null : 'polygon'))}
+        title="Click to place each polygon vertex (≥ 3), Enter to close"
+      >
+        + poly
+      </button>,
+    );
+  }
+  if (mode === 'paths' && isJson) {
+    buttons.push(
+      <button
+        key="add-path"
+        className="btn btn-sm"
+        onClick={onStartPathDraft}
+        title="Click in canvas to place each waypoint, Enter to finish"
+      >
+        + path
+      </button>,
+    );
+  }
+
+  // Delete button — enabled per mode only when something is selected.
+  const canDelete =
+    (mode === 'props' && hasPropSelected) ||
+    (mode === 'colliders' && hasColliderSelected) ||
+    (mode === 'zones' && hasZoneSelected) ||
+    (mode === 'paths' && hasPathSelected);
+
+  // If there are no add buttons AND nothing to delete, hide the palette
+  // entirely (e.g. zones mode without selection).
+  if (buttons.length === 0 && !canDelete && mode !== 'zones') return null;
+
+  return (
+    <div className="scene-tool-palette" onMouseDown={stop} onClick={stop}>
+      {buttons}
+      {buttons.length > 0 && canDelete && <span className="palette-sep" />}
+      {(canDelete || mode === 'zones') && (
+        <button
+          className="btn btn-sm danger"
+          onClick={onDelete}
+          disabled={!canDelete}
+          title={
+            canDelete
+              ? `Delete selected ${mode === 'props' ? 'prop' : mode === 'colliders' ? 'collider' : mode === 'zones' ? 'zone' : mode === 'paths' ? 'path' : 'item'} (Del)`
+              : 'Select something to delete'
+          }
+        >
+          delete
+        </button>
+      )}
+    </div>
+  );
+}
+
+// PropPickerModal — lists every PNG under assets/props and assets/sprites
+// (the two locations the asset-path convention tells the agent to write
+// images to). User clicks one; parent calls addPropFromAsset(image).
+function PropPickerModal({
+  projectPath,
+  onClose,
+  onPick,
+}: {
+  projectPath: string;
+  onClose: () => void;
+  onPick: (image: string) => void;
+}) {
+  const [files, setFiles] = useState<string[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchFileTree(projectPath)
+      .then((r) => {
+        if (cancelled) return;
+        const out: string[] = [];
+        const walk = (n: FileNode): void => {
+          if (n.kind === 'file') {
+            const rel = n.relPath.replace(/\\/g, '/');
+            if (!rel.toLowerCase().endsWith('.png')) return;
+            if (rel.startsWith('assets/props/') || rel.startsWith('assets/sprites/')) {
+              out.push(rel);
+            }
+            return;
+          }
+          for (const c of n.children ?? []) walk(c);
+        };
+        walk(r.tree);
+        out.sort();
+        setFiles(out);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectPath]);
+
+  const visible = (files ?? []).filter((f) =>
+    filter ? f.toLowerCase().includes(filter.toLowerCase()) : true,
+  );
+
+  return (
+    <div
+      onClick={onClose}
+      // Stop wheel from bubbling to the canvas wrap — without this,
+      // scrolling inside the picker also zooms the scene behind it.
+      onWheel={(e) => e.stopPropagation()}
+      // Same for mousedown — clicking the backdrop should close, but
+      // shouldn't seed a draft on the canvas underneath.
+      onMouseDown={(e) => e.stopPropagation()}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: 'rgba(0,0,0,0.55)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 50,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          background: 'var(--bg-1)',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          width: 'min(560px, 92%)',
+          maxHeight: '78%',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            padding: '10px 14px',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <strong style={{ flex: 1 }}>Pick a prop image</strong>
+          <button className="btn btn-sm btn-ghost" onClick={onClose} title="Close (Esc)">
+            ✕
+          </button>
+        </div>
+        <div style={{ padding: '8px 14px' }}>
+          <input
+            autoFocus
+            placeholder="Filter — e.g. throne, samurai, brazier"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') onClose();
+              if (e.key === 'Enter' && visible.length > 0) onPick(visible[0]);
+            }}
+            style={{
+              width: '100%',
+              padding: '6px 10px',
+              background: 'var(--bg-0)',
+              border: '1px solid var(--border)',
+              borderRadius: 4,
+              color: 'var(--fg)',
+            }}
+          />
+        </div>
+        <div style={{ overflow: 'auto', padding: '0 14px 14px', flex: 1 }}>
+          {error && <div className="error">{error}</div>}
+          {!files && !error && <div className="muted">Loading…</div>}
+          {files && files.length === 0 && (
+            <div className="muted">
+              No images under <code>assets/props/</code> or <code>assets/sprites/</code> yet —
+              run a generate step first.
+            </div>
+          )}
+          {visible.map((f) => (
+            <div
+              key={f}
+              role="button"
+              tabIndex={0}
+              onClick={() => onPick(f)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') onPick(f);
+              }}
+              style={{
+                padding: '6px 8px',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: 12,
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-2)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              {f}
+            </div>
+          ))}
+        </div>
+        <div
+          style={{
+            padding: '8px 14px',
+            borderTop: '1px solid var(--border)',
+            fontSize: 11,
+            color: 'var(--fg-dim)',
+          }}
+        >
+          Click an image to drop it at the camera center. Drag to reposition,
+          Alt+drag a corner to scale non-uniformly.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ModeToggle({ mode, setMode }: { mode: EditMode; setMode: (m: EditMode) => void }) {
   return (
     <span className="scene-mode-toggle" role="tablist">
@@ -2836,6 +4036,244 @@ function applyOpToScene(s: SceneModel, op: SceneOp): SceneModel {
           : p,
       ),
     };
+  }
+  if (op.kind === 'add-prop') {
+    // The forward path (addPropFromAsset) already inserted the prop and
+    // seeded the bank. This branch only runs from redo — re-insert if the
+    // prop is missing, otherwise no-op.
+    const id = op.entry.id;
+    const section = op.section ?? 'props';
+    const exists = s.props.some(
+      (p) =>
+        p.ref?.backend === 'json' &&
+        p.ref.relPath === op.relPath &&
+        p.ref.section === section &&
+        p.ref.id === id,
+    );
+    if (exists) return s;
+    const w = op.entry.w;
+    const h = op.entry.h;
+    const newProp: SceneProp = {
+      nodePath: `${section}/${id}`,
+      name: id,
+      position: { x: op.entry.x, y: op.entry.y },
+      spriteOffset: { x: 0, y: -h / 2 },
+      scale: { x: 1, y: 1 },
+      texture: op.entry.image,
+      metadata: typeof op.entry.sortY === 'number' ? { sortY: String(op.entry.sortY) } : {},
+      displaySize: { x: w, y: h },
+      ref: { backend: 'json', relPath: op.relPath, section, id },
+    };
+    return { ...s, props: [...s.props, newProp] };
+  }
+  if (op.kind === 'remove-prop') {
+    const section = op.section ?? 'props';
+    return {
+      ...s,
+      props: s.props.filter(
+        (p) =>
+          !(
+            p.ref?.backend === 'json' &&
+            p.ref.relPath === op.relPath &&
+            p.ref.section === section &&
+            p.ref.id === op.id
+          ),
+      ),
+    };
+  }
+  if (op.kind === 'add-collider') {
+    // Idempotent — addColliderShape already inserted; this only fires on redo.
+    const id = op.entry.id;
+    const section = op.section ?? 'blockers';
+    const exists = s.colliders.some(
+      (c) =>
+        c.ref.backend === 'json' &&
+        c.ref.relPath === op.relPath &&
+        c.ref.section === section &&
+        c.ref.id === id,
+    );
+    if (exists) return s;
+    const ref: ColliderRef = { backend: 'json', relPath: op.relPath, section, id };
+    const e = op.entry;
+    let newCollider: SceneCollider;
+    if (e.type === 'rect') {
+      newCollider = {
+        uid: `json:${section}:${id}`,
+        ref,
+        name: id,
+        kind: 'blocker',
+        position: { x: e.x + e.w / 2, y: e.y + e.h / 2 },
+        shape: { kind: 'rect', w: e.w, h: e.h },
+        editable: true,
+      };
+    } else if (e.type === 'circle') {
+      newCollider = {
+        uid: `json:${section}:${id}`,
+        ref,
+        name: id,
+        kind: 'blocker',
+        position: { x: e.x, y: e.y },
+        shape: { kind: 'circle', r: e.radius },
+        editable: true,
+      };
+    } else {
+      // polygon — JSON tuples [x, y][] → in-memory Vec2[].
+      const pts = e.points.map(([x, y]) => ({ x, y }));
+      const cx = pts.reduce((a, p) => a + p.x, 0) / Math.max(1, pts.length);
+      const cy = pts.reduce((a, p) => a + p.y, 0) / Math.max(1, pts.length);
+      newCollider = {
+        uid: `json:${section}:${id}`,
+        ref,
+        name: id,
+        kind: 'blocker',
+        position: { x: cx, y: cy },
+        shape: { kind: 'polygon', points: pts },
+        editable: false,
+      };
+    }
+    return { ...s, colliders: [...s.colliders, newCollider] };
+  }
+  if (op.kind === 'remove-collider') {
+    const section = op.section ?? 'blockers';
+    return {
+      ...s,
+      colliders: s.colliders.filter(
+        (c) =>
+          !(
+            c.ref.backend === 'json' &&
+            c.ref.relPath === op.relPath &&
+            c.ref.section === section &&
+            c.ref.id === op.id
+          ),
+      ),
+    };
+  }
+  if (op.kind === 'add-path') {
+    const id = op.entry.id;
+    const section = op.section ?? 'paths';
+    const exists = s.paths.some(
+      (p) =>
+        p.ref.backend === 'json' &&
+        p.ref.relPath === op.relPath &&
+        p.ref.section === section &&
+        p.ref.id === id,
+    );
+    if (exists) return s;
+    const newPath: ScenePath = {
+      uid: `web:paths:${id}`,
+      ref: { backend: 'json', relPath: op.relPath, section, id },
+      name: id,
+      origin: { x: 0, y: 0 },
+      points: op.entry.points.map((pt) => ({ x: pt.x, y: pt.y })),
+      hasBezierHandles: false,
+      editable: true,
+    };
+    return { ...s, paths: [...s.paths, newPath] };
+  }
+  if (op.kind === 'remove-path') {
+    const section = op.section ?? 'paths';
+    return {
+      ...s,
+      paths: s.paths.filter(
+        (p) =>
+          !(
+            p.ref.backend === 'json' &&
+            p.ref.relPath === op.relPath &&
+            p.ref.section === section &&
+            p.ref.id === op.id
+          ),
+      ),
+    };
+  }
+  if (op.kind === 'remove-zone') {
+    return {
+      ...s,
+      zones: s.zones.filter(
+        (z) =>
+          !(
+            z.ref.backend === 'json' &&
+            z.ref.relPath === op.relPath &&
+            z.ref.section === op.section &&
+            z.ref.id === op.id
+          ),
+      ),
+    };
+  }
+  if (op.kind === 'add-zone') {
+    // Redo of an add-zone (or undo of a delete) — re-derive a SceneZone
+    // from the JSON entry. Mirrors the loader's web-scene.ts logic so
+    // the reconstructed zone behaves identically until the next refetch.
+    const exists = s.zones.some(
+      (z) =>
+        z.ref.backend === 'json' &&
+        z.ref.relPath === op.relPath &&
+        z.ref.section === op.section,
+    );
+    if (exists) return s;
+    const e = op.entry as Record<string, unknown>;
+    const isDictKeyed = op.section.includes('.');
+    const id = isDictKeyed
+      ? op.section.slice(op.section.indexOf('.') + 1)
+      : (typeof e.id === 'string' ? (e.id as string) : '');
+    if (!id) return s;
+    const ref: ColliderRef = {
+      backend: 'json',
+      relPath: op.relPath,
+      section: op.section,
+      id,
+    };
+    // Infer shape from entry — same priority as inferShapeFromEntry.
+    let shape: SceneCollider['shape'];
+    let position: Vec2;
+    if (typeof e.w === 'number' && typeof e.h === 'number') {
+      shape = { kind: 'rect', w: e.w as number, h: e.h as number };
+      const x = typeof e.x === 'number' ? (e.x as number) : 0;
+      const y = typeof e.y === 'number' ? (e.y as number) : 0;
+      position = { x: x + (e.w as number) / 2, y: y + (e.h as number) / 2 };
+    } else if (typeof e.radius === 'number' || typeof e.interactRadius === 'number') {
+      const r = typeof e.radius === 'number'
+        ? (e.radius as number)
+        : (e.interactRadius as number);
+      shape = { kind: 'circle', r };
+      position = {
+        x: typeof e.x === 'number' ? (e.x as number) : 0,
+        y: typeof e.y === 'number' ? (e.y as number) : 0,
+      };
+    } else if (Array.isArray(e.points)) {
+      const pts = (e.points as Array<[number, number]>).map(([x, y]) => ({ x, y }));
+      const cx = pts.reduce((a, p) => a + p.x, 0) / Math.max(1, pts.length);
+      const cy = pts.reduce((a, p) => a + p.y, 0) / Math.max(1, pts.length);
+      shape = { kind: 'polygon', points: pts };
+      position = { x: cx, y: cy };
+    } else {
+      shape = { kind: 'point' };
+      position = {
+        x: typeof e.x === 'number' ? (e.x as number) : 0,
+        y: typeof e.y === 'number' ? (e.y as number) : 0,
+      };
+    }
+    const fields: Record<string, string | number> = {};
+    for (const [k, v] of Object.entries(e)) {
+      if (k === 'id' || k === 'type' || k === 'x' || k === 'y' || k === 'w' || k === 'h' ||
+          k === 'radius' || k === 'interactRadius' || k === 'points') continue;
+      if (typeof v === 'string' || typeof v === 'number') fields[k] = v;
+    }
+    const zoneKind: ZoneKind = (() => {
+      if (op.section.startsWith('exits')) return 'exit';
+      if (op.section.startsWith('zones')) return 'encounter';
+      return 'unknown';
+    })();
+    const newZone: SceneZone = {
+      uid: `web:${op.section.replace('.', ':')}:${id}`,
+      ref,
+      name: id,
+      zoneKind,
+      position,
+      shape,
+      fields,
+      editable: shape.kind !== 'polygon',
+    };
+    return { ...s, zones: [...s.zones, newZone] };
   }
   return s;
 }
@@ -3267,8 +4705,25 @@ function propBounds(p: SceneProp, bank: ImageBank) {
   // Without honoring this, big background sprites that Codex sets to
   // centered=false (per OGF Godot conventions) appear shifted up-left by
   // (w/2, h/2) in the OGF Scenes tab while Play renders them correctly.
+  //
+  // Web bottom-anchored caveat: the loader sets spriteOffset = { 0, -h/2 }
+  // using the JSON's STORED h, so feet land at position.y at scale=1. But
+  // during a live scale drag we update p.scale and not the offset, so by
+  // the time we draw the feet drift down (or up) by displaySize.y *
+  // (scale.y - 1) / 2 — and then snap back on save+reload because the
+  // loader recomputes offset from the new stored h. To keep feet rigid
+  // through the drag, recompute the y offset here from the VISUAL h.
+  // Detect web bottom-anchored by (displaySize set AND offset.x = 0 AND
+  // offset.y is negative — only the loader writes that pattern). Godot
+  // props with custom Sprite2D positions are unaffected.
+  const isWebBottomAnchored =
+    p.displaySize != null &&
+    p.spriteOffset.x === 0 &&
+    p.spriteOffset.y <= 0;
   const ax = p.position.x + p.spriteOffset.x;
-  const ay = p.position.y + p.spriteOffset.y;
+  const ay = isWebBottomAnchored
+    ? p.position.y - h / 2
+    : p.position.y + p.spriteOffset.y;
   if (p.centered === false) {
     return { x: ax, y: ay, w, h };
   }
@@ -3394,11 +4849,49 @@ function drawProp(
   } else {
     const img = p.texture ? bank.imgs.get(p.texture) : null;
     if (img) {
-      ctx.drawImage(img, r.x, r.y, r.w, r.h);
+      // Aspect-fit (letterbox) draw — preserve sprite ratio inside the
+      // collision rect. Without this, a square sprite (e.g. 128×128 from
+      // generate2dsprite) drawn into a flat hazard rect (e.g. 104×44)
+      // gets visibly squashed. The collision rect stays the source of
+      // truth for gameplay; the sprite renders centered within it.
+      const imgRatio = img.width / img.height;
+      const rectRatio = r.w / r.h;
+      let drawW: number;
+      let drawH: number;
+      if (imgRatio > rectRatio) {
+        drawW = r.w;
+        drawH = r.w / imgRatio;
+      } else {
+        drawH = r.h;
+        drawW = r.h * imgRatio;
+      }
+      const drawX = r.x + (r.w - drawW) / 2;
+      const drawY = r.y + (r.h - drawH) / 2;
+      ctx.drawImage(img, drawX, drawY, drawW, drawH);
     } else {
       ctx.fillStyle = 'rgba(255, 80, 80, 0.3)';
       ctx.fillRect(r.x, r.y, r.w, r.h);
     }
+  }
+
+  // Hitbox indicator — when the prop has a smaller damage/collect rect
+  // than its visual bounds (catalog declared `hitbox`), draw a dashed
+  // inset rect so the designer knows what the actual collision area is.
+  // Most relevant for hazards (steam vent / puddle / spike) and pickups
+  // with transparent padding around the visible sprite content.
+  if (p.hitbox) {
+    const hbW = p.hitbox.w * Math.abs(p.scale.x);
+    const hbH = p.hitbox.h * Math.abs(p.scale.y);
+    const cx = r.x + r.w / 2 + (p.hitbox.offsetX ?? 0);
+    const cy = r.y + r.h / 2 + (p.hitbox.offsetY ?? 0);
+    const hbX = cx - hbW / 2;
+    const hbY = cy - hbH / 2;
+    ctx.save();
+    ctx.lineWidth = 1.2 / scale;
+    ctx.strokeStyle = 'rgba(248, 113, 113, 0.85)';
+    ctx.setLineDash([6 / scale, 4 / scale]);
+    ctx.strokeRect(hbX, hbY, hbW, hbH);
+    ctx.restore();
   }
 
   // Section tint: thin colored border + tiny label tab in the top-left so the

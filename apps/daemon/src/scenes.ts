@@ -11,9 +11,15 @@ import type {
   SceneZone,
 } from '@ogf/contracts';
 import {
+  applyJsonArrayEntryByIndex,
+  applyJsonArrayEntryRemoveByIndex,
   applyJsonColliderEdit,
+  applyJsonDictKeyedDelete,
+  applyJsonDictKeyedEdit,
+  applyJsonDictKeyedSet,
   applyJsonSingleFieldEdit,
   findCollisionJsonPath,
+  isIndexId,
   readJsonColliders,
   readTscnColliders,
   writeTscnMoveCollider,
@@ -97,6 +103,47 @@ function readPngSize(buf: Buffer): { w: number; h: number } | null {
     return null;
   }
   return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+}
+
+/** Look up an entry's default `size: {w, h}` from `data/<section>.json`.
+ *  Mirrors web-scene.ts's catalog fallback — pickups/enemies often write
+ *  level entries with only {type, x, y} because the runtime pulls size
+ *  from the catalog. Returns null if the catalog or entry is missing or
+ *  the size shape is malformed. Section must be one of the known catalog
+ *  sections (hazards/pickups/enemies/items/projectiles/doors/checkpoints). */
+const CATALOG_SECTIONS = new Set([
+  'hazards',
+  'pickups',
+  'enemies',
+  'items',
+  'projectiles',
+  'doors',
+  'checkpoints',
+]);
+function readCatalogSize(
+  rootAbs: string,
+  section: string,
+  typeId: string,
+): { w: number; h: number } | null {
+  if (!CATALOG_SECTIONS.has(section)) return null;
+  try {
+    const abs = safeJoin(rootAbs, `data/${section}.json`);
+    if (!existsSync(abs)) return null;
+    const parsed = JSON.parse(readFileSync(abs, 'utf8'));
+    if (!Array.isArray(parsed)) return null;
+    const hit = (parsed as Array<{ id?: unknown; size?: unknown }>).find(
+      (c) => c?.id === typeId,
+    );
+    const sz = hit?.size;
+    if (!sz || typeof sz !== 'object') return null;
+    const w = Number((sz as { w?: unknown }).w);
+    const h = Number((sz as { h?: unknown }).h);
+    return Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0
+      ? { w, h }
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 const PREVIEW_HINTS = ['layered-preview', 'baked-map', 'basemap', 'base-map'];
@@ -736,19 +783,51 @@ function applyOpsToJsonScene(opts: ApplyOpsOptions): ApplyOpsResult {
       // unit scale to a pixel size using the entry's CURRENT w/h. The entry
       // can live in any top-level array (props / platforms / pickups / ...);
       // op.ref.section tells us which.
+      //
+      // ALSO update x/y to preserve the visual CENTER across the resize.
+      // The editor's prop-scale drag scales from the bbox center (top-left
+      // moves outward), so the user expects the rect to grow symmetrically.
+      // Without center-preserving x/y rewrite here, the JSON-stored top-left
+      // stays put, the loader re-emits with scale=1, and the prop visually
+      // jumps on the next reload (top-left fixed, growth now asymmetric).
+      //
+      // Catalog fallback: pickups/enemies often write {type, x, y} with no
+      // w/h (runtime reads size from data/<section>.json). Look up the
+      // current effective size from that catalog so the FIRST resize works
+      // — without this the entry has no cur.w to multiply against and the
+      // edit silently no-ops.
       const map = JSON.parse(
         readFileSync(safeJoin(opts.rootAbs, op.ref.relPath), 'utf8'),
       ) as Record<string, unknown>;
       const arr = map[op.ref.section];
       if (Array.isArray(arr)) {
-        const cur = (arr as Array<{ id?: string; w?: number; h?: number }>).find(
+        const cur = (arr as Array<{ id?: string; type?: string; x?: number; y?: number; w?: number; h?: number }>).find(
           (p) => p?.id === op.ref!.id,
         );
-        if (cur && typeof cur.w === 'number' && typeof cur.h === 'number') {
-          applyJsonColliderEdit(opts.rootAbs, op.ref, {
-            w: cur.w * op.scale.x,
-            h: cur.h * op.scale.y,
-          });
+        let curW: number | undefined =
+          typeof cur?.w === 'number' ? cur.w : undefined;
+        let curH: number | undefined =
+          typeof cur?.h === 'number' ? cur.h : undefined;
+        if ((curW === undefined || curH === undefined) && cur?.type) {
+          const sz = readCatalogSize(opts.rootAbs, op.ref.section, cur.type);
+          if (sz) {
+            curW = curW ?? sz.w;
+            curH = curH ?? sz.h;
+          }
+        }
+        if (cur && curW !== undefined && curH !== undefined) {
+          const newW = curW * op.scale.x;
+          const newH = curH * op.scale.y;
+          const patch: Record<string, number> = { w: newW, h: newH };
+          if (typeof cur.x === 'number') {
+            const cx = cur.x + curW / 2;
+            patch.x = cx - newW / 2;
+          }
+          if (typeof cur.y === 'number') {
+            const cy = cur.y + curH / 2;
+            patch.y = cy - newH / 2;
+          }
+          applyJsonColliderEdit(opts.rootAbs, op.ref, patch);
         }
       }
     } else if (op.kind === 'move-collider') {
@@ -761,30 +840,132 @@ function applyOpsToJsonScene(opts: ApplyOpsOptions): ApplyOpsResult {
         throw new Error(`resize-rect-collider on .json scene must use json ref`);
       }
       const ref = op.ref;
-      const colliders = readJsonColliders(opts.rootAbs, ref.relPath);
-      const target = colliders.find(
-        (c) => c.ref.backend === 'json' && c.ref.id === ref.id,
-      );
-      if (target && target.shape.kind === 'rect') {
-        const tlx = target.position.x - op.w / 2;
-        const tly = target.position.y - op.h / 2;
-        applyJsonColliderEdit(opts.rootAbs, ref, {
-          x: tlx,
-          y: tly,
+      // Dict-keyed (zones.X / exits.X): preserve visual center across the
+      // resize by reading current x/y/w/h, computing the old center, and
+      // writing new top-left + size around that center.
+      if (ref.section.includes('.')) {
+        const dotIx = ref.section.indexOf('.');
+        const parent = ref.section.slice(0, dotIx);
+        const key = ref.section.slice(dotIx + 1);
+        const abs = safeJoin(opts.rootAbs, ref.relPath);
+        const json = JSON.parse(readFileSync(abs, 'utf8')) as Record<string, unknown>;
+        const dict = json[parent];
+        const entry =
+          dict && typeof dict === 'object' && !Array.isArray(dict)
+            ? ((dict as Record<string, unknown>)[key] as Record<string, unknown> | undefined)
+            : undefined;
+        const oldX = typeof entry?.x === 'number' ? (entry.x as number) : 0;
+        const oldY = typeof entry?.y === 'number' ? (entry.y as number) : 0;
+        const oldW = typeof entry?.w === 'number' ? (entry.w as number) : 0;
+        const oldH = typeof entry?.h === 'number' ? (entry.h as number) : 0;
+        const cx = oldX + oldW / 2;
+        const cy = oldY + oldH / 2;
+        applyJsonDictKeyedEdit(opts.rootAbs, ref, {
+          x: cx - op.w / 2,
+          y: cy - op.h / 2,
           w: op.w,
           h: op.h,
         });
+      } else if (isIndexId(ref.id)) {
+        // Sidecar entries (no `id` on disk) — addressed by array index.
+        // Read current x/y/w/h to preserve visual center across resize.
+        const abs = safeJoin(opts.rootAbs, ref.relPath);
+        const json = JSON.parse(readFileSync(abs, 'utf8')) as Record<string, unknown>;
+        const arr = Array.isArray(json[ref.section]) ? (json[ref.section] as unknown[]) : [];
+        const idx = Number(ref.id.slice(3));
+        const entry = (arr[idx] as Record<string, unknown> | undefined) ?? {};
+        const oldX = typeof entry.x === 'number' ? (entry.x as number) : 0;
+        const oldY = typeof entry.y === 'number' ? (entry.y as number) : 0;
+        const oldW = typeof entry.w === 'number' ? (entry.w as number) : 0;
+        const oldH = typeof entry.h === 'number' ? (entry.h as number) : 0;
+        const cx = oldX + oldW / 2;
+        const cy = oldY + oldH / 2;
+        applyJsonArrayEntryByIndex(opts.rootAbs, ref, {
+          x: cx - op.w / 2,
+          y: cy - op.h / 2,
+          w: op.w,
+          h: op.h,
+        });
+      } else {
+        const colliders = readJsonColliders(opts.rootAbs, ref.relPath);
+        const target = colliders.find(
+          (c) => c.ref.backend === 'json' && c.ref.id === ref.id,
+        );
+        if (target && target.shape.kind === 'rect') {
+          const tlx = target.position.x - op.w / 2;
+          const tly = target.position.y - op.h / 2;
+          applyJsonColliderEdit(opts.rootAbs, ref, {
+            x: tlx,
+            y: tly,
+            w: op.w,
+            h: op.h,
+          });
+        }
       }
     } else if (op.kind === 'resize-circle-collider') {
       if (op.ref.backend !== 'json') {
         throw new Error(`resize-circle-collider on .json scene must use json ref`);
       }
-      applyJsonColliderEdit(opts.rootAbs, op.ref, { radius: op.r });
+      // Dict-keyed exits store circle as `interactRadius`, not `radius`.
+      // Web-scene loader maps either field into shape.kind === 'circle'.
+      // Write back via dict-keyed editor so we hit the right object key.
+      if (op.ref.section.includes('.')) {
+        applyJsonDictKeyedEdit(opts.rootAbs, op.ref, {
+          radius: op.r,
+          interactRadius: op.r,
+        });
+      } else if (isIndexId(op.ref.id)) {
+        applyJsonArrayEntryByIndex(opts.rootAbs, op.ref, {
+          radius: op.r,
+          interactRadius: op.r,
+        });
+      } else {
+        applyJsonColliderEdit(opts.rootAbs, op.ref, { radius: op.r });
+      }
     } else if (op.kind === 'move-path-point') {
       if (op.ref.backend !== 'json') {
         throw new Error(`move-path-point on .json scene must use json ref`);
       }
       applyJsonPathPointEdit(opts.rootAbs, op.ref, op.index, op.position);
+    } else if (op.kind === 'add-prop') {
+      applyJsonArrayAppend(opts.rootAbs, op.relPath, op.section ?? 'props', op.entry);
+    } else if (op.kind === 'remove-prop') {
+      applyJsonArrayRemove(opts.rootAbs, op.relPath, op.section ?? 'props', op.id);
+    } else if (op.kind === 'add-collider') {
+      applyJsonArrayAppend(opts.rootAbs, op.relPath, op.section ?? 'blockers', op.entry);
+    } else if (op.kind === 'remove-collider') {
+      applyJsonArrayRemove(opts.rootAbs, op.relPath, op.section ?? 'blockers', op.id);
+    } else if (op.kind === 'add-path') {
+      applyJsonArrayAppend(opts.rootAbs, op.relPath, op.section ?? 'paths', op.entry);
+    } else if (op.kind === 'remove-path') {
+      applyJsonArrayRemove(opts.rootAbs, op.relPath, op.section ?? 'paths', op.id);
+    } else if (op.kind === 'add-zone') {
+      // Section "<parent>.<key>" → dict-keyed set; bare name → array append.
+      if (op.section.includes('.')) {
+        applyJsonDictKeyedSet(
+          opts.rootAbs,
+          { backend: 'json', relPath: op.relPath, section: op.section, id: '' },
+          op.entry,
+        );
+      } else {
+        // Sidecar walkBounds / walkable / blockers entries don't carry
+        // `id` on disk — the loader assigns synthetic __i<n>. The undo of
+        // a delete-zone arrives here with no id; use raw push (no dedup
+        // check on undefined id, which would false-match every existing
+        // id-less entry).
+        applyJsonArrayPush(opts.rootAbs, op.relPath, op.section, op.entry);
+      }
+    } else if (op.kind === 'remove-zone') {
+      if (op.section.includes('.')) {
+        applyJsonDictKeyedDelete(opts.rootAbs, {
+          backend: 'json',
+          relPath: op.relPath,
+          section: op.section,
+          id: op.id,
+        });
+      } else {
+        applyJsonArrayRemove(opts.rootAbs, op.relPath, op.section, op.id);
+      }
     } else {
       throw new Error(
         `op '${(op as { kind: string }).kind}' not supported on .json scenes`,
@@ -794,6 +975,87 @@ function applyOpsToJsonScene(opts: ApplyOpsOptions): ApplyOpsResult {
 
   const sceneAbs = safeJoin(opts.rootAbs, opts.relPath);
   return { size: existsSync(sceneAbs) ? statSync(sceneAbs).size : 0 };
+}
+
+/** Append an entry (any shape with an `id`) to `<relPath>[<section>]`.
+ *  Creates the array if missing. Rejects duplicate ids. Whole-file JSON
+ *  roundtrip — fine for level files (no comments, ~1-3KB typical).
+ *  Used by add-prop, add-collider, and any future array-append op. */
+function applyJsonArrayAppend(
+  rootAbs: string,
+  relPath: string,
+  section: string,
+  entry: { id: string } & Record<string, unknown>,
+): void {
+  const abs = safeJoin(rootAbs, relPath);
+  const text = readFileSync(abs, 'utf8');
+  const json = JSON.parse(text) as Record<string, unknown>;
+  const arr = Array.isArray(json[section]) ? (json[section] as unknown[]) : [];
+  for (const e of arr) {
+    if (e && typeof e === 'object' && (e as { id?: string }).id === entry.id) {
+      throw new Error(`add: id '${entry.id}' already exists in ${relPath}#${section}`);
+    }
+  }
+  arr.push(entry);
+  json[section] = arr;
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
+}
+
+/** Push an entry to <relPath>[<section>] WITHOUT dedup-by-id checks.
+ *  For sidecar arrays where entries don't have `id` (walkBounds polygons,
+ *  walkable rects), the dedup logic in applyJsonArrayAppend would false-
+ *  match every id-less entry against undefined and throw. Use this instead
+ *  whenever the entry shape may legitimately omit `id`. */
+function applyJsonArrayPush(
+  rootAbs: string,
+  relPath: string,
+  section: string,
+  entry: Record<string, unknown>,
+): void {
+  const abs = safeJoin(rootAbs, relPath);
+  const text = readFileSync(abs, 'utf8');
+  const json = JSON.parse(text) as Record<string, unknown>;
+  const arr = Array.isArray(json[section]) ? (json[section] as unknown[]) : [];
+  arr.push(entry);
+  json[section] = arr;
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
+}
+
+function applyJsonArrayRemove(
+  rootAbs: string,
+  relPath: string,
+  section: string,
+  id: string,
+): void {
+  const abs = safeJoin(rootAbs, relPath);
+  const text = readFileSync(abs, 'utf8');
+  const json = JSON.parse(text) as Record<string, unknown>;
+  const arr = json[section];
+  if (!Array.isArray(arr)) {
+    throw new Error(`remove: section '${section}' is not an array in ${relPath}`);
+  }
+  // Index-addressed entry (synthetic id `__i<n>` from sidecar loader) —
+  // splice by position. Otherwise filter by id field.
+  if (isIndexId(id)) {
+    const idx = Number(id.slice(3));
+    if (idx < 0 || idx >= arr.length) {
+      throw new Error(
+        `remove: index ${idx} out of range in ${relPath}#${section} (len ${arr.length})`,
+      );
+    }
+    arr.splice(idx, 1);
+    json[section] = arr;
+  } else {
+    const before = arr.length;
+    json[section] = (arr as Array<{ id?: string }>).filter((e) => e?.id !== id);
+    if ((json[section] as unknown[]).length === before) {
+      throw new Error(`remove: id '${id}' not found in ${relPath}#${section}`);
+    }
+  }
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
 }
 
 /** Patch a single point inside `paths[id].points[index]` of a JSON
@@ -858,6 +1120,62 @@ function applyJsonColliderEditForMove(
   // Single-object field (e.g. "heroSpawn": {x, y}) — patch directly.
   if (ref.singleField) {
     applyJsonSingleFieldEdit(rootAbs, ref, { x: centerPos.x, y: centerPos.y });
+    return;
+  }
+
+  // Index-addressed sidecar entries (no `id` field on disk).
+  // Determine center→top-left translation by reading current w/h.
+  if (isIndexId(ref.id)) {
+    const abs = safeJoin(rootAbs, ref.relPath);
+    const json = JSON.parse(readFileSync(abs, 'utf8')) as Record<string, unknown>;
+    const arr = Array.isArray(json[ref.section]) ? (json[ref.section] as unknown[]) : [];
+    const idx = Number(ref.id.slice(3));
+    const entry = (arr[idx] as Record<string, unknown> | undefined) ?? {};
+    const w = typeof entry.w === 'number' ? (entry.w as number) : 0;
+    const h = typeof entry.h === 'number' ? (entry.h as number) : 0;
+    if (w > 0 && h > 0) {
+      applyJsonArrayEntryByIndex(rootAbs, ref, {
+        x: centerPos.x - w / 2,
+        y: centerPos.y - h / 2,
+      });
+    } else {
+      // Circle / point — write center directly. Polygon falls here too;
+      // moving polygons is a TODO (would need to translate every point).
+      applyJsonArrayEntryByIndex(rootAbs, ref, { x: centerPos.x, y: centerPos.y });
+    }
+    return;
+  }
+
+  // Dict-keyed sections like "zones.wild_grass" or "exits.to_boss" — the
+  // entry sits at json[parent][key] and may carry x/y/w/h or just x/y +
+  // interactRadius. Read the current entry to decide whether to translate
+  // center→top-left (rect) or write x/y as-is (circle/point).
+  // (rpg-gogogo, 2026: encounter zones were marked editable:false in the
+  // loader because no dict-keyed writer existed — user couldn't drag the
+  // grass encounter zone to align it with the map.)
+  if (ref.section.includes('.')) {
+    const dotIx = ref.section.indexOf('.');
+    const parent = ref.section.slice(0, dotIx);
+    const key = ref.section.slice(dotIx + 1);
+    const abs = safeJoin(rootAbs, ref.relPath);
+    const json = JSON.parse(readFileSync(abs, 'utf8')) as Record<string, unknown>;
+    const dict = json[parent];
+    const entry =
+      dict && typeof dict === 'object' && !Array.isArray(dict)
+        ? ((dict as Record<string, unknown>)[key] as Record<string, unknown> | undefined)
+        : undefined;
+    const w = typeof entry?.w === 'number' ? (entry.w as number) : 0;
+    const h = typeof entry?.h === 'number' ? (entry.h as number) : 0;
+    if (w > 0 && h > 0) {
+      // Rect — same top-left convention as blockers. Translate center back.
+      applyJsonDictKeyedEdit(rootAbs, ref, {
+        x: centerPos.x - w / 2,
+        y: centerPos.y - h / 2,
+      });
+    } else {
+      // Point or circle — center IS the stored position.
+      applyJsonDictKeyedEdit(rootAbs, ref, { x: centerPos.x, y: centerPos.y });
+    }
     return;
   }
 

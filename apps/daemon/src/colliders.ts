@@ -290,10 +290,36 @@ interface JsonBlocker {
   points?: [number, number][];
 }
 
+/** Side-scroll convention: `colliders[]` array on the level JSON.
+ *  Distinct from `blockers[]` because the entries use `type` for the
+ *  gameplay ROLE (platform / wall / hazard / kill), and a separate
+ *  `shape` field (or w/h presence) for the geometry. Mixing the two
+ *  semantics in one ingest function would create a "type" name clash. */
+interface JsonSideScrollCollider {
+  id: string;
+  /** Gameplay role (platform / wall / hazard / kill / ...). */
+  type?: string;
+  /** Optional explicit shape selector. If absent, inferred from
+   *  w/h/radius/points presence — same as the editor's loader. */
+  shape?: 'rect' | 'circle' | 'ellipse' | 'polygon';
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+  radius?: number;
+  rx?: number;
+  ry?: number;
+  points?: [number, number][];
+  oneWay?: boolean;
+  links?: string;
+}
+
 interface CollisionJson {
   blockers?: JsonBlocker[];
   buildZones?: JsonBlocker[];
   walkBounds?: JsonBlocker[];
+  /** Side-scroll level JSON's collider array. */
+  colliders?: JsonSideScrollCollider[];
 }
 
 export function readJsonColliders(rootAbs: string, jsonRel: string): SceneCollider[] {
@@ -383,6 +409,68 @@ export function readJsonColliders(rootAbs: string, jsonRel: string): SceneCollid
   ingest(parsed.blockers, 'blockers');
   ingest(parsed.buildZones, 'buildZones');
   ingest(parsed.walkBounds, 'walkBounds');
+
+  // Side-scroll colliders[] uses different shape conventions — `type`
+  // names gameplay role (platform/wall/hazard/kill), geometry inferred
+  // from `shape` or w/h presence. Without this ingest, move/resize ops
+  // on a side-scroll collider failed with "json collider not found" —
+  // the editor's loader emitted SceneColliders for them but the writer's
+  // lookup function (this one) didn't know about the `colliders[]` array.
+  // (test-2d-act, 2026.)
+  if (Array.isArray(parsed.colliders)) {
+    for (const c of parsed.colliders) {
+      if (!c?.id) continue;
+      const ref: ColliderRef = {
+        backend: 'json',
+        relPath: jsonRel,
+        section: 'colliders',
+        id: c.id,
+      };
+      const uid = `json:colliders:${c.id}`;
+      const kind = typeof c.type === 'string' ? c.type : 'collider';
+      // Shape inference order: explicit `shape` field → polygon points →
+      // circle radius → rect w/h fallback. Matches web-scene.ts loader's
+      // inferShapeFromEntry so writer and loader agree on geometry.
+      const explicit = c.shape;
+      if (explicit === 'polygon' && Array.isArray(c.points)) {
+        const points = c.points.map(([x, y]) => ({ x, y }));
+        const cx = points.reduce((a, p) => a + p.x, 0) / Math.max(1, points.length);
+        const cy = points.reduce((a, p) => a + p.y, 0) / Math.max(1, points.length);
+        out.push({
+          uid,
+          ref,
+          name: c.id,
+          kind,
+          position: { x: cx, y: cy },
+          shape: { kind: 'polygon', points },
+          editable: false,
+        });
+      } else if (explicit === 'circle' || explicit === 'ellipse') {
+        const r = Math.max(Number(c.rx ?? c.radius ?? 0), Number(c.ry ?? c.radius ?? 0));
+        out.push({
+          uid,
+          ref,
+          name: c.id,
+          kind,
+          position: { x: c.x ?? 0, y: c.y ?? 0 },
+          shape: { kind: 'circle', r },
+          editable: true,
+        });
+      } else if (typeof c.w === 'number' && typeof c.h === 'number') {
+        // Default rect path — covers explicit `shape: "rect"` AND
+        // shape-omitted entries that happen to carry w/h.
+        out.push({
+          uid,
+          ref,
+          name: c.id,
+          kind,
+          position: { x: (c.x ?? 0) + c.w / 2, y: (c.y ?? 0) + c.h / 2 },
+          shape: { kind: 'rect', w: c.w, h: c.h },
+          editable: true,
+        });
+      }
+    }
+  }
   return out;
 }
 
@@ -434,6 +522,184 @@ export function applyJsonSingleFieldEdit(
 
   const eol = text.includes('\r\n') ? '\r\n' : '\n';
   writeFileSync(abs, lines.join(eol), 'utf8');
+}
+
+/** Patch a dict-keyed field — for level JSON shapes like
+ *  `"zones": { "wild_grass": { "x", "y", "w", "h", "event" } }` or
+ *  `"exits": { "to_boss": { "x", "y", "interactRadius", "target" } }`.
+ *
+ *  ColliderRef carries `section: "zones.wild_grass"` (parent.key) and
+ *  `id: "wild_grass"` for these. The level loader (web-scene.ts) emits
+ *  refs in this shape for every entry under `zones` and `exits`.
+ *
+ *  Implementation: whole-file JSON.parse + mutate + stringify. Multi-
+ *  line nested objects make the line-based patcher (applyJsonColliderEdit)
+ *  awkward, and these dicts are agent-generated so reformatting cost
+ *  is irrelevant. Other fields on the entry (event, target, etc.) are
+ *  preserved by the mutate-in-place. */
+export function applyJsonDictKeyedEdit(
+  rootAbs: string,
+  ref: ColliderRef & { backend: 'json' },
+  patch: { x?: number; y?: number; w?: number; h?: number; radius?: number; interactRadius?: number },
+): void {
+  const dotIx = ref.section.indexOf('.');
+  if (dotIx <= 0) {
+    throw new Error(
+      `applyJsonDictKeyedEdit: section must be "<parent>.<key>", got "${ref.section}"`,
+    );
+  }
+  const parent = ref.section.slice(0, dotIx);
+  const key = ref.section.slice(dotIx + 1);
+
+  const abs = path.join(rootAbs, ref.relPath);
+  const text = readFileSync(abs, 'utf8');
+  const json = JSON.parse(text) as Record<string, unknown>;
+
+  const dict = json[parent];
+  if (!dict || typeof dict !== 'object' || Array.isArray(dict)) {
+    throw new Error(`expected dict at "${parent}" in ${ref.relPath}`);
+  }
+  const entry = (dict as Record<string, unknown>)[key];
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+    throw new Error(`dict-keyed entry "${key}" not found under "${parent}" in ${ref.relPath}`);
+  }
+  const target = entry as Record<string, unknown>;
+  if (patch.x !== undefined) target.x = patch.x;
+  if (patch.y !== undefined) target.y = patch.y;
+  if (patch.w !== undefined) target.w = patch.w;
+  if (patch.h !== undefined) target.h = patch.h;
+  if (patch.radius !== undefined) target.radius = patch.radius;
+  if (patch.interactRadius !== undefined) target.interactRadius = patch.interactRadius;
+
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
+}
+
+/** Index-based addressing for array entries that have NO `id` field on
+ *  disk (agent-written sidecars often skip `id` for terseness). The
+ *  loader emits synthetic refs with id=`__i<n>` to mark these; writers
+ *  detect that prefix and dispatch here.
+ *
+ *  Implementation: whole-file JSON.parse + index splice/mutate +
+ *  stringify. Same trade-off as the dict-keyed path — file gets re-
+ *  prettified but agent-written JSON has no formatting worth
+ *  preserving. */
+export function isIndexId(id: string): boolean {
+  return /^__i\d+$/.test(id);
+}
+
+function parseIndexId(id: string): number {
+  const m = /^__i(\d+)$/.exec(id);
+  if (!m) throw new Error(`expected __i<n> id, got "${id}"`);
+  return Number(m[1]);
+}
+
+export function applyJsonArrayEntryByIndex(
+  rootAbs: string,
+  ref: ColliderRef & { backend: 'json' },
+  patch: { x?: number; y?: number; w?: number; h?: number; radius?: number; interactRadius?: number },
+): void {
+  const index = parseIndexId(ref.id);
+  const abs = path.join(rootAbs, ref.relPath);
+  const text = readFileSync(abs, 'utf8');
+  const json = JSON.parse(text) as Record<string, unknown>;
+  const arr = json[ref.section];
+  if (!Array.isArray(arr)) {
+    throw new Error(`section "${ref.section}" is not an array in ${ref.relPath}`);
+  }
+  if (index < 0 || index >= arr.length) {
+    throw new Error(`index ${index} out of range in "${ref.section}" (len ${arr.length})`);
+  }
+  const entry = arr[index];
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+    throw new Error(`entry at "${ref.section}[${index}]" is not an object`);
+  }
+  const target = entry as Record<string, unknown>;
+  if (patch.x !== undefined) target.x = patch.x;
+  if (patch.y !== undefined) target.y = patch.y;
+  if (patch.w !== undefined) target.w = patch.w;
+  if (patch.h !== undefined) target.h = patch.h;
+  if (patch.radius !== undefined) target.radius = patch.radius;
+  if (patch.interactRadius !== undefined) target.interactRadius = patch.interactRadius;
+
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
+}
+
+export function applyJsonArrayEntryRemoveByIndex(
+  rootAbs: string,
+  ref: ColliderRef & { backend: 'json' },
+): void {
+  const index = parseIndexId(ref.id);
+  const abs = path.join(rootAbs, ref.relPath);
+  const text = readFileSync(abs, 'utf8');
+  const json = JSON.parse(text) as Record<string, unknown>;
+  const arr = json[ref.section];
+  if (!Array.isArray(arr)) {
+    throw new Error(`section "${ref.section}" is not an array in ${ref.relPath}`);
+  }
+  if (index < 0 || index >= arr.length) {
+    throw new Error(`index ${index} out of range in "${ref.section}" (len ${arr.length})`);
+  }
+  arr.splice(index, 1);
+
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
+}
+
+/** Set (create-or-replace) a dict-keyed entry. Pairs with applyJsonDictKeyedDelete
+ *  for add/remove of zones / exits stored at json[parent][key]. */
+export function applyJsonDictKeyedSet(
+  rootAbs: string,
+  ref: ColliderRef & { backend: 'json' },
+  entry: Record<string, unknown>,
+): void {
+  const dotIx = ref.section.indexOf('.');
+  if (dotIx <= 0) {
+    throw new Error(
+      `applyJsonDictKeyedSet: section must be "<parent>.<key>", got "${ref.section}"`,
+    );
+  }
+  const parent = ref.section.slice(0, dotIx);
+  const key = ref.section.slice(dotIx + 1);
+
+  const abs = path.join(rootAbs, ref.relPath);
+  const text = readFileSync(abs, 'utf8');
+  const json = JSON.parse(text) as Record<string, unknown>;
+  const dict = (json[parent] && typeof json[parent] === 'object' && !Array.isArray(json[parent]))
+    ? (json[parent] as Record<string, unknown>)
+    : {};
+  dict[key] = entry;
+  json[parent] = dict;
+
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
+}
+
+/** Remove a dict-keyed entry: `delete json[parent][key]`. */
+export function applyJsonDictKeyedDelete(
+  rootAbs: string,
+  ref: ColliderRef & { backend: 'json' },
+): void {
+  const dotIx = ref.section.indexOf('.');
+  if (dotIx <= 0) {
+    throw new Error(
+      `applyJsonDictKeyedDelete: section must be "<parent>.<key>", got "${ref.section}"`,
+    );
+  }
+  const parent = ref.section.slice(0, dotIx);
+  const key = ref.section.slice(dotIx + 1);
+
+  const abs = path.join(rootAbs, ref.relPath);
+  const text = readFileSync(abs, 'utf8');
+  const json = JSON.parse(text) as Record<string, unknown>;
+  const dict = json[parent];
+  if (dict && typeof dict === 'object' && !Array.isArray(dict)) {
+    delete (dict as Record<string, unknown>)[key];
+  }
+
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  writeFileSync(abs, JSON.stringify(json, null, 2) + eol, 'utf8');
 }
 
 /** Patch a single collider/prop entry's fields in JSON text. Handles BOTH

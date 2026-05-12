@@ -44,9 +44,21 @@ export interface SceneLayer {
    *  (foreground props). Editor uses this for visual hint only — it doesn't
    *  actually scroll-preview yet. */
   parallax?: number;
-  /** Inferred natural size if available. */
+  /** Extent the layer covers — typically equals mapSize for both tiled
+   *  and stretched layers. The editor fills (0,0) to (width,height). */
   width?: number;
   height?: number;
+  /** Tileable parallax strip: when true, the editor and runtime tile the
+   *  PNG horizontally via modulo wrap (createPattern('repeat-x') in the
+   *  editor, the `for x += img.width` loop in `src/parallax.js`). The PNG
+   *  stays at its natural size (typically 1280×720) regardless of
+   *  mapSize.width. When false/undefined, the PNG stretches to fill the
+   *  layer's width × height (legacy full-map layer behavior). */
+  repeatX?: boolean;
+  /** Tile dimensions for repeatX layers. When unset, the editor falls back
+   *  to the PNG's natural size. Mirrors `SceneBackground.tileW`/`tileH`. */
+  tileW?: number;
+  tileH?: number;
 }
 
 export interface SceneProp {
@@ -96,6 +108,15 @@ export interface SceneProp {
     mid: { image: string; naturalW?: number; naturalH?: number; tileW?: number; tileH?: number };
     right?: { image: string; naturalW?: number; naturalH?: number };
   };
+  /** Damage / collect collision box — smaller than the visual rect when the
+   *  sprite has transparent padding or the collision rect's aspect differs
+   *  from the sprite's content aspect. Runtime checks rectsOverlap against
+   *  this box (not the full displaySize) for hazards/pickups so the player
+   *  doesn't take damage in the visually-empty area around a centered sprite.
+   *  Centered within the visual rect; offsetX/offsetY shift relative to center.
+   *  Loader pulls this from the catalog (data/<section>.json hitbox field).
+   *  When undefined, runtime + editor fall back to the full visual rect. */
+  hitbox?: { w: number; h: number; offsetX?: number; offsetY?: number };
 }
 
 export type ColliderShape =
@@ -274,13 +295,121 @@ export interface MovePathPointOp {
   position: Vec2;
 }
 
+/** Append a new prop entry to a JSON-backed level file. Web only — for .tscn
+ *  scenes the agent must add nodes directly. The caller is responsible for
+ *  picking a unique `entry.id`; the writer will reject duplicates. */
+export interface AddPropOp {
+  kind: 'add-prop';
+  /** Project-relative path to the level JSON. */
+  relPath: string;
+  /** Top-level array key the prop lives in. Defaults to 'props' on writer. */
+  section?: string;
+  entry: {
+    id: string;
+    image: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    sortY?: number;
+  };
+}
+
+/** Remove a prop entry by id. Used as the inverse of AddPropOp for undo and
+ *  as the forward op for an explicit "delete prop" UI action. */
+export interface RemovePropOp {
+  kind: 'remove-prop';
+  relPath: string;
+  section?: string;
+  id: string;
+}
+
+/** Append a new collider entry to the collision-map JSON. The shape's
+ *  position convention follows the loader: rect uses top-left (x, y, w, h);
+ *  circle uses center (x, y, radius); polygon stores points as [x, y]
+ *  tuple arrays (matching readJsonColliders' parsing). */
+export interface AddColliderOp {
+  kind: 'add-collider';
+  /** Project-relative collision-map JSON path. */
+  relPath: string;
+  /** Array section: 'blockers' (default), 'buildZones', 'walkBounds'. */
+  section?: string;
+  entry:
+    | { id: string; type: 'rect'; x: number; y: number; w: number; h: number }
+    | { id: string; type: 'circle'; x: number; y: number; radius: number }
+    | { id: string; type: 'polygon'; points: [number, number][] };
+}
+
+export interface RemoveColliderOp {
+  kind: 'remove-collider';
+  relPath: string;
+  section?: string;
+  id: string;
+}
+
+/** Append a new path entry. Web JSON convention: points are absolute world
+ *  coords (the loader sets origin=(0,0)). For .tscn paths the agent must
+ *  add Path2D nodes manually — only the JSON backend is supported here. */
+export interface AddPathOp {
+  kind: 'add-path';
+  relPath: string;
+  /** Defaults to 'paths' on the daemon side. */
+  section?: string;
+  entry: {
+    id: string;
+    points: Vec2[];
+  };
+}
+
+export interface RemovePathOp {
+  kind: 'remove-path';
+  relPath: string;
+  section?: string;
+  id: string;
+}
+
+/** Add or remove a zone entry. Section dispatches the writer:
+ *  - "<parent>.<key>" (e.g. "zones.wild_grass") → dict-keyed write
+ *    (replaces or removes json[parent][key])
+ *  - bare name (e.g. "walkBounds", "walkable") → array append/remove
+ *    by entry.id
+ *
+ *  Entry is intentionally Record<string, unknown> because zones carry
+ *  arbitrary genre-specific fields (event, target, encounterRate, ...).
+ *  The writer preserves all fields verbatim. */
+export interface AddZoneOp {
+  kind: 'add-zone';
+  relPath: string;
+  section: string;
+  /** For array sections, entry MUST include `id`. For dict sections,
+   *  the key in section determines placement; entry.id is optional. */
+  entry: Record<string, unknown>;
+}
+
+export interface RemoveZoneOp {
+  kind: 'remove-zone';
+  relPath: string;
+  section: string;
+  /** For array sections, the entry id to remove. For dict sections,
+   *  ignored (key is in section). */
+  id: string;
+}
+
 export type SceneOp =
   | MovePropOp
   | ScalePropOp
   | MoveColliderOp
   | ResizeRectColliderOp
   | ResizeCircleColliderOp
-  | MovePathPointOp;
+  | MovePathPointOp
+  | AddPropOp
+  | RemovePropOp
+  | AddColliderOp
+  | RemoveColliderOp
+  | AddPathOp
+  | RemovePathOp
+  | AddZoneOp
+  | RemoveZoneOp;
 
 export interface ApplySceneOpsRequest {
   projectPath: string;

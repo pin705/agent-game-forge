@@ -1,0 +1,36 @@
+{
+  "movement": {
+    "speed": 190,
+    "bounds": {
+      "minX": 95,
+      "maxXInset": 95,
+      "minY": 180,
+      "maxYInset": 40
+    }
+  },
+  "encounters": {
+    "hidden": {
+      "charge": 1.4,
+      "chance": 0.014,
+      "battleKind": "mistHidden"
+    },
+    "grass": {
+      "charge": 1.2,
+      "chance": 0.018,
+      "outdoorBattleKind": "grass",
+      "marshBattleKind": "mistGrass"
+    }
+  },
+  "gateReturn": {
+    "offsetCandidates": [
+      { "x": -46, "y": "current" },
+      { "x": -62, "zoneYFactor": 0.48 },
+      { "x": -78, "zoneYFactor": 0.62 },
+      { "x": -108, "zoneYFactor": 0.7 }
+    ],
+    "fallbackPoints": [
+      { "x": 1010, "y": 540 },
+      { "x": 990, "y": 620 }
+    ]
+  }
+}

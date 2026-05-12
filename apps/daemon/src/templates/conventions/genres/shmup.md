@@ -10,6 +10,37 @@ Vertical or horizontal scrolling shooter. Background autoscrolls; player constra
 
 This file assumes you've read `runtime-patterns.md` (delta time, AABB, **object pooling for bullets — mandatory**, FSM).
 
+## Generation procedure — view_image + skill call as paired tool_uses
+
+EVERY `generate2dmap` / `generate2dsprite` call MUST be preceded by `view_image` of the closest existing reference, in the SAME message. See `common.md` "Visual consistency" for the canonical pattern + reasoning.
+
+```
+Phase 2 (first stage segment):
+  tool_use 1: view_image .ogf/style-anchor.png
+  tool_use 2: generate2dmap reference: 'generated_image'
+              prompt: "[STYLE...] tileable shmup stage segment 1
+                       of N, vertical (or horizontal) scroll..."
+
+Phase 2+ (later stage segments — reference segment-1 for cohesion):
+  tool_use 1: view_image assets/maps/stage1/segment-1.png
+  tool_use 2: generate2dmap reference: 'generated_image'
+              prompt: "Same stage continued, segment 2..."
+
+Phase 3 (player ship — first sprite):
+  tool_use 1: view_image .ogf/style-anchor.png
+  tool_use 2: generate2dsprite reference: 'generated_image'
+
+Phase 3+ (enemies, ship hit-frame — reference player ship for scale/style):
+  tool_use 1: view_image assets/sprites/player/idle.png
+  tool_use 2: generate2dsprite reference: 'generated_image'
+```
+
+Skipping view_image → blind generation → degenerate output, palette drift, segments don't tile, ship/enemy scale inconsistent.
+
+### Process strategy for ship / enemy action sheets
+
+When you run `scripts/generate2dsprite.py process` on ship / enemy / boss sheets, use **`--scale-strategy preserve --align feet`** for ALL their actions (idle, fly, attack, hurt, etc.). Same character = same strategy. `fit` is for: bullets, pickups, hit-spark FX, UI sprites. See `common.md` and `generate2dsprite/SKILL.md` for the full rule.
+
 > Note: "twin-stick shooter" (Enter the Gungeon-style) is a different genre — room-based with hand-crafted rooms stitched procedurally, much harder to template. OGF V1 only ships this scrolling shmup variant.
 
 ## Level data — wave script
@@ -214,6 +245,52 @@ data/
 4. **Forgetting to despawn off-screen bullets** — pool fills up, no new bullets fire.
 5. **Adding twin-stick mechanics** — different genre. Free aim, room-based gameplay, hand-crafted dungeons. If user wants that, push back — OGF V1 doesn't model it.
 6. **Letting player leave the playable bounds** — defines "stuck against scroll edge" UX. Always clamp player to `playerBounds`.
+
+## Recommended module split (shmup)
+
+Per `common.md` "Module architecture (universal)", every project gets the universal modules. Shmup adds these on top:
+
+| Module | Responsibility | Approx LOC |
+|---|---|---|
+| `src/pool.js` | Object pool for bullets + enemies (MANDATORY for shmup) | 100-200 |
+| `src/bullets.js` | Bullet update, bounds check, hit detection | 200-400 |
+| `src/patterns.js` | Bullet patterns (spread / wave / spiral / aimed). Each pattern is a function | 300-500 |
+| `src/ship.js` | Player ship: movement, shoot timer, hitbox, lives, invuln frames | 200-400 |
+| `src/stages.js` | Stage segment progression, scroll speed, segment switch | 100-200 |
+| `src/waves.js` | Wave script executor: timed enemy spawns, formations, boss trigger | 200-400 |
+| `src/hud.js` | Lives, score, bombs, multiplier overlay | 100-200 |
+
+Total per-project: ~13-18 src files, 2,000-3,500 LOC.
+
+Genre-specific config files:
+
+| File | Holds |
+|---|---|
+| `data/bullet-patterns.json` | Pattern definitions: id, type, params (spread angle, count, speed) |
+| `data/wave-script.json` | Time-keyed wave entries: when, what enemy, where, with-pattern |
+| `data/ship-config.json` | Player speed, shoot rate, hitbox size, invuln duration, bomb count |
+| `data/audio-config.json` | sfx tones |
+
+Identity files:
+
+| File | Holds |
+|---|---|
+| `data/levels.json` | Stage registry |
+| `data/<stage_id>.json` | Stage segments[], scroll direction, music theme, boss id |
+| `data/enemies.json` | Enemy catalog (id, sprite, behavior type) |
+| `data/projectiles.json` | Projectile sprites + types |
+
+## Reference implementation
+
+OGF does not yet have a strong shmup reference project. **For Phase planning + module shape, use `D:/Sengoku-Era-ogf` as the architectural baseline** (state.js + config split + thin game.js + per-subsystem modules). Translate to shmup:
+
+| Sengoku-Era-ogf module | Shmup equivalent |
+|---|---|
+| `src/battle.js` | `src/bullets.js` + `src/patterns.js` + `src/waves.js` (real-time, no FSM) |
+| `src/menu.js` | `src/hud.js` + simple pause menu |
+| `src/progression.js` | usually not needed (or simplified into power-up tracking) |
+| `src/overworld.js` | `src/stages.js` (segment-based scroll instead of free overworld) |
+| `data/battle-config.json` | `data/bullet-patterns.json` + `data/wave-script.json` |
 
 ## Reference repos
 
