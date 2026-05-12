@@ -742,19 +742,34 @@ function applyOpsToJsonScene(opts: ApplyOpsOptions): ApplyOpsResult {
       // unit scale to a pixel size using the entry's CURRENT w/h. The entry
       // can live in any top-level array (props / platforms / pickups / ...);
       // op.ref.section tells us which.
+      //
+      // ALSO update x/y to preserve the visual CENTER across the resize.
+      // The editor's prop-scale drag scales from the bbox center (top-left
+      // moves outward), so the user expects the rect to grow symmetrically.
+      // Without center-preserving x/y rewrite here, the JSON-stored top-left
+      // stays put, the loader re-emits with scale=1, and the prop visually
+      // jumps on the next reload (top-left fixed, growth now asymmetric).
       const map = JSON.parse(
         readFileSync(safeJoin(opts.rootAbs, op.ref.relPath), 'utf8'),
       ) as Record<string, unknown>;
       const arr = map[op.ref.section];
       if (Array.isArray(arr)) {
-        const cur = (arr as Array<{ id?: string; w?: number; h?: number }>).find(
+        const cur = (arr as Array<{ id?: string; x?: number; y?: number; w?: number; h?: number }>).find(
           (p) => p?.id === op.ref!.id,
         );
         if (cur && typeof cur.w === 'number' && typeof cur.h === 'number') {
-          applyJsonColliderEdit(opts.rootAbs, op.ref, {
-            w: cur.w * op.scale.x,
-            h: cur.h * op.scale.y,
-          });
+          const newW = cur.w * op.scale.x;
+          const newH = cur.h * op.scale.y;
+          const patch: Record<string, number> = { w: newW, h: newH };
+          if (typeof cur.x === 'number') {
+            const cx = cur.x + cur.w / 2;
+            patch.x = cx - newW / 2;
+          }
+          if (typeof cur.y === 'number') {
+            const cy = cur.y + cur.h / 2;
+            patch.y = cy - newH / 2;
+          }
+          applyJsonColliderEdit(opts.rootAbs, op.ref, patch);
         }
       }
     } else if (op.kind === 'move-collider') {

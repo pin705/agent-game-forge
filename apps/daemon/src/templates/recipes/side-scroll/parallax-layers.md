@@ -151,12 +151,39 @@ Post-processing same as Far BG (default chroma-key).
 
 ### 4. Near BG (~30-60s)
 
+**CRITICAL — near_bg must be visually DISTINCT from the gameplay
+platforms.** The #1 mistake here is reusing the platform's material,
+silhouette, or color palette so the player can't tell what's interactable
+vs decoration. Before writing the prompt, identify the platform's visual
+vocabulary (e.g. "brick wall + concrete top + plants" for rooftop level)
+and forbid it explicitly.
+
+Pick a near_bg subject from a DIFFERENT category than the platform:
+
+| If platform vocabulary is... | near_bg should be... |
+|---|---|
+| Urban architecture (brick, concrete, AC units) | Vegetation, fence rail, debris, lamp posts |
+| Forest branches / wooden ledges | Bushes, rocks, fern clusters, mushrooms |
+| Cave / stone ledges | Stalagmites, crystals, drip puddles, moss |
+| Castle stones / battlements | Banner posts, torch sconces, scattered shields |
+| Metal industrial walkways | Steam pipes, gears, hanging chains, oil drums |
+
 ```
 Prompt:
 [Style directive from spec §1]
 Foreground silhouette strip, 1280×720, for side-scroll parallax.
-Depicts <foreground element: grass clumps / fence row / nearby tree
-trunks / debris / signposts>.
+Depicts <foreground subject from the category table ABOVE — pick whatever
+is DIFFERENT from the platform's material vocabulary>.
+
+VISUALLY DISTINCT from gameplay platforms:
+- Platforms in this level use <list platform's material/color/silhouette>.
+  near_bg MUST NOT reuse that vocabulary.
+- 30-50% DARKER overall than the platform tiles — near_bg reads as
+  "behind" the play surface, not "alternate floor to maybe stand on".
+- Low internal detail, near-silhouette style — small features blurred
+  into the silhouette mass. Save the high-frequency detail for platforms.
+- NO horizontal flat top edge that could be mistaken for a walkable
+  surface.
 
 Silhouettes occupy the LOWER 25-40% of the frame. ALL areas outside
 silhouette shapes = SOLID #FF00FF for chroma removal.
@@ -244,6 +271,14 @@ layer).
    prompt). Sky becomes transparent → black void shows. Sky prompt
    should explicitly say "NO magenta — fully opaque".
 
+9. **near_bg looks like a duplicate of platforms** — the agent generates
+   near_bg with the same material/color/silhouette as the gameplay
+   platform tiles, so the player can't tell what's interactable vs
+   pure decoration. (Example failure: rooftop level with brick+plant
+   platforms AND brick+plant near_bg.) Fix by explicitly listing the
+   platform's visual vocabulary in the near_bg prompt and forbidding it,
+   per the category table in §"Near BG" above.
+
 ## Reference
 
 - `D:/Sengoku-Era-act-ogf/data/border_road.json` — example level with
@@ -267,3 +302,7 @@ layer).
       layers tile to fill it automatically
 - [ ] Open Play tab, walk left/right, see distinct depth (sky almost
       static, far_bg drifts slowly, near_bg keeps up with player)
+- [ ] near_bg uses a DIFFERENT material/color/silhouette than the
+      gameplay platforms — squint test: from across the room you can
+      tell foreground from interactable. If they blur together, regen
+      near_bg with the category swap from §"Near BG".

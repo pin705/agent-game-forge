@@ -35,12 +35,20 @@ The runtime checks BOTH in `updateHazards()`:
 **(A) `level.hazards[]`** — visible hazard with sprite + rect
 ```json
 "hazards": [
-  { "id": "fire_01",   "type": "fire_pit",     "x": 930,  "y": 556, "w": 96,  "h": 44 },
-  { "id": "spikes_01", "type": "spike_stakes", "x": 1630, "y": 556, "w": 128, "h": 44 }
+  { "id": "fire_01",   "type": "fire_pit",     "x": 930,  "y": 556, "w": 64, "h": 64 },
+  { "id": "spikes_01", "type": "spike_stakes", "x": 1630, "y": 556, "w": 96, "h": 96 }
 ]
 ```
 The `type` field joins to the catalog via `byId("hazards", type)` for
 sprite + damage value.
+
+**Default `w`/`h` MUST match the sprite's aspect ratio.** `generate2dsprite`
+outputs SQUARE sheets (e.g. 128×128, 96×96), so the level entry's
+`w`/`h` should also be square (64×64, 96×96 typical) unless the user
+explicitly wants a wide/tall hazard like a long fire wall or tall laser
+beam. **Squashing a square sprite into a flat rect like 96×44 makes the
+art look melted** — pick a square rect first, then let the user tune
+proportions later via Scene editor handles.
 
 **(B) `level.colliders[]` with `type: "hazard"` or `"kill"`** — invisible
 damage rectangles
@@ -57,11 +65,16 @@ damage rectangles
 
 ```json
 [
-  { "id": "fire_pit", "kind": "ground", "damage": 1, "effect": "damage", "sprite": "assets/sprites/hazards/fire_pit/clean.png", "fps": 8, "frames": 4, "frameW": 96, "frameH": 96 },
-  { "id": "spike_stakes", "kind": "ground", "damage": 1, "effect": "damage", "sprite": "assets/sprites/hazards/spike_stakes/clean.png" },
-  { "id": "lava_floor", "kind": "ground", "damage": 999, "effect": "kill", "sprite": "..." }
+  { "id": "fire_pit",    "size": { "w": 64, "h": 64 }, "damage": 1, "effect": "damage", "sprite": "assets/sprites/hazards/fire_pit/sheet-transparent.png" },
+  { "id": "spike_stakes","size": { "w": 96, "h": 96 }, "damage": 1, "effect": "damage", "sprite": "assets/sprites/hazards/spike_stakes/sheet-transparent.png" },
+  { "id": "lava_floor",  "size": { "w": 96, "h": 96 }, "damage": 999,"effect": "kill",   "sprite": "..." }
 ]
 ```
+
+**`size` must be square** to match `generate2dsprite`'s square sheet
+output. Common choices: 48×48 (small pickup-like), 64×64 (default),
+96×96 (large). Non-square only when the user explicitly asks for a
+visually long/tall hazard (laser beam, fire wall, vertical buzzsaw rail).
 
 - `effect: "damage"` → `damagePlayer(damage)`
 - `effect: "kill"` → `loseLife()`
@@ -144,6 +157,12 @@ this catches the unexpected.
 
 5. **Animated hazard with fps but no frames** — fps without frames count
    = NaN division. Always set both or neither.
+
+6. **Flat default rect for square sprite** — `w: 96, h: 44` looks
+   reasonable on paper but `generate2dsprite` emits square sheets;
+   squashing 128×128 into 96×44 produces visibly distorted art. Default
+   square (`w == h`), let the user override in Scene editor if they want
+   a wide laser or tall buzzsaw.
 
 ## Reference
 

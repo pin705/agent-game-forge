@@ -236,10 +236,13 @@ function drawPickups(ctx) {
     if (pickup.collected) continue;
     const img = resolvedImage(pickup.sprite);
     const bob = Math.sin(state.time * 5 + pickup.x * 0.01) * 4;
-    if (img) ctx.drawImage(img, worldToScreenX(pickup.x), worldToScreenY(pickup.y + bob), pickup.w, pickup.h);
-    else {
+    const sx = worldToScreenX(pickup.x);
+    const sy = worldToScreenY(pickup.y + bob);
+    if (img) {
+      drawSpriteAspectFit(ctx, img, sx, sy, pickup.w, pickup.h);
+    } else {
       ctx.fillStyle = COLORS.gold;
-      ctx.fillRect(worldToScreenX(pickup.x), worldToScreenY(pickup.y + bob), pickup.w, pickup.h);
+      ctx.fillRect(sx, sy, pickup.w, pickup.h);
     }
   }
 }
@@ -247,12 +250,33 @@ function drawPickups(ctx) {
 function drawHazards(ctx) {
   for (const hazard of state.hazards) {
     const img = resolvedImage(hazard.sprite);
-    if (img) ctx.drawImage(img, worldToScreenX(hazard.x), worldToScreenY(hazard.y), hazard.w, hazard.h);
-    else {
+    const sx = worldToScreenX(hazard.x);
+    const sy = worldToScreenY(hazard.y);
+    if (img) {
+      drawSpriteAspectFit(ctx, img, sx, sy, hazard.w, hazard.h);
+    } else {
       ctx.fillStyle = COLORS.hp;
-      ctx.fillRect(worldToScreenX(hazard.x), worldToScreenY(hazard.y), hazard.w, hazard.h);
+      ctx.fillRect(sx, sy, hazard.w, hazard.h);
     }
   }
+}
+
+// Aspect-fit (letterbox) into a collision rect so square sprites generated
+// by `generate2dsprite` (typically 128×128) don't get squashed when authored
+// with a non-square w/h. Mirrors the Scene editor's renderer so what the
+// designer sees matches Play.
+function drawSpriteAspectFit(ctx, img, x, y, rectW, rectH) {
+  const imgRatio = img.width / img.height;
+  const rectRatio = rectW / rectH;
+  let drawW, drawH;
+  if (imgRatio > rectRatio) {
+    drawW = rectW;
+    drawH = rectW / imgRatio;
+  } else {
+    drawH = rectH;
+    drawW = rectH * imgRatio;
+  }
+  ctx.drawImage(img, x + (rectW - drawW) / 2, y + (rectH - drawH) / 2, drawW, drawH);
 }
 
 function drawParticles(ctx) {

@@ -95,6 +95,44 @@ function entryCenterPosition(entry: RectLike): Vec2 {
 
 const SINGLE_POINT_FIELDS = ['spawn', 'heroSpawn', 'playerSpawn', 'npc', 'boss', 'rest'] as const;
 
+/** Section names that have a 1:1 catalog file under `data/<section>.json`.
+ *  Matches the convention in side-scroll seed's `src/catalogs.js` — agent
+ *  may add more (e.g. weapons) but these are the universal set. */
+const CATALOG_SECTIONS = new Set([
+  'hazards',
+  'pickups',
+  'enemies',
+  'items',
+  'projectiles',
+  'doors',
+  'checkpoints',
+]);
+
+interface CatalogEntry {
+  id?: unknown;
+  sprite?: unknown;
+  animations?: Record<string, unknown>;
+  [k: string]: unknown;
+}
+
+/** Read a section's catalog file (e.g. data/hazards.json) once per loader
+ *  call. Returns null if the file is missing or malformed — call sites
+ *  should fall back to their non-catalog defaults. */
+function loadCatalogForSection(
+  rootAbs: string,
+  section: string,
+): CatalogEntry[] | null {
+  if (!CATALOG_SECTIONS.has(section)) return null;
+  try {
+    const abs = safeJoin(rootAbs, `data/${section}.json`);
+    if (!existsSync(abs)) return null;
+    const parsed = JSON.parse(readFileSync(abs, 'utf8'));
+    return Array.isArray(parsed) ? (parsed as CatalogEntry[]) : null;
+  } catch {
+    return null;
+  }
+}
+
 interface CollectImagesOpts {
   rootAbs: string;
   paths: Set<string>;
@@ -495,8 +533,37 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
       return null;
     }
 
+    // Catalog fallback — hazards/pickups/enemies (and similar) carry
+    // `type: "<catalog_id>"` referencing data/<section>.json. The runtime
+    // resolves type → catalog.sprite via byId(); the editor needs the same
+    // resolution or it draws an empty outlined rect.
+    function pickImageFromCatalog(entry: RectLike): string | null {
+      const type = (entry as { type?: unknown }).type;
+      if (typeof type !== 'string') return null;
+      const catalog = loadCatalogForSection(rootAbs, section);
+      if (!catalog) return null;
+      const hit = catalog.find((c) => c?.id === type);
+      if (!hit) return null;
+      // Catalogs typically use `sprite` (single image) or
+      // `animations.<name>.sprite` (animated). Take sprite first, else fall
+      // back to the first animation frame the agent registered. The
+      // sprite-forge skill writes sheets at `assets/sprites/<kind>/sheet-transparent.png`
+      // which is what the runtime uses; we hand that to the editor too.
+      const trim = (s: string) => s.replace(/^\.?\//, '');
+      if (typeof hit.sprite === 'string') return trim(hit.sprite);
+      if (hit.animations && typeof hit.animations === 'object') {
+        for (const anim of Object.values(hit.animations)) {
+          if (anim && typeof anim === 'object') {
+            const sp = (anim as { sprite?: unknown }).sprite;
+            if (typeof sp === 'string') return trim(sp);
+          }
+        }
+      }
+      return null;
+    }
+
     editable.forEach((p, idx) => {
-      const direct = pickImagePath(p);
+      const direct = pickImagePath(p) ?? pickImageFromCatalog(p);
       const tileKey = (p as { tile?: unknown }).tile;
       const libEntry = direct ? null : resolveLibraryEntry(tileKey);
       const tilePieces = buildTilePieces(libEntry);

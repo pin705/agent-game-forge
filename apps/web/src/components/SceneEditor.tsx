@@ -4849,7 +4849,25 @@ function drawProp(
   } else {
     const img = p.texture ? bank.imgs.get(p.texture) : null;
     if (img) {
-      ctx.drawImage(img, r.x, r.y, r.w, r.h);
+      // Aspect-fit (letterbox) draw — preserve sprite ratio inside the
+      // collision rect. Without this, a square sprite (e.g. 128×128 from
+      // generate2dsprite) drawn into a flat hazard rect (e.g. 104×44)
+      // gets visibly squashed. The collision rect stays the source of
+      // truth for gameplay; the sprite renders centered within it.
+      const imgRatio = img.width / img.height;
+      const rectRatio = r.w / r.h;
+      let drawW: number;
+      let drawH: number;
+      if (imgRatio > rectRatio) {
+        drawW = r.w;
+        drawH = r.w / imgRatio;
+      } else {
+        drawH = r.h;
+        drawW = r.h * imgRatio;
+      }
+      const drawX = r.x + (r.w - drawW) / 2;
+      const drawY = r.y + (r.h - drawH) / 2;
+      ctx.drawImage(img, drawX, drawY, drawW, drawH);
     } else {
       ctx.fillStyle = 'rgba(255, 80, 80, 0.3)';
       ctx.fillRect(r.x, r.y, r.w, r.h);
