@@ -128,6 +128,12 @@ export const I: Record<string, ReactElement> = {
       <path d="M12 2 V4 H10" />
     </svg>
   ),
+  gear: (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="7" cy="7" r="2" />
+      <path d="M7 1.5v1.4M7 11.1v1.4M2.5 7H1.1M12.9 7h-1.4M3.8 3.8l-1-1M11.2 11.2l-1-1M3.8 10.2l-1 1M11.2 2.8l-1 1" />
+    </svg>
+  ),
   plus: (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
       <line x1="6" y1="3" x2="6" y2="9" />

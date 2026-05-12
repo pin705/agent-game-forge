@@ -272,6 +272,37 @@ export interface ImportCodexSessionResponse {
   importedCount: number;
 }
 
+// -------- Secrets / API keys --------
+
+/** Canonical secret keys recognized by the daemon. Add entries as new
+ *  providers (Mistral, Replicate, etc.) come online. */
+export type SecretKey =
+  | 'openai_api_key'
+  | 'gemini_api_key'
+  | 'anthropic_api_key';
+
+export interface SecretStatus {
+  key: SecretKey;
+  /** True when a value resolves (env or file). */
+  set: boolean;
+  /** True when an env var (OPENAI_API_KEY etc.) shadows the file. */
+  fromEnv: boolean;
+  /** Masked display ("sk-•••••••a1b2"). Empty string when unset. */
+  masked: string;
+  /** Env var name that shadows this key — shown in UI as a hint. */
+  envVarName: string;
+}
+
+export interface SecretsResponse {
+  secrets: SecretStatus[];
+}
+
+export interface SetSecretRequest {
+  key: SecretKey;
+  /** New value, or null/'' to clear. */
+  value: string | null;
+}
+
 // -------- Godot runner --------
 
 export interface GodotDetectResponse {

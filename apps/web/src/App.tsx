@@ -47,6 +47,7 @@ import { Sidebar, type Theme } from './components/Sidebar.js';
 import { Dropzone, type DropzoneHandle } from './components/Dropzone.js';
 import { FolderPickerModal } from './components/FolderPickerModal.js';
 import { PendingChangesModal } from './components/PendingChangesModal.js';
+import { SettingsModal } from './components/SettingsModal.js';
 import { ImportCodexSessionModal } from './components/ImportCodexSessionModal.js';
 import { PackReviewModal } from './components/PackReviewModal.js';
 import { I } from './components/icons.js';
@@ -252,6 +253,7 @@ export function App() {
   // Pending slicing changes
   const [pending, setPending] = useState<PendingSliceEntry[]>([]);
   const [showPending, setShowPending] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   // Bumps whenever sprite slicing metadata changes (slicer save, revert, discard).
   // FileEditor uses this to re-fetch its sidecar / pipeline meta / usages.
   const [metadataRev, setMetadataRev] = useState(0);
@@ -1019,6 +1021,7 @@ export function App() {
           <EditorPane
             tab={tab}
             setTab={setTab}
+            onOpenSettings={() => setShowSettings(true)}
             project={project}
             tree={fileTree}
             selectedFile={selectedFile}
@@ -1277,6 +1280,7 @@ export function App() {
           }}
         />
       )}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </div>
   );
 }
@@ -1305,6 +1309,7 @@ function EditorPane(props: {
   onOpenPackReview?: () => void;
   onPackResolved?: () => void;
   onSwitchToProject?: (p: Project) => void;
+  onOpenSettings: () => void;
   canBack: boolean;
   canForward: boolean;
   onBack: () => void;
@@ -1361,6 +1366,14 @@ function EditorPane(props: {
           </button>
         </div>
         <span className="grow" />
+        <button
+          type="button"
+          className="btn btn-sm btn-ghost btn-icon"
+          onClick={props.onOpenSettings}
+          title="Settings"
+        >
+          {I.gear}
+        </button>
       </div>
 
       <div className="editor-body">

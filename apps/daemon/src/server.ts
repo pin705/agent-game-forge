@@ -3,6 +3,7 @@ import cors from 'cors';
 import { copyFileSync, existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { detectAgents, getAgentDef, resolveOnPath } from './agents.js';
+import { isSecretKey, listSecretStatuses, setSecret } from './secrets.js';
 import { spawnCodex, createJsonlParser } from './codex.js';
 import { splitFormsFromText } from './question-form.js';
 import { RunManager } from './runs.js';
@@ -109,6 +110,32 @@ export function createServer() {
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
+  });
+
+  // -------------------- Secrets --------------------
+  // User-scope API keys for image-gen providers, agent CLIs, etc. Stored
+  // in ~/.ogf/secrets.json (mode 600). Env vars (OPENAI_API_KEY etc.)
+  // shadow the file at runtime — surfaced via the `fromEnv` flag so the
+  // user knows where their value is coming from.
+  //
+  // GET returns MASKED values + flags. The actual key never leaves the
+  // daemon — the web client doesn't need it, only the daemon does, when
+  // it calls out to OpenAI/Gemini/etc. on the user's behalf.
+
+  app.get('/api/secrets', (_req, res) => {
+    res.json({ secrets: listSecretStatuses() });
+  });
+
+  app.post('/api/secrets', (req, res) => {
+    const body = req.body as { key?: unknown; value?: unknown };
+    if (!isSecretKey(body?.key)) {
+      return res.status(400).json({ error: 'invalid secret key' });
+    }
+    if (body.value !== null && typeof body.value !== 'string') {
+      return res.status(400).json({ error: 'value must be string or null' });
+    }
+    setSecret(body.key, (body.value as string | null) ?? null);
+    res.json({ secrets: listSecretStatuses() });
   });
 
   // -------------------- Agents --------------------

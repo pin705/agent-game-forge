@@ -35,6 +35,9 @@ import type {
   ReadFileResponse,
   RefImage,
   RefImagesResponse,
+  SecretKey,
+  SecretsResponse,
+  SetSecretRequest,
   UpdateCommentThreadRequest,
   UpdateCommentThreadResponse,
   UploadRefRequest,
@@ -53,6 +56,17 @@ async function jsonFetch<T>(input: string, init?: RequestInit): Promise<T> {
 
 // Agents
 export const fetchAgents = () => jsonFetch<AgentsResponse>('/api/agents');
+
+// Secrets — user-scope API keys for image-gen providers / agent CLIs.
+// Daemon stores them in ~/.ogf/secrets.json (mode 600). GET returns
+// MASKED status only; the actual key never reaches the web client.
+export const fetchSecrets = () => jsonFetch<SecretsResponse>('/api/secrets');
+export const setSecret = (key: SecretKey, value: string | null) =>
+  jsonFetch<SecretsResponse>('/api/secrets', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ key, value } satisfies SetSecretRequest),
+  });
 
 // Projects
 export const fetchProjects = () => jsonFetch<ProjectsResponse>('/api/projects');
