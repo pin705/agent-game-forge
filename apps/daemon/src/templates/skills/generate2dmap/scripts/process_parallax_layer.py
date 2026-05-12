@@ -39,11 +39,20 @@ def color_distance(rgb: tuple[int, int, int], target: tuple[int, int, int] = MAG
     return math.sqrt((r - tr) ** 2 + (g - tg) ** 2 + (b - tb) ** 2)
 
 
-def remove_bg_magenta(img: Image.Image, threshold: int, edge_threshold: int) -> Image.Image:
-    """Replace magenta pixels with transparent, then flood-fill from
-    edges to clean up anti-aliased fringe. Same logic as
-    extract_prop_pack.py's chroma-key — duplicated here to keep the
-    parallax script self-contained (no cross-script import)."""
+def remove_bg_magenta(
+    img: Image.Image,
+    threshold: int,
+    edge_threshold: int,
+    despill_strength: float = 1.0,
+) -> Image.Image:
+    """Three-pass chroma-key for parallax layers:
+      1. Pure-magenta pixels (d < threshold) -> alpha=0
+      2. Flood fill from canvas edges, eat fringe pixels (d < edge_threshold)
+      3. Despill: for every remaining opaque pixel with a magenta cast
+         (R > G AND B > G), clamp R and B down toward G to kill the pink
+         halo. Without this, anti-aliased magenta-art transitions in the
+         raw gpt-image-2 output produce visible pink fringes around every
+         silhouette edge that survive the threshold cut."""
     img = img.convert("RGBA")
     pixels = img.load()
     width, height = img.size
@@ -81,6 +90,24 @@ def remove_bg_magenta(img: Image.Image, threshold: int, edge_threshold: int) -> 
                     nxt = (x + dx, y + dy)
                     if nxt not in visited:
                         queue.append(nxt)
+
+    # Despill: kill magenta cast on every opaque pixel. Sky-blue stays
+    # untouched (B > G but R < G), foliage stays untouched (G > both),
+    # only pink/magenta-cast pixels (R > G AND B > G) get clamped.
+    if despill_strength > 0:
+        for x in range(width):
+            for y in range(height):
+                r, g, b, a = pixels[x, y]
+                if a == 0:
+                    continue
+                r_excess = r - g
+                b_excess = b - g
+                if r_excess > 20 and b_excess > 20:
+                    cast = min(r_excess, b_excess)
+                    reduce = int(cast * despill_strength)
+                    new_r = max(g, r - reduce)
+                    new_b = max(g, b - reduce)
+                    pixels[x, y] = (new_r, g, new_b, a)
 
     return img
 
@@ -131,8 +158,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--target-height", type=int, default=720)
     p.add_argument("--threshold", type=int, default=100,
                    help="Magenta chroma-key threshold (0..255).")
-    p.add_argument("--edge-threshold", type=int, default=150,
+    p.add_argument("--edge-threshold", type=int, default=180,
                    help="Anti-aliased magenta edge cleanup threshold.")
+    p.add_argument("--despill", type=float, default=1.0,
+                   help="0=off, 1=full; clamps R/B toward G on magenta-cast pixels to kill pink halo.")
     p.add_argument("--keep-magenta", action="store_true",
                    help="Skip chroma-key. Use for the opaque sky layer.")
     p.add_argument("--no-seam-check", action="store_true",
@@ -160,8 +189,10 @@ def main() -> int:
         final = resized
         print("  kept opaque (sky / no chroma-key)")
     else:
-        final = remove_bg_magenta(resized, args.threshold, args.edge_threshold)
-        print(f"  chroma-keyed magenta -> transparent")
+        final = remove_bg_magenta(
+            resized, args.threshold, args.edge_threshold, args.despill
+        )
+        print(f"  chroma-keyed + despill -> transparent")
 
     # Step 3 — seam check (advisory, doesn't fail the script).
     if not args.no_seam_check:

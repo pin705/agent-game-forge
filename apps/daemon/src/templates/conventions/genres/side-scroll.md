@@ -295,9 +295,14 @@ Cuts sprite generation in half (no need for separate left-facing sheets) and is 
 
 Spec.md camera mode = `follow` for scrolling levels, `locked` for boss arenas:
 
-- `mapSize.width = stage_segment_count × viewport.width` (typically 2 × 1280 = 2560 for normal levels).
-- `stage_segment_count = 2` is the default; 1 for boss rooms; 3+ only if user explicitly requests a longer level.
+- `mapSize.width = stage_segment_count × viewport.width` where `viewport.width = 1280`.
+- **`stage_segment_count` default = 5** (5120px ≈ 4 viewport-widths of scrolling play, the right length for a proper platformer level). Previous default of 2 (2560px) was set when each segment needed its own background art; tileable parallax decouples level length from art cost, so longer is now free.
+  - **5** = normal scrolling level (5120, ~4 viewport widths after spawn)
+  - **3-4** = short side-quest / introductory level (3840-5120)
+  - **6-8** = long story level (7680-10240) — use when the spec describes a substantial journey
+  - **1** = boss room (1280, locked camera)
 - Boss rooms use `camera.mode = locked` with `mapSize === viewport`.
+- Parallax layer PNGs stay at **1280×720** regardless of mapSize.width — they tile via `repeatX: true` (see `recipes/side-scroll/parallax-layers.md` and common.md §"Background dimensions" case B).
 
 ## Common pitfalls (don't repeat past project mistakes)
 

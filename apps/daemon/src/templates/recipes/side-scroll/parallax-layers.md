@@ -8,8 +8,8 @@ transparency so they don't cover the layers behind them.
 ## When to use
 
 - Side-scroll where camera scrolls horizontally
-- Level width > viewport width (typically 2560+ for full level, 1280
-  for a boss room)
+- Level width > viewport width (typical normal level = 5120, short side
+  quest = 3840-5120, long story level = 7680-10240, boss room = 1280)
 - Want layered depth, not a single flat background image
 - Generated maps come from `generate2dmap` with `map_mode: side_scroll_mode`
 

@@ -615,17 +615,25 @@ Not editable in Scene tab (chat the user instead):
 - Wave timeline (use a future Timeline tab when shipped)
 - Code patches
 
-## Background dimensions MUST equal level.mapSize
+## Background dimensions
 
-For every level, the background PNG (or each parallax layer) MUST be exactly `mapSize.width × mapSize.height`. Generated PNGs that don't match get rejected by OGF's loader OR cause coordinate misalignment between Scene tab and Play tab.
+Two distinct cases — DO NOT confuse them:
 
-After every `generate2dmap` call:
+### Case A — single full-map `background.image` (top-down RPG, locked-camera boss room)
 
-1. Read PNG natural size (Pillow / PNG IHDR header bytes 16-23).
-2. If width ≠ mapSize.width OR height ≠ mapSize.height: resize via `Image.resize((mapSize.width, mapSize.height), Image.LANCZOS)`.
-3. Save back to the same path.
+The image MUST be exactly `mapSize.width × mapSize.height`. If `generate2dmap` returns a different size, resize via `Image.resize((mapSize.width, mapSize.height), Image.LANCZOS)` and save back.
 
-For multi-layer parallax, every layer file must independently match mapSize.
+### Case B — parallax `layers[]` with `repeatX: true` (side-scroll, scrolling levels)
+
+Each layer image is a **tileable strip at viewport-native size (1280×720)**, NOT mapSize-wide. The runtime tiles it horizontally via modulo wrap. Do NOT resize to mapSize.width — that would defeat tileable parallax (produces blurry stretched art and pins level length).
+
+| | width × height | resize after gen? |
+|---|---|---|
+| Full-map background (top-down RPG) | `mapSize.width × mapSize.height` | YES (to mapSize) |
+| Locked-camera boss room background | `viewport.w × viewport.h` (=mapSize) | YES (to mapSize) |
+| Tileable parallax layer (side-scroll, repeatX:true) | **1280 × 720** (or 1664×720 — divisible by 16) | downscale 1672×941 → 1280×720 via `process_parallax_layer.py`; NEVER stretch to mapSize.width |
+
+For side-scroll parallax: `mapSize.width` is decoupled from layer image width — level can be 5120 or 10240 with the same 1280×720 layer PNGs.
 
 ## Engine selection
 

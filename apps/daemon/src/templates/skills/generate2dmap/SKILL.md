@@ -137,7 +137,7 @@ When unspecified:
 - Use `scene_mode` for tower defense, survivors-like, cozy/top-down showcase maps, and base-map-plus-props requests.
 - Use `side_scroll_mode` for side-scrollers, platformers, runners, side-view action, brawlers, Metroidvania side rooms, Mega Man-like, Castlevania-like, Contra-like, and parallax background requests.
 - For `side_scroll_mode`, choose a canonical `stage_canvas` before image generation. Use the project camera/viewport aspect when available; otherwise default to a 16:9 side-scroller canvas such as `1536x864`. All primary parallax plates, stage references, and previews must preserve this same size/aspect.
-- For playable `side_scroll_mode`, choose `stage_segment_count` before image generation. Default to 2 camera-width segments for a normal playable scrolling level. Use 1 only for explicit one-screen rooms, boss arenas, title-like scenes, or fixed battle rooms; use 3 or more only when the user asks for a longer stage or the existing game already has that scope.
+- For playable `side_scroll_mode`, choose `stage_segment_count` before image generation. **Default to 5 camera-width segments (5120px) for a normal playable scrolling level** — tileable parallax layers (1280×720 with `repeatX: true`) decouple level length from art cost, so short levels are no longer cheaper. Use 1 only for explicit one-screen rooms, boss arenas, title-like scenes, or fixed battle rooms; 3-4 for short side-quest levels; 6-8 for long story levels.
 - For playable `side_scroll_mode`, default `platform_strategy` to `platform_rects_with_shared_tiles`: write platform rectangles or engine-native platform objects as the gameplay source of truth, then skin them with a shared generated platform tile/strip library. Do not rely on a generated background or generic prop pack for platform shape.
 - Use `grid_mode` for tactical RPGs, factory/automation maps, board/card battlers, build grids, and terrain-cost maps.
 - Use `room_chunk_mode` for modular rooms, roguelike rooms, procedural room assembly, or Metroidvania room-chunk planning.
@@ -314,7 +314,7 @@ Playable side-scroll stages should be planned as camera-width segments, not as o
 Default contract:
 
 - Use one `stage_canvas` for every segment, primary parallax plate, stage reference, stage preview, and normalization target.
-- Use `stage_segment_count: 2` by default for a normal playable platformer or action side-scroller. Use `1` only for explicit one-screen rooms, boss arenas, fixed battle rooms, or background-only requests.
+- Use `stage_segment_count: 5` by default for a normal playable platformer or action side-scroller (5120px ≈ 4 viewport-widths of scrolling play). Tileable parallax layers tile via `repeatX: true` so longer levels carry no extra art cost. Use `1` only for explicit one-screen rooms, boss arenas, fixed battle rooms, or background-only requests; use 3-4 for short side-quest levels and 6-8 for long story levels.
 - Compute `stage_length` from the engine camera width and segment count, or from the existing project coordinate system when available.
 - Name segment files predictably, such as `segment-01`, `segment-02`, and keep each segment aligned to the same top-left camera frame.
 - Generate either per-segment parallax plates or loopable parallax plates, but record the choice in metadata. Do not mix image sizes or aspect ratios across segments.
@@ -349,9 +349,9 @@ Do not put platform strips, floors, ledges, bridges, ladders, walls, slopes, lon
 For playable side-view scrolling/action maps, an in-world stage reference mockup is mandatory before generating final scene objects or scene metadata. This applies across art styles and game styles, including pixel art, clean HD, side-scrollers, platformers, runners, shooters, brawlers, scrolling combat stages, and Megaman-like or Castlevania-like stages:
 
 0. Choose and record one `stage_canvas`, for example `1536x864` for a default 16:9 HD side-scroller when the project has no explicit camera size. Choose and record `stage_segment_count` before art generation. All primary parallax layers, stage references, and stage previews must share this exact size unless a layer is explicitly marked as a repeatable strip.
-   - For normal playable platformer/action stages, default to `stage_segment_count: 2`. This means at least two camera-width segments that share one platform/object art library.
-   - Use `stage_segment_count: 1` only for explicit one-screen rooms, boss arenas, fixed battle rooms, or background-only requests.
-   - Do not make a longer level by asking for one ultra-wide generated painting. Keep each generated segment at `stage_canvas` size and assemble the runtime stage from segments plus object metadata.
+   - For normal playable platformer/action stages, default to `stage_segment_count: 5` (≈5120px / 4 viewport-widths of scrolling play). Tileable parallax (1280×720 strips with `repeatX: true`) makes longer levels free; the old default of 2 was set when each segment needed its own background.
+   - Use `stage_segment_count: 1` only for explicit one-screen rooms, boss arenas, fixed battle rooms, or background-only requests. Use 3-4 for short side-quest levels; 6-8 for long story levels.
+   - Do not make a longer level by asking for one ultra-wide generated painting. Parallax layers are always **1280×720 tileable strips** (per the side-scroll genre convention) — the runtime tiles them across `mapSize.width` via `repeatX: true`. Platform/prop libraries stay shared across segments.
 1. Generate named parallax scenery layers as separate runtime images: `assets/map/<name>-sky.png`, `assets/map/<name>-far-bg.png`, `assets/map/<name>-mid-bg.png`, `assets/map/<name>-near-bg.png`, and optional `assets/map/<name>-foreground-overlay.png`.
 - These layers are scenery only, not playable foreground. They may contain sky, clouds, mountains, distant buildings, distant castle walls, silhouettes, atmosphere, and non-colliding far depth.
 - Do not collapse these layers into only `assets/map/<name>-background.png` for a playable `side_scroll_mode` stage. A single scenery background is allowed only when the user explicitly requests a flat/non-parallax background; in that case still continue with stage reference, separate objects, collision, camera bounds, and QA preview.
@@ -413,7 +413,7 @@ For a playable side-view scrolling/action stage:
 
 - image-generated parallax scenery layers such as `assets/map/<name>-sky.png`, `assets/map/<name>-far-bg.png`, `assets/map/<name>-mid-bg.png`, `assets/map/<name>-near-bg.png`, and optional `assets/map/<name>-foreground-overlay.png`
 - one recorded `stage_canvas` shared by the primary parallax layers, `stage-reference`, and `stage-preview`
-- one recorded `stage_segment_count` and `stage_length`; default to at least 2 camera-width segments for a normal playable scrolling level
+- one recorded `stage_segment_count` and `stage_length`; default to 5 camera-width segments (5120px) for a normal playable scrolling level
 - per-segment parallax layer metadata or loopable parallax metadata, with consistent dimensions and anchors
 - `assets/map/<name>-background.prompt.txt` and prompt files/manifests for other generated visual assets
 - `assets/map/<name>-stage-reference.png` as an in-world reference mockup for platform/object placement
