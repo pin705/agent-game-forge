@@ -50,19 +50,23 @@ Agent Game Forge (简称 **AGF**) 是一个开源的桌面 IDE,让 AI coding age
 
 ## 🎬 Demo
 
-> 即将上线:90 秒 demo 视频,从 prompt → 可玩 platformer → live edit → 切 CLI。
+**主视图** — AGF 主界面:
 
-**Hero shot**(AGF 主界面):
+<p align="center">
+  <img src="apps/web/public/hero-shot.png" alt="AGF main window" width="800" />
+</p>
 
-> _尚未截图_
+**Settings** — 选择 agent + API keys + image-gen 默认值:
 
-**Settings — BYOA 证据**:
+<p align="center">
+  <img src="apps/web/public/setting.png" alt="AGF Settings modal" width="800" />
+</p>
 
-> _Settings modal 显示 agent picker + API key + image-gen 默认值_
+**Scene editor** — 拖拽 platform、hazard、pickup、collider:
 
-**Scene editor — 拖一个 hazard,Play tab 看见它**:
-
-> _短 GIF_
+<p align="center">
+  <img src="apps/web/public/scene-editor.png" alt="AGF Scene editor" width="800" />
+</p>
 
 ---
 
@@ -186,7 +190,7 @@ npm run dev           # 三个都 watch mode(daemon 用 tsx 热重载)
 | **横版卷轴平台** | ✅ 已 ship | Parallax pipeline、hazards、pickups、enemies、多关卡、sprite chroma-key |
 | 俯视 RPG | 🟡 部分 | Foundation seed + recipes 已备;部分 recipe 还在打磨 |
 | Tower defense / arena | 🟡 部分 | 从早期 branch 继承;需要 polish |
-| Roguelike / Metroidvania | 🚧 规划中 | Launch 之后 |
+| Roguelike / Metroidvania | 🟡 部分 | Launch 之后 |
 
 **引擎目标**:
 

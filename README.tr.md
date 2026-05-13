@@ -50,19 +50,23 @@ Agent Game Forge (**AGF**), bir AI kodlama agent'ının senin için eksiksiz 2D 
 
 ## 🎬 Demo
 
-> Yakında: prompt → oynanabilir platformer → canlı düzenleme → CLI değiştirme akışını gösteren 90 saniyelik demo videosu.
+**Hero shot** — AGF penceresi:
 
-**Hero shot** (AGF penceresi):
+<p align="center">
+  <img src="apps/web/public/hero-shot.png" alt="AGF ana penceresi" width="800" />
+</p>
 
-> _Hazır olduğunda hero ekran görüntüsünü buraya ekle_
+**Settings** — agent'ını + API anahtarlarını + görsel üretim varsayılanlarını seç:
 
-**Settings — BYOA kanıtı**:
+<p align="center">
+  <img src="apps/web/public/setting.png" alt="AGF Settings modalı" width="800" />
+</p>
 
-> _Agent picker + API keys + image-gen defaults gösteren Settings modal ekran görüntüsünü buraya ekle_
+**Sahne editörü** — platformları, tehlikeleri, toplanabilirleri, collider'ları sürükle:
 
-**Sahne editörü — bir tehlikeyi sürükle, Play'de gör**:
-
-> _Kısa GIF'i buraya ekle_
+<p align="center">
+  <img src="apps/web/public/scene-editor.png" alt="AGF Sahne editörü" width="800" />
+</p>
 
 ---
 
@@ -186,7 +190,7 @@ Faydalı komutlar:
 | **Side-scroll platformer** | ✅ yayınlandı | Parallax pipeline, tehlikeler, toplanabilirler, düşmanlar, çok-seviye, sprite chroma-key |
 | Top-down RPG | 🟡 kısmen | Foundation seed + recipes; bazı recipes hâlâ olgunlaşıyor |
 | Tower defense / arena | 🟡 kısmen | Önceki branch'lerden devralındı; cila gerekiyor |
-| Roguelike / Metroidvania | 🚧 planlandı | Launch sonrası |
+| Roguelike / Metroidvania | 🟡 kısmen | Launch sonrası |
 
 **Motor hedefleri**:
 

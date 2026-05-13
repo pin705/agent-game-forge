@@ -50,19 +50,23 @@ Agent Game Forge (**AGF**) is an open-source desktop IDE that lets an AI coding 
 
 ## 🎬 Demo
 
-> Coming soon: 90-second demo video showing prompt → playable platformer → live edit → CLI switch.
+**Hero shot** — the AGF window:
 
-**Hero shot** (the AGF window):
+<p align="center">
+  <img src="apps/web/public/hero-shot.png" alt="AGF main window" width="800" />
+</p>
 
-> _Insert hero screenshot here once available_
+**Settings** — pick your agent + API keys + image-gen defaults:
 
-**Settings — BYOA proof**:
+<p align="center">
+  <img src="apps/web/public/setting.png" alt="AGF Settings modal" width="800" />
+</p>
 
-> _Insert Settings modal screenshot showing agent picker + API keys + image-gen defaults_
+**Scene editor** — drag platforms, hazards, pickups, colliders:
 
-**Scene editor — drag a hazard, see it in Play**:
-
-> _Insert short GIF_
+<p align="center">
+  <img src="apps/web/public/scene-editor.png" alt="AGF Scene editor" width="800" />
+</p>
 
 ---
 
@@ -186,7 +190,7 @@ Useful commands:
 | **Side-scroll platformer** | ✅ shipped | Parallax pipeline, hazards, pickups, enemies, multi-level, sprite chroma-key |
 | Top-down RPG | 🟡 partial | Foundation seed + recipes; some recipes still maturing |
 | Tower defense / arena | 🟡 partial | Inherited from earlier branches; needs polish |
-| Roguelike / Metroidvania | 🚧 planned | After launch |
+| Roguelike / Metroidvania | 🟡 partial | After launch |
 
 **Engine targets**:
 

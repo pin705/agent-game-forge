@@ -50,19 +50,23 @@ Agent Game Forge (**AGF**) est un IDE de bureau open source qui permet à un age
 
 ## 🎬 Démo
 
-> Bientôt : une vidéo démo de 90 secondes montrant prompt → platformer jouable → édition en direct → changement de CLI.
+**Hero shot** — la fenêtre AGF :
 
-**Hero shot** (la fenêtre AGF) :
+<p align="center">
+  <img src="apps/web/public/hero-shot.png" alt="AGF main window" width="800" />
+</p>
 
-> _Insérer la capture hero une fois disponible_
+**Settings** — choisissez votre agent + API keys + image-gen defaults :
 
-**Settings — preuve du BYOA** :
+<p align="center">
+  <img src="apps/web/public/setting.png" alt="AGF Settings modal" width="800" />
+</p>
 
-> _Insérer la capture du modal Settings montrant agent picker + API keys + image-gen defaults_
+**Éditeur de scènes** — glissez plateformes, dangers, objets, colliders :
 
-**Éditeur de scènes — glissez un danger, voyez-le dans Play** :
-
-> _Insérer un GIF court_
+<p align="center">
+  <img src="apps/web/public/scene-editor.png" alt="AGF Scene editor" width="800" />
+</p>
 
 ---
 
@@ -186,7 +190,7 @@ Commandes utiles :
 | **Plateformer à défilement latéral** | ✅ livré | Pipeline parallax, dangers, objets, ennemis, multi-niveaux, chroma-key de sprites |
 | RPG vue de dessus | 🟡 partiel | Foundation seed + recipes ; certaines recipes encore en maturation |
 | Tower defense / arena | 🟡 partiel | Hérité de branches antérieures ; nécessite du polish |
-| Roguelike / Metroidvania | 🚧 planifié | Après le launch |
+| Roguelike / Metroidvania | 🟡 partiel | Après le launch |
 
 **Cibles moteur** :
 

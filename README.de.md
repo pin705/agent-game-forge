@@ -50,19 +50,23 @@ Agent Game Forge (**AGF**) ist eine Open-Source-Desktop-IDE, mit der ein KI-Codi
 
 ## 🎬 Demo
 
-> Demnächst: 90-Sekunden-Demo-Video, das Prompt → spielbarer Platformer → Live-Edit → CLI-Wechsel zeigt.
+**Hero-Shot** — das AGF-Fenster:
 
-**Hero-Shot** (das AGF-Fenster):
+<p align="center">
+  <img src="apps/web/public/hero-shot.png" alt="AGF main window" width="800" />
+</p>
 
-> _Hero-Screenshot einfügen, sobald verfügbar_
+**Settings** — wähle deinen Agent + API-Keys + Image-Gen-Defaults:
 
-**Settings — BYOA-Beweis**:
+<p align="center">
+  <img src="apps/web/public/setting.png" alt="AGF Settings modal" width="800" />
+</p>
 
-> _Screenshot des Settings-Modals einfügen, der Agent-Picker + API-Keys + Image-Gen-Defaults zeigt_
+**Szenen-Editor** — ziehe Plattformen, Gefahren, Pickups, Collider:
 
-**Szenen-Editor — eine Gefahr ziehen, im Play sehen**:
-
-> _Kurzes GIF einfügen_
+<p align="center">
+  <img src="apps/web/public/scene-editor.png" alt="AGF Scene editor" width="800" />
+</p>
 
 ---
 
@@ -186,7 +190,7 @@ Nützliche Befehle:
 | **Side-Scroll-Platformer** | ✅ ausgeliefert | Parallax-Pipeline, Gefahren, Pickups, Gegner, Multi-Level, Sprite-Chroma-Key |
 | Top-Down-RPG | 🟡 teilweise | Foundation-Seed + Recipes; einige Recipes noch in Reifung |
 | Tower Defense / Arena | 🟡 teilweise | Aus früheren Branches geerbt; braucht Polish |
-| Roguelike / Metroidvania | 🚧 geplant | Nach dem Launch |
+| Roguelike / Metroidvania | 🟡 teilweise | Nach dem Launch |
 
 **Engine-Ziele**:
 

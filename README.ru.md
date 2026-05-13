@@ -50,19 +50,23 @@ Agent Game Forge (**AGF**) — это десктопная IDE с открыты
 
 ## 🎬 Демо
 
-> Скоро: 90-секундное демо-видео, показывающее prompt → играбельный платформер → правка в реальном времени → переключение CLI.
+**Hero shot** — окно AGF:
 
-**Hero shot** (окно AGF):
+<p align="center">
+  <img src="apps/web/public/hero-shot.png" alt="Главное окно AGF" width="800" />
+</p>
 
-> _Вставьте hero-скриншот, когда он будет готов_
+**Settings** — выберите агента + API-ключи + настройки генерации изображений:
 
-**Settings — доказательство BYOA**:
+<p align="center">
+  <img src="apps/web/public/setting.png" alt="Модальное окно AGF Settings" width="800" />
+</p>
 
-> _Вставьте скриншот модального окна Settings, показывающий agent picker + API keys + image-gen defaults_
+**Редактор сцен** — перетаскивайте платформы, опасности, предметы, коллайдеры:
 
-**Редактор сцен — перетащите опасность, увидите её в Play**:
-
-> _Вставьте короткий GIF_
+<p align="center">
+  <img src="apps/web/public/scene-editor.png" alt="Редактор сцен AGF" width="800" />
+</p>
 
 ---
 
@@ -186,7 +190,7 @@ npm run dev           # watch-режим для всех трёх (daemon hot-re
 | **Сайд-скролл платформер** | ✅ выпущен | Parallax-пайплайн, опасности, предметы, враги, мульти-уровни, хромакей спрайтов |
 | Top-down RPG | 🟡 частично | Foundation seed + recipes; некоторые recipes ещё дозревают |
 | Tower defense / arena | 🟡 частично | Унаследовано из ранних веток; нужна шлифовка |
-| Roguelike / Metroidvania | 🚧 запланировано | После запуска |
+| Roguelike / Metroidvania | 🟡 частично | После запуска |
 
 **Таргеты движков**:
 
