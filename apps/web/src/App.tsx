@@ -73,6 +73,29 @@ const LS_AGENT_COLLAPSED = 'ogf:agentCollapsed';
 const LS_TREE_COLLAPSED = 'ogf:treeCollapsed';
 const LS_SIDEBAR_W = 'ogf:sidebarWidth';
 const LS_LAST_FILE_PREFIX = 'ogf:lastFile:'; // per-project: { tab, relPath }
+// Per-agent UI state. Switching CLIs in Settings auto-loads the values the
+// user last picked for that CLI — avoids 'model gpt-5.5 not found' errors
+// when switching to Claude Code while the dropdown still points at a Codex id.
+const LS_MODEL_BY_AGENT = 'ogf:modelByAgent'; // { codex: 'gpt-5.5', 'claude-code': 'default' }
+const LS_REASONING_BY_AGENT = 'ogf:reasoningByAgent'; // { codex: 'xhigh', ... }
+
+function readJsonMap(key: string): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+function writeJsonMap(key: string, map: Record<string, string>): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(map));
+  } catch {
+    /* quota / disabled storage — silently no-op */
+  }
+}
 
 type Tab = 'assets' | 'scenes' | 'play';
 type Density = 'compact' | 'regular' | 'comfy';
@@ -115,6 +138,11 @@ export function App() {
       window.removeEventListener('ogf:preferred-agent-changed', onSwitch as EventListener);
   }, []);
 
+  // Per-agent model + reasoning sync effects are declared AFTER the model
+  // + reasoning useState (see below) — JS hoists var declarations but not
+  // useState values, so the effects need to come later in the function body.
+  const prevAgentIdRef = useRef<string | null>(null);
+
   // Project
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project | null>(null);
@@ -127,11 +155,85 @@ export function App() {
 
   // Chat
   const [turns, setTurns] = useState<UiTurn[]>([]);
-  // Defaults chosen for OGF use case: gpt-5.5 + xhigh reasoning. The user
-  // is doing real game refactoring (Sengoku, megaman_new) where rule-following
-  // and multi-file coherence matter more than latency or token cost.
+  // Defaults chosen for OGF use case: gpt-5.5 + xhigh reasoning under Codex.
+  // Real values are loaded per-agent from localStorage in an effect below —
+  // these are just the bootstrap values until the agent detection completes.
+  // The user is doing real game refactoring where rule-following and
+  // multi-file coherence matter more than latency or token cost.
   const [model, setModel] = useState<string>('gpt-5.5');
   const [reasoning, setReasoning] = useState<ReasoningEffort>('xhigh');
+
+  // Per-agent model + reasoning sync.
+  // When the user switches CLI in Settings, the model dropdown's options
+  // change (Codex has gpt-5.x, Claude has claude-*). Leaving the OLD model
+  // id selected when switching to a CLI that doesn't recognize it makes
+  // the next run fail with "model X not found" — observed end-to-end in
+  // the claude-code-debug.jsonl log. We persist each agent's last-picked
+  // model + reasoning separately and swap them on agent.id change.
+  useEffect(() => {
+    if (!agent?.id) return;
+    const newId = agent.id;
+    const prevId = prevAgentIdRef.current;
+
+    // Save the values we're about to leave under the previous agent's key.
+    if (prevId && prevId !== newId) {
+      const mMap = readJsonMap(LS_MODEL_BY_AGENT);
+      mMap[prevId] = model;
+      writeJsonMap(LS_MODEL_BY_AGENT, mMap);
+      const rMap = readJsonMap(LS_REASONING_BY_AGENT);
+      rMap[prevId] = reasoning;
+      writeJsonMap(LS_REASONING_BY_AGENT, rMap);
+    }
+
+    // Load (or initialize) the values for the new agent. If a stored value
+    // isn't in the new agent's model list, fall back to the first model.
+    if (prevId !== newId) {
+      const mMap = readJsonMap(LS_MODEL_BY_AGENT);
+      const validModelIds = (agent.models ?? []).map((m) => m.id);
+      const storedModel = mMap[newId];
+      const nextModel =
+        storedModel && validModelIds.includes(storedModel)
+          ? storedModel
+          : validModelIds[0] ?? 'default';
+      setModel(nextModel);
+
+      const rMap = readJsonMap(LS_REASONING_BY_AGENT);
+      const storedReasoning = rMap[newId];
+      const validReasonings = ['minimal', 'low', 'medium', 'high', 'xhigh'];
+      const nextReasoning = validReasonings.includes(storedReasoning)
+        ? (storedReasoning as ReasoningEffort)
+        : 'xhigh';
+      setReasoning(nextReasoning);
+    }
+
+    prevAgentIdRef.current = newId;
+    // Intentionally not depending on `model` / `reasoning` — those are
+    // INPUTS to the save-on-switch branch, not triggers. We only fire when
+    // the agent itself changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent?.id, agent?.models]);
+
+  // Persist model + reasoning into the per-agent map whenever they change
+  // (covers the case where the user edits them via the dropdowns directly,
+  // not just on CLI switch). Without this, the values would only get
+  // persisted when the user changes CLI — meaning a Codex user who picked
+  // gpt-5.4 mid-session would lose it on next app launch.
+  useEffect(() => {
+    if (!agent?.id) return;
+    const map = readJsonMap(LS_MODEL_BY_AGENT);
+    if (map[agent.id] !== model) {
+      map[agent.id] = model;
+      writeJsonMap(LS_MODEL_BY_AGENT, map);
+    }
+  }, [agent?.id, model]);
+  useEffect(() => {
+    if (!agent?.id) return;
+    const map = readJsonMap(LS_REASONING_BY_AGENT);
+    if (map[agent.id] !== reasoning) {
+      map[agent.id] = reasoning;
+      writeJsonMap(LS_REASONING_BY_AGENT, map);
+    }
+  }, [agent?.id, reasoning]);
   const [prompt, setPrompt] = useState('');
   const [runId, setRunId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -2029,8 +2131,8 @@ function AgentPane(props: {
               !props.project
                 ? 'Open a project first'
                 : props.agent?.available
-                ? 'Ask Codex to generate, edit, or fix something… (⌘L to focus)'
-                : 'Codex not detected'
+                  ? `Ask ${props.agent.id === 'claude-code' ? 'Claude' : 'Codex'} to generate, edit, or fix something… (⌘L to focus)`
+                  : `${props.agent?.id === 'claude-code' ? 'Claude Code' : 'Codex'} not detected`
             }
           />
           <div className="composer-actions">
@@ -2050,18 +2152,22 @@ function AgentPane(props: {
                 }),
               )}
             />
-            <MenuPicker
-              label="reasoning"
-              value={props.reasoning}
-              onChange={(v) => props.setReasoning(v as ReasoningEffort)}
-              options={[
-                { id: 'minimal', triggerLabel: 'minimal', primary: 'minimal', hint: 'fastest, no plan' },
-                { id: 'low',     triggerLabel: 'low',     primary: 'low',     hint: 'short reasoning' },
-                { id: 'medium',  triggerLabel: 'medium',  primary: 'medium',  hint: 'balanced' },
-                { id: 'high',    triggerLabel: 'high',    primary: 'high',    hint: 'deep reasoning' },
-                { id: 'xhigh',   triggerLabel: 'xhigh',   primary: 'xhigh',   hint: 'maximum' },
-              ]}
-            />
+            {/* reasoning is Codex-specific (model_reasoning_effort flag);
+               Claude Code doesn't expose an equivalent knob, so hide it. */}
+            {props.agent?.id !== 'claude-code' && (
+              <MenuPicker
+                label="reasoning"
+                value={props.reasoning}
+                onChange={(v) => props.setReasoning(v as ReasoningEffort)}
+                options={[
+                  { id: 'minimal', triggerLabel: 'minimal', primary: 'minimal', hint: 'fastest, no plan' },
+                  { id: 'low',     triggerLabel: 'low',     primary: 'low',     hint: 'short reasoning' },
+                  { id: 'medium',  triggerLabel: 'medium',  primary: 'medium',  hint: 'balanced' },
+                  { id: 'high',    triggerLabel: 'high',    primary: 'high',    hint: 'deep reasoning' },
+                  { id: 'xhigh',   triggerLabel: 'xhigh',   primary: 'xhigh',   hint: 'maximum' },
+                ]}
+              />
+            )}
             <button
               className="icon-btn composer-attach"
               onClick={() => dropzoneRef.current?.openFilePicker()}
