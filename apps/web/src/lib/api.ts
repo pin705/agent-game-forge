@@ -34,7 +34,13 @@ import type {
   ProjectsResponse,
   ReadFileResponse,
   RefImage,
+  GenImageSummary,
+  Preferences,
+  PreferencesResponse,
   RefImagesResponse,
+  SecretKey,
+  SecretsResponse,
+  SetSecretRequest,
   UpdateCommentThreadRequest,
   UpdateCommentThreadResponse,
   UploadRefRequest,
@@ -53,6 +59,33 @@ async function jsonFetch<T>(input: string, init?: RequestInit): Promise<T> {
 
 // Agents
 export const fetchAgents = () => jsonFetch<AgentsResponse>('/api/agents');
+
+// Secrets — user-scope API keys for image-gen providers / agent CLIs.
+// Daemon stores them in ~/.ogf/secrets.json (mode 600). GET returns
+// MASKED status only; the actual key never reaches the web client.
+export const fetchSecrets = () => jsonFetch<SecretsResponse>('/api/secrets');
+export const setSecret = (key: SecretKey, value: string | null) =>
+  jsonFetch<SecretsResponse>('/api/secrets', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ key, value } satisfies SetSecretRequest),
+  });
+
+// Gen-image cost / call-count summary for the Settings panel.
+export const fetchGenImageSummary = (windowMs?: number) =>
+  jsonFetch<GenImageSummary>(
+    `/api/gen-image/summary${windowMs ? `?windowMs=${windowMs}` : ''}`,
+  );
+
+// User preferences (non-sensitive: image-gen provider/model defaults, ...).
+export const fetchPreferences = () =>
+  jsonFetch<PreferencesResponse>('/api/preferences');
+export const setPreferences = (prefs: Partial<Preferences>) =>
+  jsonFetch<PreferencesResponse>('/api/preferences', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(prefs),
+  });
 
 // Projects
 export const fetchProjects = () => jsonFetch<ProjectsResponse>('/api/projects');
@@ -139,11 +172,15 @@ export const fetchConversations = (projectPath: string) =>
     `/api/conversations?projectPath=${encodeURIComponent(projectPath)}`,
   );
 
-export const createConversation = (projectPath: string, title?: string) =>
+export const createConversation = (
+  projectPath: string,
+  agentId: 'codex' | 'claude-code' = 'codex',
+  title?: string,
+) =>
   jsonFetch<{ conversation: Conversation }>('/api/conversations', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ projectPath, title } satisfies CreateConversationRequest),
+    body: JSON.stringify({ projectPath, agentId, title } satisfies CreateConversationRequest),
   });
 
 export const removeConversation = (id: string) =>

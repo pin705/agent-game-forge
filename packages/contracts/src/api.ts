@@ -1,4 +1,4 @@
-export type AgentId = 'codex';
+export type AgentId = 'codex' | 'claude-code';
 export type EngineKind = 'godot' | 'unity' | 'web' | 'unknown';
 
 export interface AgentInfo {
@@ -78,6 +78,9 @@ export interface Conversation {
   projectPath: string;
   title: string | null;
   codexThreadId: string | null;
+  /** Which CLI owns this conversation. Locked at create time. Pre-multi-CLI
+   *  rows are backfilled to 'codex' via db migration v3. */
+  agentId: AgentId;
   createdAt: number;
   updatedAt: number;
 }
@@ -88,6 +91,9 @@ export interface ConversationsResponse {
 
 export interface CreateConversationRequest {
   projectPath: string;
+  /** Which CLI to associate the conversation with. Defaults to 'codex'
+   *  when omitted for backward compat. */
+  agentId?: AgentId;
   title?: string;
 }
 
@@ -270,6 +276,74 @@ export interface ImportCodexSessionRequest {
 export interface ImportCodexSessionResponse {
   conversation: Conversation;
   importedCount: number;
+}
+
+// -------- Secrets / API keys --------
+
+/** Canonical secret keys recognized by the daemon. Add entries as new
+ *  providers (Mistral, Replicate, etc.) come online. */
+export type SecretKey =
+  | 'openai_api_key'
+  | 'gemini_api_key'
+  | 'anthropic_api_key';
+
+export interface SecretStatus {
+  key: SecretKey;
+  /** True when a value resolves (env or file). */
+  set: boolean;
+  /** True when an env var (OPENAI_API_KEY etc.) shadows the file. */
+  fromEnv: boolean;
+  /** Masked display ("sk-•••••••a1b2"). Empty string when unset. */
+  masked: string;
+  /** Env var name that shadows this key — shown in UI as a hint. */
+  envVarName: string;
+}
+
+export interface SecretsResponse {
+  secrets: SecretStatus[];
+}
+
+export interface SetSecretRequest {
+  key: SecretKey;
+  /** New value, or null/'' to clear. */
+  value: string | null;
+}
+
+// -------- Image-gen preferences --------
+
+export type ImageGenProvider = 'gemini' | 'openai';
+export type ImageGenProviderPref = 'auto' | ImageGenProvider;
+
+export interface ImageGenPrefs {
+  /** 'auto' = prefer Gemini if keyed, else OpenAI. Specific value pins it. */
+  provider: ImageGenProviderPref;
+  /** Default model when the resolved provider is Gemini. */
+  geminiModel: string;
+  /** Default model when the resolved provider is OpenAI. */
+  openaiModel: string;
+}
+
+export interface Preferences {
+  image_gen: ImageGenPrefs;
+}
+
+export type PreferencesResponse = Preferences;
+
+// -------- Gen-image usage / cost --------
+
+export interface GenImageSummaryRow {
+  provider: 'gemini' | 'openai';
+  count: number;
+  okCount: number;
+  errorCount: number;
+  estCostUsd: number;
+}
+
+export interface GenImageSummary {
+  windowMs: number;
+  totalCount: number;
+  totalEstCostUsd: number;
+  byProvider: GenImageSummaryRow[];
 }
 
 // -------- Godot runner --------

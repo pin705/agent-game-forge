@@ -2,8 +2,17 @@ import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import { copyFileSync, existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { detectAgents, getAgentDef, resolveOnPath } from './agents.js';
-import { spawnCodex, createJsonlParser } from './codex.js';
+import {
+  detectAgents,
+  getAgentAdapter,
+  getAgentDef,
+  isAgentId,
+  resolveOnPath,
+} from './agents.js';
+import { isSecretKey, listSecretStatuses, setSecret } from './secrets.js';
+import { generateImage, GenImageError, type GenImageRequest } from './gen-image.js';
+import { logGenImageCall, summarizeGenImageCalls } from './gen-image-log.js';
+import { isImageGenProviderPref, readPreferences, writePreferences, type Preferences } from './prefs.js';
 import { splitFormsFromText } from './question-form.js';
 import { RunManager } from './runs.js';
 import {
@@ -70,6 +79,7 @@ import {
 import type { PackLayout } from '@ogf/contracts';
 import type {
   AgentEvent,
+  AgentId,
   AgentsResponse,
   AppendCommentMessageRequest,
   AppendCommentMessageResponse,
@@ -109,6 +119,131 @@ export function createServer() {
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
+  });
+
+  // -------------------- Secrets --------------------
+  // User-scope API keys for image-gen providers, agent CLIs, etc. Stored
+  // in ~/.ogf/secrets.json (mode 600). Env vars (OPENAI_API_KEY etc.)
+  // shadow the file at runtime — surfaced via the `fromEnv` flag so the
+  // user knows where their value is coming from.
+  //
+  // GET returns MASKED values + flags. The actual key never leaves the
+  // daemon — the web client doesn't need it, only the daemon does, when
+  // it calls out to OpenAI/Gemini/etc. on the user's behalf.
+
+  app.get('/api/secrets', (_req, res) => {
+    res.json({ secrets: listSecretStatuses() });
+  });
+
+  app.post('/api/secrets', (req, res) => {
+    const body = req.body as { key?: unknown; value?: unknown };
+    if (!isSecretKey(body?.key)) {
+      return res.status(400).json({ error: 'invalid secret key' });
+    }
+    if (body.value !== null && typeof body.value !== 'string') {
+      return res.status(400).json({ error: 'value must be string or null' });
+    }
+    setSecret(body.key, (body.value as string | null) ?? null);
+    res.json({ secrets: listSecretStatuses() });
+  });
+
+  // -------------------- Image generation --------------------
+  // External-provider image gen for agents without built-in image_gen.
+  // Codex CLI users keep using Codex's image_gen; this is for Claude Code,
+  // future Gemini CLI, bash wrappers, etc.
+  //
+  // Body shape: see GenImageRequest in gen-image.ts. Required: prompt, outputPath.
+  // The daemon writes the PNG to outputPath and returns { path, provider, sizeBytes }.
+
+  app.post('/api/gen-image', async (req, res) => {
+    const body = req.body as Partial<GenImageRequest> | undefined;
+    if (!body || typeof body.prompt !== 'string' || typeof body.outputPath !== 'string') {
+      return res
+        .status(400)
+        .json({ error: 'prompt (string) and outputPath (absolute string) are required' });
+    }
+    const t0 = Date.now();
+    try {
+      const result = await generateImage(body as GenImageRequest);
+      logGenImageCall({
+        provider: result.provider,
+        model: result.model,
+        sizeBytes: result.sizeBytes,
+        ok: true,
+        durationMs: Date.now() - t0,
+      });
+      console.log(
+        `[gen-image] ok provider=${result.provider} model=${result.model} bytes=${result.sizeBytes}`,
+      );
+      res.json(result);
+    } catch (err) {
+      if (err instanceof GenImageError) {
+        // Only log when we know which provider was being called (router-stage
+        // errors like "no key configured" aren't billable).
+        if (err.provider !== 'router') {
+          logGenImageCall({
+            provider: err.provider,
+            model: '-',
+            sizeBytes: 0,
+            ok: false,
+            durationMs: Date.now() - t0,
+            error: err.message,
+          });
+        }
+        const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 500;
+        console.error(
+          `[gen-image] FAIL provider=${err.provider} status=${err.status ?? '-'} msg=${err.message}`,
+        );
+        return res.status(status).json({
+          error: err.message,
+          provider: err.provider,
+          providerStatus: err.status,
+        });
+      }
+      console.error('[gen-image] unexpected error', err);
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'gen-image failed',
+      });
+    }
+  });
+
+  // User preferences (non-sensitive defaults) — image-gen provider/model
+  // pick when the caller doesn't pass explicit values. Sits in
+  // ~/.ogf/preferences.json next to secrets.json.
+  app.get('/api/preferences', (_req, res) => {
+    res.json(readPreferences());
+  });
+
+  app.post('/api/preferences', (req, res) => {
+    const body = req.body as Partial<Preferences> | undefined;
+    const current = readPreferences();
+    const ig: Partial<Preferences['image_gen']> = body?.image_gen ?? {};
+    const next: Preferences = {
+      image_gen: {
+        provider: isImageGenProviderPref(ig.provider) ? ig.provider : current.image_gen.provider,
+        geminiModel:
+          typeof ig.geminiModel === 'string' && ig.geminiModel.length > 0
+            ? ig.geminiModel
+            : current.image_gen.geminiModel,
+        openaiModel:
+          typeof ig.openaiModel === 'string' && ig.openaiModel.length > 0
+            ? ig.openaiModel
+            : current.image_gen.openaiModel,
+      },
+    };
+    writePreferences(next);
+    res.json(next);
+  });
+
+  // Cost / call-count summary for the Settings panel. Default window =
+  // last 24 hours; client can pass ?windowMs=... to widen.
+  app.get('/api/gen-image/summary', (req, res) => {
+    const windowMsRaw = Number(req.query.windowMs);
+    const windowMs =
+      Number.isFinite(windowMsRaw) && windowMsRaw > 0
+        ? windowMsRaw
+        : 24 * 60 * 60 * 1000;
+    res.json(summarizeGenImageCalls(windowMs));
   });
 
   // -------------------- Agents --------------------
@@ -1004,7 +1139,8 @@ export function createServer() {
     if (!body?.projectPath) return res.status(400).json({ error: 'projectPath required' });
     const project = getProject(body.projectPath);
     if (!project) return res.status(404).json({ error: 'project not found; open it first' });
-    const row = createConversation(body.projectPath, body.title);
+    const agentId = isAgentId(body.agentId ?? '') ? (body.agentId as AgentId) : 'codex';
+    const row = createConversation(body.projectPath, agentId, body.title);
     res.json({ conversation: rowToConversation(row) });
   });
 
@@ -1044,7 +1180,9 @@ export function createServer() {
       body.title ??
       (replayed.messages.find((m) => m.role === 'user')?.content?.slice(0, 60) || 'Imported Codex session');
 
-    const conv = createConversation(project.path, title);
+    // Imported Codex session → conversation owned by 'codex' (only Codex
+    // produces these JSONL sessions on disk).
+    const conv = createConversation(project.path, 'codex', title);
     setConversationThreadId(conv.id, body.sessionId);
 
     let importedCount = 0;
@@ -1103,10 +1241,14 @@ export function createServer() {
       return res.status(400).json({ error: 'agentId and prompt are required' });
     }
 
+    if (!isAgentId(body.agentId)) {
+      return res.status(400).json({ error: `unknown agent: ${body.agentId}` });
+    }
     const def = getAgentDef(body.agentId);
     if (!def) return res.status(400).json({ error: `unknown agent: ${body.agentId}` });
     const bin = resolveOnPath(def.bin);
     if (!bin) return res.status(400).json({ error: `${def.name} not found on PATH` });
+    const adapter = getAgentAdapter(body.agentId);
 
     // Resolve conversation: use provided id, else create one under projectPath.
     let conversationId = body.conversationId;
@@ -1118,8 +1260,20 @@ export function createServer() {
         });
       }
       const project = getProject(body.projectPath) ?? upsertProject(body.projectPath);
-      conv = createConversation(project.path);
+      // Auto-created conversation inherits the CLI from the run request —
+      // this is "user typed a new prompt without picking a conversation",
+      // so use whatever CLI they have active.
+      conv = createConversation(project.path, body.agentId);
       conversationId = conv.id;
+    } else if (conv.agent_id !== body.agentId) {
+      // Conversation is locked to its original CLI. Trying to run a
+      // different CLI in this conversation would either fail (incompatible
+      // session id format) or silently lose context. Reject with a clear
+      // error so the UI can surface the conflict.
+      return res.status(409).json({
+        error: `Conversation belongs to ${conv.agent_id}, not ${body.agentId}. Start a new conversation to switch CLIs.`,
+        conversationAgentId: conv.agent_id,
+      });
     }
 
     // Dedupe: don't spawn a second codex when one is already running for
@@ -1183,7 +1337,7 @@ export function createServer() {
 
     let child;
     try {
-      child = spawnCodex({
+      child = adapter.spawn({
         bin,
         cwd,
         prompt: composed,
@@ -1228,10 +1382,10 @@ export function createServer() {
     const agentEvents: AgentEvent[] = [];
     let agentTextBuffer = '';
 
-    const parser = createJsonlParser({
-      // Heartbeat: every line read from codex stdout resets this run's
-      // stall timer. The watchdog in runs.ts kills runs that go silent
-      // for 5+ minutes (image_gen hung, network blip, etc).
+    const parser = adapter.makeParser({
+      // Heartbeat: every line read from the agent's stdout resets this
+      // run's stall timer. The watchdog in runs.ts kills runs that go
+      // silent for 5+ minutes (image_gen hung, network blip, etc).
       onActivity: () => runs.touch(run),
       onEvent: (rawEv) => {
         // Split agent text into prose + structured form events. Codex emits
@@ -2182,6 +2336,7 @@ function rowToConversation(r: {
   project_path: string;
   title: string | null;
   codex_thread_id: string | null;
+  agent_id: AgentId;
   created_at: number;
   updated_at: number;
 }): Conversation {
@@ -2190,6 +2345,7 @@ function rowToConversation(r: {
     projectPath: r.project_path,
     title: r.title,
     codexThreadId: r.codex_thread_id,
+    agentId: r.agent_id,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
