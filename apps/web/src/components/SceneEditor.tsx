@@ -163,7 +163,7 @@ export function SceneEditor(props: Props) {
   // "+ rect" / "+ circle" / "+ poly" sub-toolbar arming. When set,
   // click-drag (rect/circle) or click-click (polygon) in empty colliders-
   // mode canvas draws a new shape instead of panning. ESC clears.
-  const [addShapeKind, setAddShapeKind] = useState<null | 'rect' | 'circle' | 'polygon'>(null);
+  const [addShapeKind, setAddShapeKind] = useState<null | 'rect' | 'circle' | 'polygon' | 'platform'>(null);
   // Live preview geometry while the user is mid-drag — drives a dashed
   // overlay in the render loop.
   const [draftShape, setDraftShape] = useState<
@@ -755,6 +755,18 @@ export function SceneEditor(props: Props) {
         kind: 'add-circle-draft';
         startWorld: Vec2;
         currentWorld: Vec2;
+      }
+    | {
+        // User is drawing a new platform. Geometry mirrors add-rect-draft —
+        // we render the same dashed-rect preview — but on commit we append
+        // to level.platforms[] (with `tile` from copyTileName) instead of
+        // colliders[].
+        kind: 'add-platform-draft';
+        startWorld: Vec2;
+        currentWorld: Vec2;
+        /** Tile key to assign on commit. Captured at mousedown to lock
+         *  the choice in case the user changes selection mid-drag. */
+        copyTileName: string;
       };
   const dragRef = useRef<DragState | null>(null);
   const saveTimerRef = useRef<number | null>(null);
@@ -1144,6 +1156,33 @@ export function SceneEditor(props: Props) {
 
     // ----- Props mode (default) -----
     if (e.button === 0 && !e.altKey) {
+      // 0) Add-platform draft? When the toolbar armed `+ platform`, the
+      //    next empty-space drag draws a new platform rect. Tile name is
+      //    copied from an existing platform in this scene (button hidden
+      //    when no template exists). Resize-handle hit-test still wins so
+      //    the user can grab an existing platform's edge to resize.
+      if (
+        addShapeKind === 'platform' &&
+        !findPropResizeHandle(w)
+      ) {
+        const template = scene.props.find(
+          (p) =>
+            p.ref?.backend === 'json' &&
+            p.ref.section === 'platforms' &&
+            typeof p.tileName === 'string',
+        );
+        if (template?.tileName) {
+          dragRef.current = {
+            kind: 'add-platform-draft',
+            startWorld: w,
+            currentWorld: w,
+            copyTileName: template.tileName,
+          };
+          setDraftShape({ kind: 'rect', x1: w.x, y1: w.y, x2: w.x, y2: w.y });
+          attachWindowDrag();
+          return;
+        }
+      }
       // 1) Resize handle on selected prop?
       const handle = findPropResizeHandle(w);
       if (handle) {
@@ -1309,7 +1348,7 @@ export function SceneEditor(props: Props) {
       setScene((s) => updatePathPoint(s, ds.uid, ds.index, next));
       return;
     }
-    if (ds.kind === 'add-rect-draft') {
+    if (ds.kind === 'add-rect-draft' || ds.kind === 'add-platform-draft') {
       const w = clientToWorld(ev);
       ds.currentWorld = w;
       const snap = !ev.shiftKey;
@@ -1452,6 +1491,25 @@ export function SceneEditor(props: Props) {
       if (w >= 4 && h >= 4) {
         addColliderShape({ kind: 'rect', x: x1, y: y1, w, h });
       }
+      return;
+    }
+    if (ds.kind === 'add-platform-draft') {
+      const x1 = Math.round(Math.min(ds.startWorld.x, ds.currentWorld.x));
+      const y1 = Math.round(Math.min(ds.startWorld.y, ds.currentWorld.y));
+      const x2 = Math.round(Math.max(ds.startWorld.x, ds.currentWorld.x));
+      const y2 = Math.round(Math.max(ds.startWorld.y, ds.currentWorld.y));
+      const w = x2 - x1;
+      const h = y2 - y1;
+      setDraftShape(null);
+      // Require ≥ 24×16 — platforms below that aren't useful gameplay
+      // (player would walk through them) and tiny placements are usually
+      // accidental clicks rather than intentional drags.
+      if (w >= 24 && h >= 16) {
+        addPlatformAtRect({ x: x1, y: y1, w, h, tile: ds.copyTileName });
+      }
+      // Auto-disarm so the next click in empty space behaves normally.
+      // (Same UX as add-rect after commit.)
+      setAddShapeKind(null);
       return;
     }
     if (ds.kind === 'add-circle-draft') {
@@ -1903,7 +1961,8 @@ export function SceneEditor(props: Props) {
         if (draftShape) setDraftShape(null);
         if (
           dragRef.current?.kind === 'add-rect-draft' ||
-          dragRef.current?.kind === 'add-circle-draft'
+          dragRef.current?.kind === 'add-circle-draft' ||
+          dragRef.current?.kind === 'add-platform-draft'
         ) {
           dragRef.current = null;
         }
@@ -2070,6 +2129,78 @@ export function SceneEditor(props: Props) {
     );
     setSelectedNodePath(newProp.nodePath);
     setPropPickerOpen(false);
+  }
+
+  /** Insert a new platform into level.platforms[]. Used by the "+ platform"
+   *  toolbar tool after the user drags a rect. Tile is copied from an
+   *  existing platform — see the add-platform-draft mousedown branch where
+   *  copyTileName is captured.
+   *
+   *  Platforms differ from props:
+   *    - section is 'platforms' not 'props'
+   *    - entry has `tile` (library key) instead of `image`
+   *    - renderMode defaults to 'three-piece' (matches recipe + library shape)
+   *    - no sortY (platforms render in their own layer pass) */
+  function addPlatformAtRect(rect: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    tile: string;
+  }): void {
+    if (!scene) return;
+    // Unique id — base on tile name + 6-char suffix.
+    const stem = rect.tile.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '') || 'platform';
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const id = `${stem}_${suffix}`;
+
+    const entry = {
+      id,
+      x: rect.x,
+      y: rect.y,
+      w: rect.w,
+      h: rect.h,
+      tile: rect.tile,
+      renderMode: 'three-piece' as const,
+    };
+    const section = 'platforms';
+    const ref: ColliderRef = {
+      backend: 'json',
+      relPath: props.relPath,
+      section,
+      id,
+    };
+
+    // Mirror in local state — copy tilePieces from an existing platform
+    // with the same tile so the new one renders immediately. Without this,
+    // the user sees an outlined rect until a refetch.
+    const template = scene.props.find(
+      (p) =>
+        p.ref?.backend === 'json' &&
+        p.ref.section === 'platforms' &&
+        p.tileName === rect.tile,
+    );
+    const newProp: SceneProp = {
+      nodePath: `${section}/${id}`,
+      name: id,
+      position: { x: rect.x, y: rect.y },
+      spriteOffset: { x: rect.w / 2, y: rect.h / 2 },
+      scale: { x: 1, y: 1 },
+      texture: template?.tilePieces?.mid.image ?? null,
+      metadata: {},
+      displaySize: { x: rect.w, y: rect.h },
+      ref,
+      renderMode: 'three-piece',
+      tilePieces: template?.tilePieces,
+      tileName: rect.tile,
+    };
+    setScene((s) => (s ? { ...s, props: [...s.props, newProp] } : s));
+    commitOps(
+      [{ kind: 'add-prop', relPath: props.relPath, section, entry }],
+      [{ kind: 'remove-prop', relPath: props.relPath, section, id }],
+      `add platform ${id}`,
+    );
+    setSelectedNodePath(newProp.nodePath);
   }
 
   const pendingOpsRef = useRef<SceneOp[]>([]);
@@ -3512,9 +3643,9 @@ function ScenePalette({
   mode: EditMode;
   relPath: string;
   scene: SceneModel;
-  addShapeKind: null | 'rect' | 'circle' | 'polygon';
+  addShapeKind: null | 'rect' | 'circle' | 'polygon' | 'platform';
   setAddShapeKind: (
-    f: (k: null | 'rect' | 'circle' | 'polygon') => null | 'rect' | 'circle' | 'polygon',
+    f: (k: null | 'rect' | 'circle' | 'polygon' | 'platform') => null | 'rect' | 'circle' | 'polygon' | 'platform',
   ) => void;
   pathDraft: { points: Vec2[] } | null;
   polygonDraft: { points: Vec2[] } | null;
@@ -3600,6 +3731,28 @@ function ScenePalette({
         + prop
       </button>,
     );
+    // + platform: only when this scene already has at least one platform
+    // we can copy the tile from. New levels with zero platforms would need
+    // a tile-library picker UI — left as a future improvement; for now
+    // the agent seeds the first platform and the user expands from there.
+    const hasPlatform = scene.props.some(
+      (p) =>
+        p.ref?.backend === 'json' &&
+        p.ref.section === 'platforms' &&
+        typeof p.tileName === 'string',
+    );
+    if (hasPlatform) {
+      buttons.push(
+        <button
+          key="add-platform"
+          className={`btn btn-sm ${addShapeKind === 'platform' ? 'active' : ''}`}
+          onClick={() => setAddShapeKind((k) => (k === 'platform' ? null : 'platform'))}
+          title="Drag in empty space to draw a platform (copies tile from an existing one)"
+        >
+          + platform
+        </button>,
+      );
+    }
   }
   if (mode === 'colliders' && scene.collidersJsonPath) {
     buttons.push(
@@ -4051,16 +4204,33 @@ function applyOpToScene(s: SceneModel, op: SceneOp): SceneModel {
         p.ref.id === id,
     );
     if (exists) return s;
-    const w = op.entry.w;
-    const h = op.entry.h;
+    // The entry is a discriminated union — props get image+w+h, platforms
+    // get tile, hazards/pickups may omit w/h (catalog fallback). For
+    // immediate-local-render we only handle the props-with-image shape; the
+    // platform/catalog branches mirror their own state separately in their
+    // dedicated add functions (addPlatformAtRect etc) which call commitOps
+    // AFTER also pushing to scene.props. By the time this op handler runs
+    // for those, the prop is already present and we early-return via the
+    // `exists` check above.
+    const entry = op.entry as {
+      id: string;
+      image?: string;
+      x: number;
+      y: number;
+      w?: number;
+      h?: number;
+      sortY?: number;
+    };
+    const w = entry.w ?? 0;
+    const h = entry.h ?? 0;
     const newProp: SceneProp = {
       nodePath: `${section}/${id}`,
       name: id,
-      position: { x: op.entry.x, y: op.entry.y },
+      position: { x: entry.x, y: entry.y },
       spriteOffset: { x: 0, y: -h / 2 },
       scale: { x: 1, y: 1 },
-      texture: op.entry.image,
-      metadata: typeof op.entry.sortY === 'number' ? { sortY: String(op.entry.sortY) } : {},
+      texture: entry.image ?? null,
+      metadata: typeof entry.sortY === 'number' ? { sortY: String(entry.sortY) } : {},
       displaySize: { x: w, y: h },
       ref: { backend: 'json', relPath: op.relPath, section, id },
     };

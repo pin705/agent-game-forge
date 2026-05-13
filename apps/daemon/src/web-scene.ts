@@ -657,6 +657,11 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
       if (typeof p.kind === 'string') meta.kind = p.kind as string;
       if (typeof p.type === 'string') meta.type = p.type as string;
       const hitbox = effectiveHitbox(p) ?? undefined;
+      // Surface the raw tile key when the entry uses shared_platform_library —
+      // lets the editor's "+ platform" tool copy the tile from an existing
+      // platform without needing a library-picker UI.
+      const tileName =
+        tilePieces && typeof tileKey === 'string' ? tileKey : undefined;
       props.push({
         nodePath: `${section}/${id}`,
         name: id,
@@ -669,6 +674,7 @@ export function loadWebLevel(rootAbs: string, relPath: string): LoadSceneRespons
         ref: { backend: 'json', relPath, section, id },
         renderMode,
         tilePieces,
+        tileName,
         hitbox,
       });
     });

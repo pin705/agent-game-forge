@@ -108,6 +108,10 @@ export interface SceneProp {
     mid: { image: string; naturalW?: number; naturalH?: number; tileW?: number; tileH?: number };
     right?: { image: string; naturalW?: number; naturalH?: number };
   };
+  /** Raw tile key from level JSON (e.g. "rooftop_ledge"). The "+ platform"
+   *  tool copies this from an existing platform so the user doesn't need
+   *  a library picker. Set only when tilePieces resolved. */
+  tileName?: string;
   /** Damage / collect collision box — smaller than the visual rect when the
    *  sprite has transparent padding or the collision rect's aspect differs
    *  from the sprite's content aspect. Runtime checks rectsOverlap against
@@ -302,17 +306,43 @@ export interface AddPropOp {
   kind: 'add-prop';
   /** Project-relative path to the level JSON. */
   relPath: string;
-  /** Top-level array key the prop lives in. Defaults to 'props' on writer. */
+  /** Top-level array key the prop lives in. Defaults to 'props' on writer.
+   *  Common values: 'props', 'platforms', 'hazards', 'pickups', 'enemies'. */
   section?: string;
-  entry: {
-    id: string;
-    image: string;
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-    sortY?: number;
-  };
+  /** The entry written into the array. Shape varies by section:
+   *  - 'props': must have `image` (drawable sprite)
+   *  - 'platforms': must have `tile` (library key) + `renderMode`
+   *  - 'hazards' / 'pickups': have `type` (catalog id); image resolved at load
+   *  Daemon's writer is shape-agnostic — it just appends — so the type is a
+   *  union of common shapes. Use intersection at the callsite for safety. */
+  entry:
+    | {
+        id: string;
+        image: string;
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+        sortY?: number;
+      }
+    | {
+        id: string;
+        tile: string;
+        renderMode: 'tile' | 'three-piece' | 'natural';
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+        oneWay?: boolean;
+      }
+    | {
+        id: string;
+        type: string;
+        x: number;
+        y: number;
+        w?: number;
+        h?: number;
+      };
 }
 
 /** Remove a prop entry by id. Used as the inverse of AddPropOp for undo and
