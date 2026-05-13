@@ -47,7 +47,7 @@ import { Sidebar, type Theme } from './components/Sidebar.js';
 import { Dropzone, type DropzoneHandle } from './components/Dropzone.js';
 import { FolderPickerModal } from './components/FolderPickerModal.js';
 import { PendingChangesModal } from './components/PendingChangesModal.js';
-import { SettingsModal } from './components/SettingsModal.js';
+import { SettingsModal, LS_PREFERRED_AGENT } from './components/SettingsModal.js';
 import { ImportCodexSessionModal } from './components/ImportCodexSessionModal.js';
 import { PackReviewModal } from './components/PackReviewModal.js';
 import { I } from './components/icons.js';
@@ -100,6 +100,20 @@ export function App() {
   // Agent
   const [agent, setAgent] = useState<AgentInfo | null>(null);
   const [agentLoading, setAgentLoading] = useState(true);
+
+  // Live-switch when user picks a different CLI in Settings.
+  useEffect(() => {
+    const onSwitch = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      void fetchAgents().then((r) => {
+        const next = r.agents.find((a) => a.id === id) ?? null;
+        if (next) setAgent(next);
+      });
+    };
+    window.addEventListener('ogf:preferred-agent-changed', onSwitch as EventListener);
+    return () =>
+      window.removeEventListener('ogf:preferred-agent-changed', onSwitch as EventListener);
+  }, []);
 
   // Project
   const [projects, setProjects] = useState<Project[]>([]);
@@ -453,7 +467,17 @@ export function App() {
   // Boot
   useEffect(() => {
     fetchAgents()
-      .then((r) => setAgent(r.agents[0] ?? null))
+      .then((r) => {
+        // Prefer the user-picked CLI from Settings (localStorage). Fall back
+        // to the first available agent, then the first listed agent.
+        const preferred = localStorage.getItem(LS_PREFERRED_AGENT);
+        const match =
+          (preferred && r.agents.find((a) => a.id === preferred && a.available)) ||
+          r.agents.find((a) => a.available) ||
+          r.agents[0] ||
+          null;
+        setAgent(match);
+      })
       .catch(() => setAgent(null))
       .finally(() => setAgentLoading(false));
 
@@ -783,7 +807,7 @@ export function App() {
 
     try {
       const r = await createRun({
-        agentId: 'codex',
+        agentId: agent?.id ?? 'codex',
         prompt: userText,
         projectPath: project.path,
         conversationId: conversationId ?? undefined,
@@ -1908,7 +1932,9 @@ function AgentPane(props: {
         </div>
       )}
       <div className="agent-head">
-        <span className="title">Codex</span>
+        <span className="title">
+          {props.agent?.id === 'claude-code' ? 'Claude Code' : 'Codex'}
+        </span>
         <span style={{ flex: 1 }} />
         {props.pendingCount > 0 && (
           <button

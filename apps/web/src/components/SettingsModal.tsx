@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
-import type { SecretKey, SecretStatus } from '@ogf/contracts';
-import { fetchSecrets, setSecret } from '../lib/api.js';
+import type { AgentId, AgentInfo, SecretKey, SecretStatus } from '@ogf/contracts';
+import { fetchAgents, fetchSecrets, setSecret } from '../lib/api.js';
 import { I } from './icons.js';
+
+/** localStorage key for the user's preferred agent CLI. Read on app boot;
+ *  written when the user picks a different CLI in Settings. */
+export const LS_PREFERRED_AGENT = 'ogf:preferred-agent';
 
 interface SecretRowSpec {
   key: SecretKey;
@@ -75,20 +79,37 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [drafts, setDrafts] = useState<Partial<Record<SecretKey, string>>>({});
   const [revealing, setRevealing] = useState<Partial<Record<SecretKey, boolean>>>({});
   const [saving, setSaving] = useState<Partial<Record<SecretKey, boolean>>>({});
+  const [agents, setAgents] = useState<AgentInfo[] | null>(null);
+  const [preferredAgent, setPreferredAgent] = useState<AgentId>(() => {
+    const v = localStorage.getItem(LS_PREFERRED_AGENT);
+    return v === 'claude-code' ? 'claude-code' : 'codex';
+  });
 
   useEffect(() => {
     let cancelled = false;
-    void fetchSecrets()
-      .then((r) => {
-        if (!cancelled) setStatuses(r.secrets);
+    void Promise.all([fetchSecrets(), fetchAgents()])
+      .then(([secretsResp, agentsResp]) => {
+        if (cancelled) return;
+        setStatuses(secretsResp.secrets);
+        setAgents(agentsResp.agents);
       })
       .catch(() => {
-        if (!cancelled) setStatuses([]);
+        if (!cancelled) {
+          setStatuses([]);
+          setAgents([]);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  function pickAgent(id: AgentId) {
+    setPreferredAgent(id);
+    localStorage.setItem(LS_PREFERRED_AGENT, id);
+    // Notify other components (App.tsx) so they switch immediately.
+    window.dispatchEvent(new CustomEvent('ogf:preferred-agent-changed', { detail: id }));
+  }
 
   async function save(key: SecretKey, value: string | null) {
     setSaving((s) => ({ ...s, [key]: true }));
@@ -123,7 +144,86 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <div style={{ padding: 20, display: 'grid', gap: 20, overflowY: 'auto' }}>
+          {/* Agent CLI picker */}
           <section style={{ display: 'grid', gap: 6 }}>
+            <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--ink-0)' }}>
+              Agent CLI
+            </h3>
+            <p className="muted" style={{ margin: 0, fontSize: 11, lineHeight: 1.5 }}>
+              Which AI assistant drives the project. Codex uses its built-in
+              image-gen; Claude Code routes images through the daemon's{' '}
+              <code>/api/gen-image</code> using your API keys below.
+            </p>
+          </section>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {(['codex', 'claude-code'] as const).map((id) => {
+              const info = agents?.find((a) => a.id === id);
+              const isPreferred = preferredAgent === id;
+              const available = info?.available ?? false;
+              const cliName = id === 'codex' ? 'Codex CLI' : 'Claude Code';
+              return (
+                <label
+                  key={id}
+                  style={{
+                    ...cardStyle,
+                    cursor: available ? 'pointer' : 'not-allowed',
+                    opacity: available ? 1 : 0.55,
+                    borderColor: isPreferred ? 'var(--accent)' : 'var(--line)',
+                    background: isPreferred ? 'var(--accent-soft)' : 'var(--bg-1)',
+                    gap: 4,
+                  }}
+                  onClick={() => {
+                    if (available) pickAgent(id);
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <input
+                      type="radio"
+                      name="agent-cli"
+                      checked={isPreferred}
+                      onChange={() => available && pickAgent(id)}
+                      disabled={!available}
+                      style={{ accentColor: 'var(--accent)' }}
+                    />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-0)' }}>
+                      {cliName}
+                    </span>
+                    {info?.version && (
+                      <span
+                        className="muted"
+                        style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}
+                      >
+                        {info.version}
+                      </span>
+                    )}
+                    <span style={{ flex: 1 }} />
+                    <span
+                      style={{
+                        ...badgeBase,
+                        background: available
+                          ? 'rgba(110, 231, 142, 0.18)'
+                          : 'var(--bg-2)',
+                        color: available ? 'var(--green, #6ee78e)' : 'var(--ink-3)',
+                      }}
+                    >
+                      {available ? 'installed' : 'not found'}
+                    </span>
+                  </div>
+                  {!available && (
+                    <p
+                      className="muted"
+                      style={{ margin: 0, marginLeft: 26, fontSize: 11, lineHeight: 1.4 }}
+                    >
+                      Install with <code>npm i -g {id === 'codex' ? '@openai/codex' : '@anthropic-ai/claude-code'}</code>{' '}
+                      and reload OGF.
+                    </p>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+
+          <section style={{ display: 'grid', gap: 6, marginTop: 6 }}>
             <h3
               style={{
                 margin: 0,
