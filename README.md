@@ -219,7 +219,7 @@ License pending — will be open-source-friendly (MIT or Apache-2.0) at launch. 
 ## 🙏 Credits
 
 - Daemon-and-spawn pattern adapted from [`nexu-io/open-design`](https://github.com/nexu-io/open-design)
-- Foundation seed derived from [`Sengoku-Era-ogf`](https://github.com/0x0funky/Sengoku-Era-ogf) (Sengoku-era RPG reference project)
+- Sprite generation pipeline adapted from [`0x0funky/agent-sprite-forge`](https://github.com/0x0funky/agent-sprite-forge)
 - Built with Codex CLI + Claude Code — yes, this project is largely written by the same agents it drives
 
 ---

@@ -219,7 +219,7 @@ Pre-launch 段階です。コードベースは小さく、PR は歓迎ですが
 ## 🙏 クレジット
 
 - Daemon-and-spawn パターンは [`nexu-io/open-design`](https://github.com/nexu-io/open-design) を参考
-- Foundation seed は [`Sengoku-Era-ogf`](https://github.com/0x0funky/Sengoku-Era-ogf)(戦国時代 RPG リファレンスプロジェクト)から派生
+- スプライト生成パイプラインは [`0x0funky/agent-sprite-forge`](https://github.com/0x0funky/agent-sprite-forge) から派生
 - Codex CLI + Claude Code で構築 — そう、このプロジェクトの大部分は自分が駆動する agent によって書かれています
 
 ---

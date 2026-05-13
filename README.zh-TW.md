@@ -219,7 +219,7 @@ License 待定 — launch 時會用 open-source friendly 的(MIT 或 Apache-2.0)
 ## 🙏 致謝
 
 - Daemon-and-spawn pattern 來自 [`nexu-io/open-design`](https://github.com/nexu-io/open-design)
-- Foundation seed 來自 [`Sengoku-Era-ogf`](https://github.com/0x0funky/Sengoku-Era-ogf)(戰國時代 RPG 參考專案)
+- Sprite 生成流程 來自 [`0x0funky/agent-sprite-forge`](https://github.com/0x0funky/agent-sprite-forge)
 - 用 Codex CLI + Claude Code 建造 — 對,這個工具大多是它自己驅動的 agent 寫出來的
 
 ---
