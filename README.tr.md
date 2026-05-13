@@ -30,6 +30,10 @@
   <img src="https://img.shields.io/badge/node-%E2%89%A520-success" alt="node 20+"/>
 </p>
 
+<p align="center">
+  🎨 Sprite pipeline'ı <a href="https://github.com/0x0funky/agent-sprite-forge"><b>agent-sprite-forge</b></a> tarafından
+</p>
+
 ---
 
 Agent Game Forge (**AGF**), bir AI kodlama agent'ının senin için eksiksiz 2D oyunlar inşa etmesine olanak tanıyan açık kaynaklı bir masaüstü IDE'sidir — sprite'lar, parallax arka planlar, fizik, tehlikeler, toplanabilirler, sahne düzenleri — ve agent'ın yanlış yaptıklarını sürükle-bırak ile ince ayar yapabilmen için görsel bir editör sunar. **Agent'ı sen seçersin** (Codex CLI veya Claude Code) ve **görsel modelini sen seçersin** (Gemini 2.5 Flash Image veya OpenAI gpt-image-1). Bugün varsayılan çıktı vanilla JS + Canvas (sıfır framework kilitlemesi, herhangi bir tarayıcıda çalışır); Godot 4 ve Unity motor hedefleri ise yol haritasında.

@@ -30,6 +30,10 @@
   <img src="https://img.shields.io/badge/node-%E2%89%A520-success" alt="node 20+"/>
 </p>
 
+<p align="center">
+  🎨 خط أنابيب السبرايت من <a href="https://github.com/0x0funky/agent-sprite-forge"><b>agent-sprite-forge</b></a>
+</p>
+
 ---
 
 Agent Game Forge (**AGF**) هو بيئة تطوير متكاملة لسطح المكتب مفتوحة المصدر تتيح لوكيل برمجة بالذكاء الاصطناعي أن يبني لك ألعاباً ثنائية الأبعاد كاملة — سبرايتات، وخلفيات بارالاكس، وفيزياء، ومخاطر، ومُلتقطات، وتخطيطات المشاهد — وتمنحك محرراً مرئياً لضبط ما أخطأ فيه الوكيل بالسحب. **أنت تختار الوكيل** (Codex CLI أو Claude Code) و**أنت تختار نموذج الصور** (Gemini 2.5 Flash Image أو OpenAI gpt-image-1). اليوم، الناتج الافتراضي هو vanilla JS + Canvas (دون أي ارتباط بإطار عمل، يعمل في أي متصفح)؛ وأهداف محرّكَي Godot 4 وUnity مُدرجة على خارطة الطريق.

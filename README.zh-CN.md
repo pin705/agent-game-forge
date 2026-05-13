@@ -30,6 +30,10 @@
   <img src="https://img.shields.io/badge/node-%E2%89%A520-success" alt="node 20+"/>
 </p>
 
+<p align="center">
+  🎨 精灵图生成流程由 <a href="https://github.com/0x0funky/agent-sprite-forge"><b>agent-sprite-forge</b></a> 提供
+</p>
+
 ---
 
 Agent Game Forge (简称 **AGF**) 是一个开源的桌面 IDE,让 AI coding agent 帮你做出完整的 2D 游戏 — 角色 sprite、parallax 背景、物理、伤害区、收集物、场景配置 — 同时提供一个可视化编辑器,让你拖拽调整 agent 没做对的部分。**你选 agent**(Codex CLI 或 Claude Code)、**你选图片生成模型**(Gemini 2.5 Flash Image 或 OpenAI gpt-image-1)。目前默认输出是纯 vanilla JS + Canvas(零 framework 绑定,任何浏览器都能跑);Godot 4 和 Unity 引擎目标都在路线图上。

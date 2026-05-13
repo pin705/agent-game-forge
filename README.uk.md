@@ -30,6 +30,10 @@
   <img src="https://img.shields.io/badge/node-%E2%89%A520-success" alt="node 20+"/>
 </p>
 
+<p align="center">
+  🎨 Конвеєр спрайтів від <a href="https://github.com/0x0funky/agent-sprite-forge"><b>agent-sprite-forge</b></a>
+</p>
+
 ---
 
 Agent Game Forge (**AGF**) — це десктопна IDE з відкритим кодом, яка дозволяє ШІ-агенту з кодування зібрати для вас повноцінні 2D-ігри — спрайти, parallax-фони, фізику, небезпеки, предмети, розташування сцен — і надає візуальний редактор, щоб перетягуванням підправити те, що агент зробив не так. **Ви обираєте агента** (Codex CLI або Claude Code) і **ви обираєте модель зображень** (Gemini 2.5 Flash Image або OpenAI gpt-image-1). Сьогодні типовий вихідний формат — vanilla JS + Canvas (нульова прив'язка до фреймворку, запускається у будь-якому браузері); таргети рушіїв Godot 4 та Unity — у roadmap.

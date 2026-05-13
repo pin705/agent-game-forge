@@ -30,6 +30,10 @@
   <img src="https://img.shields.io/badge/node-%E2%89%A520-success" alt="node 20+"/>
 </p>
 
+<p align="center">
+  🎨 スプライトパイプライン提供: <a href="https://github.com/0x0funky/agent-sprite-forge"><b>agent-sprite-forge</b></a>
+</p>
+
 ---
 
 Agent Game Forge(**AGF**)は、AI コーディングエージェントに完全な 2D ゲームを作らせるオープンソースのデスクトップ IDE です — スプライト、パララックス背景、物理演算、ハザード、ピックアップ、シーン配置まで — そして agent がうまく作れなかった部分は、ビジュアルエディタでドラッグして調整できます。**agent を選び**(Codex CLI または Claude Code)、**画像生成モデルを選び**(Gemini 2.5 Flash Image または OpenAI gpt-image-1)。今日のデフォルト出力は vanilla JS + Canvas(フレームワークロックインなし、どのブラウザでも動く); Godot 4 と Unity エンジンターゲットはロードマップ上にあります。

@@ -30,6 +30,10 @@
   <img src="https://img.shields.io/badge/node-%E2%89%A520-success" alt="node 20+"/>
 </p>
 
+<p align="center">
+  🎨 精靈圖生成流程由 <a href="https://github.com/0x0funky/agent-sprite-forge"><b>agent-sprite-forge</b></a> 提供
+</p>
+
 ---
 
 Agent Game Forge (簡稱 **AGF**) 是一個開源的桌面 IDE,讓 AI coding agent 幫你做出完整的 2D 遊戲 — 角色 sprite、parallax 背景、物理、傷害區、收集物、場景配置 — 同時提供一個視覺編輯器,讓你拖曳調整 agent 沒做對的部分。**你選 agent**(Codex CLI 或 Claude Code)、**你選圖片生成 model**(Gemini 2.5 Flash Image 或 OpenAI gpt-image-1)。目前預設輸出是純 vanilla JS + Canvas(零 framework 綁定,任何瀏覽器都能跑);Godot 4 和 Unity 引擎目標都在路線圖上。

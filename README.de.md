@@ -30,6 +30,10 @@
   <img src="https://img.shields.io/badge/node-%E2%89%A520-success" alt="node 20+"/>
 </p>
 
+<p align="center">
+  🎨 Sprite-Pipeline von <a href="https://github.com/0x0funky/agent-sprite-forge"><b>agent-sprite-forge</b></a>
+</p>
+
 ---
 
 Agent Game Forge (**AGF**) ist eine Open-Source-Desktop-IDE, mit der ein KI-Coding-Agent komplette 2D-Spiele für dich baut — Sprites, Parallax-Hintergründe, Physik, Gefahren, Pickups, Szenen-Layouts — und dir einen visuellen Editor an die Hand gibt, um per Drag-Tweak zu korrigieren, was der Agent nicht richtig hinbekommen hat. **Du wählst den Agent** (Codex CLI oder Claude Code) und **du wählst das Bildmodell** (Gemini 2.5 Flash Image oder OpenAI gpt-image-1). Heute ist die Default-Ausgabe reines JS + Canvas (null Framework-Lock-in, läuft in jedem Browser); Godot 4 und Unity als Engine-Ziele sind auf der Roadmap.
