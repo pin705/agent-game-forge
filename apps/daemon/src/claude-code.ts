@@ -76,6 +76,50 @@ export interface ClaudeCodeRunOptions {
   env?: NodeJS.ProcessEnv;
 }
 
+/** Curated tool allowlist for OGF flows. We turn OFF Claude Code's
+ *  defaults that don't translate to OGF's batch / non-interactive model:
+ *
+ *  Off — and why:
+ *    AskUserQuestion       — needs an interactive UI to answer. In
+ *                            `--print` mode Claude marks it as cancelled
+ *                            and falls back to a text question anyway,
+ *                            so just remove the trial-and-fail step.
+ *    EnterPlanMode/ExitPlanMode — Claude's planning UI; the daemon
+ *                            doesn't surface it in OGF's run pane.
+ *    Cron*, ScheduleWakeup, RemoteTrigger — autonomous scheduling
+ *                            features for Claude Code's own runtime;
+ *                            OGF runs are user-driven turns.
+ *    EnterWorktree/ExitWorktree — git isolation, OGF doesn't need it.
+ *    Task, TaskOutput, TaskStop — subagent delegation. Cool but adds
+ *                            an event-mapping layer we haven't built.
+ *    Monitor, PushNotification — process monitoring / OS notifications,
+ *                            unused.
+ *    ToolSearch, ListMcpResourcesTool, ReadMcpResourceTool, mcp__*  —
+ *                            dynamic tool discovery + MCP servers
+ *                            (Gmail / Drive / Figma / Telegram). None
+ *                            relevant to game dev under OGF.
+ *    NotebookEdit          — Jupyter; OGF projects don't have notebooks.
+ *
+ *  Kept — the minimum useful set for game-making:
+ *    Read, Write, Edit       file ops
+ *    Glob, Grep              code search
+ *    Bash                    python scripts, npm, generate2dsprite.py …
+ *    WebFetch, WebSearch     fetch docs / verify model availability
+ *    TodoWrite               agent's internal scratchpad
+ *    Skill                   so the agent can invoke OGF skills */
+const OGF_ALLOWED_TOOLS = [
+  'Read',
+  'Write',
+  'Edit',
+  'Glob',
+  'Grep',
+  'Bash',
+  'WebFetch',
+  'WebSearch',
+  'TodoWrite',
+  'Skill',
+];
+
 export function buildClaudeCodeArgs(
   model?: string,
   resumeThreadId?: string,
@@ -87,6 +131,13 @@ export function buildClaudeCodeArgs(
   // --permission-mode bypassPermissions: don't block on tool prompts —
   //   OGF runs in trusted local mode like Codex's --full-auto. Users
   //   can change this later via a settings knob.
+  // --tools: see OGF_ALLOWED_TOOLS above for the curated list. This
+  //   controls REGISTRATION — the model literally doesn't see other
+  //   tools, so it can't even try them. (The unrelated --allowed-tools
+  //   flag is for permission pre-approval and DOESN'T hide tools from
+  //   the model — confirmed in `claude --help`. With --allowed-tools
+  //   alone Claude still discovers AskUserQuestion in init and tries it
+  //   in non-interactive mode, which then fails as "user cancelled".)
   const args: string[] = [
     '-p',
     '--output-format',
@@ -95,6 +146,14 @@ export function buildClaudeCodeArgs(
     '--include-partial-messages',
     '--permission-mode',
     'bypassPermissions',
+    '--tools',
+    OGF_ALLOWED_TOOLS.join(','),
+    // Drop user's globally-configured MCP servers (Gmail, Drive, Figma,
+    // Telegram, etc.) so they don't bloat tool context for OGF runs. Each
+    // MCP tool ships a description that costs tokens, and none of them
+    // are relevant to game-making. Combined with no `--mcp-config`, this
+    // gives us a clean minimal tool surface.
+    '--strict-mcp-config',
   ];
   if (model) {
     args.push('--model', model);
