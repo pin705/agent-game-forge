@@ -11,3 +11,4 @@ dist/
 
 # Local agent / tooling instructions — not part of the project
 CLAUDE.md
+.claude/
