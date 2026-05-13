@@ -4,7 +4,7 @@
 
 <p align="center">
   <b>El IDE de juegos 2D local-first y bring-your-own-agent.</b><br/>
-  Codex o Claude Code lo conduce. Tú entregas JS de navegador vanilla.
+  Codex o Claude Code lo conduce. Web hoy, Godot y Unity en el roadmap.
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@
 
 ---
 
-Agent Game Forge (**AGF**) es un IDE de escritorio de código abierto que permite a un agente de codificación con IA construir juegos 2D completos por ti — sprites, fondos parallax, físicas, peligros, ítems, disposición de escenas — y te ofrece un editor visual para ajustar arrastrando lo que el agente no haya hecho bien. **Eliges el agente** (Codex CLI o Claude Code), **eliges el modelo de imagen** (Gemini 2.5 Flash Image u OpenAI gpt-image-1), y el juego resultante es JS + Canvas puro — corre en cualquier navegador, sin lock-in de framework.
+Agent Game Forge (**AGF**) es un IDE de escritorio de código abierto que permite a un agente de codificación con IA construir juegos 2D completos por ti — sprites, fondos parallax, físicas, peligros, ítems, disposición de escenas — y te ofrece un editor visual para ajustar arrastrando lo que el agente no haya hecho bien. **Eliges el agente** (Codex CLI o Claude Code) y **eliges el modelo de imagen** (Gemini 2.5 Flash Image u OpenAI gpt-image-1). Hoy la salida por defecto es JS + Canvas puro (cero lock-in de framework, corre en cualquier navegador); los targets de motor Godot 4 y Unity están en el roadmap.
 
 ---
 
@@ -42,7 +42,7 @@ Agent Game Forge (**AGF**) es un IDE de escritorio de código abierto que permit
 - 🎨 **Pipeline de assets de nivel producción** — chroma-key de sprite sheets, animación multi-acción, parallax de 4 capas tileable + despill — todo de primera clase, no pegado a posteriori.
 - 🖼️ **Generación de imágenes multi-proveedor** — Gemini 2.5 Flash Image (barato, multimodal nativo) o OpenAI gpt-image-1 (premium). Aportas la API key; se queda en tu máquina.
 - 🧱 **Editor visual de escenas** — arrastra plataformas, peligros, ítems, colisionadores; visualización de hitbox; recarga en vivo en la pestaña Play.
-- 📦 **Runtime Vanilla JS + Canvas** — los juegos generados no tienen dependencias de framework. Sube la carpeta a GitHub Pages y funciona.
+- 📦 **Multi-motor en el roadmap** — Web (vanilla JS + Canvas) se entrega hoy con cero lock-in de framework (sube a GitHub Pages y funciona). Targets Godot 4 y Unity planeados.
 - 💻 **Local-first, código abierto** — daemon + UI web en `localhost`; tus archivos de proyecto se quedan en tu disco; intención estilo MIT.
 - 💰 **Costos transparentes** — el panel de Settings muestra el número de llamadas de gen-image de hoy y el gasto estimado en $ por proveedor.
 
@@ -188,7 +188,13 @@ Comandos útiles:
 | Tower defense / arena | 🟡 parcial | Heredado de branches anteriores; necesita polish |
 | Roguelike / Metroidvania | 🚧 planeado | Después del launch |
 
-**Motores**: Web (vanilla JS + Canvas) es el target por defecto y en desarrollo activo. Godot 4 sigue funcionando para proyectos legacy; no se añaden nuevas features de Godot.
+**Targets de motor**:
+
+| Motor | Estado | Notas |
+|---|---|---|
+| **Web** (vanilla JS + Canvas) | ✅ por defecto | En desarrollo activo. Cero dependencia de framework; sube a GitHub Pages y funciona. |
+| **Godot 4** | 🟡 legacy + roadmap | Los proyectos Godot existentes aún cargan + editan. Reinversión first-class en el roadmap post-launch. |
+| **Unity** | 🚧 planeado | Apuntado para después de que Godot llegue a first-class. |
 
 ---
 

@@ -4,7 +4,7 @@
 
 <p align="center">
   <b>本機優先、自選 AI agent 的 2D 遊戲 IDE。</b><br/>
-  Codex 或 Claude Code 幫你寫,輸出純 vanilla JS 瀏覽器遊戲。
+  Codex 或 Claude Code 幫你寫。Web 今天就能用,Godot 和 Unity 在路線圖上。
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@
 
 ---
 
-Agent Game Forge (簡稱 **AGF**) 是一個開源的桌面 IDE,讓 AI coding agent 幫你做出完整的 2D 遊戲 — 角色 sprite、parallax 背景、物理、傷害區、收集物、場景配置 — 同時提供一個視覺編輯器,讓你拖曳調整 agent 沒做對的部分。**你選 agent**(Codex CLI 或 Claude Code)、**你選圖片生成 model**(Gemini 2.5 Flash Image 或 OpenAI gpt-image-1),產出的遊戲是純 JS + Canvas — 任何瀏覽器都能跑,沒有 framework 綁定。
+Agent Game Forge (簡稱 **AGF**) 是一個開源的桌面 IDE,讓 AI coding agent 幫你做出完整的 2D 遊戲 — 角色 sprite、parallax 背景、物理、傷害區、收集物、場景配置 — 同時提供一個視覺編輯器,讓你拖曳調整 agent 沒做對的部分。**你選 agent**(Codex CLI 或 Claude Code)、**你選圖片生成 model**(Gemini 2.5 Flash Image 或 OpenAI gpt-image-1)。目前預設輸出是純 vanilla JS + Canvas(零 framework 綁定,任何瀏覽器都能跑);Godot 4 和 Unity 引擎目標都在路線圖上。
 
 ---
 
@@ -42,7 +42,7 @@ Agent Game Forge (簡稱 **AGF**) 是一個開源的桌面 IDE,讓 AI coding age
 - 🎨 **正規 asset pipeline** — sprite-sheet chroma-key、多動作動畫、parallax 4 層 tileable + despill — 都是第一級公民,不是外掛。
 - 🖼️ **多供應商 image gen** — Gemini 2.5 Flash Image(便宜、原生 multimodal)或 OpenAI gpt-image-1(高品質)。Key 自帶,完全留在自己機器上。
 - 🧱 **視覺場景編輯器** — 拖曳 platform、hazard、pickup、collider;hitbox 紅色虛線可視化;Play tab live reload。
-- 📦 **Vanilla JS + Canvas runtime** — 生成的遊戲零 framework 依賴。把資料夾推上 GitHub Pages 直接跑。
+- 📦 **多引擎路線圖** — Web(vanilla JS + Canvas)今天就能用,零 framework 綁定(推到 GitHub Pages 直接跑)。Godot 4 和 Unity 目標規劃中。
 - 💻 **本機優先、開源** — daemon + Web UI 跑在 `localhost`;你的專案檔案留在你的硬碟;MIT 取向。
 - 💰 **成本透明** — Settings 面板顯示今天 image-gen 次數 + 預估 $ 花費,依供應商分類。
 
@@ -188,7 +188,13 @@ npm run dev           # 三個都 watch mode(daemon 用 tsx 熱重載)
 | Tower defense / arena | 🟡 部分 | 從早期 branch 繼承;需要 polish |
 | Roguelike / Metroidvania | 🚧 規劃中 | Launch 之後 |
 
-**引擎**:Web(vanilla JS + Canvas)是預設且積極開發的目標。Godot 4 對既有專案仍可用;不再增加 Godot 新功能。
+**引擎目標**:
+
+| 引擎 | 狀態 | 備註 |
+|---|---|---|
+| **Web**(vanilla JS + Canvas) | ✅ 預設 | 積極開發中。零 framework 依賴;推到 GitHub Pages 直接跑。 |
+| **Godot 4** | 🟡 既有 + 路線圖 | 既有 Godot 專案仍可載入 + 編輯。launch 後路線圖上的一級公民重投資目標。 |
+| **Unity** | 🚧 規劃中 | 安排在 Godot 一級公民支援落地之後。 |
 
 ---
 

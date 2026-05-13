@@ -4,7 +4,7 @@
 
 <p align="center">
   <b>Local-first, bring-your-own-agent 2D oyun IDE'si.</b><br/>
-  Direksiyonda Codex veya Claude Code. Sen vanilla tarayıcı JS'i yayınlarsın.
+  Direksiyonda Codex veya Claude Code. Bugün Web, yol haritasında Godot ve Unity.
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@
 
 ---
 
-Agent Game Forge (**AGF**), bir AI kodlama agent'ının senin için eksiksiz 2D oyunlar inşa etmesine olanak tanıyan açık kaynaklı bir masaüstü IDE'sidir — sprite'lar, parallax arka planlar, fizik, tehlikeler, toplanabilirler, sahne düzenleri — ve agent'ın yanlış yaptıklarını sürükle-bırak ile ince ayar yapabilmen için görsel bir editör sunar. **Agent'ı sen seçersin** (Codex CLI veya Claude Code), **görsel modelini sen seçersin** (Gemini 2.5 Flash Image veya OpenAI gpt-image-1), ortaya çıkan oyun ise saf JS + Canvas — herhangi bir tarayıcıda çalışır, framework kilitlemesi yok.
+Agent Game Forge (**AGF**), bir AI kodlama agent'ının senin için eksiksiz 2D oyunlar inşa etmesine olanak tanıyan açık kaynaklı bir masaüstü IDE'sidir — sprite'lar, parallax arka planlar, fizik, tehlikeler, toplanabilirler, sahne düzenleri — ve agent'ın yanlış yaptıklarını sürükle-bırak ile ince ayar yapabilmen için görsel bir editör sunar. **Agent'ı sen seçersin** (Codex CLI veya Claude Code) ve **görsel modelini sen seçersin** (Gemini 2.5 Flash Image veya OpenAI gpt-image-1). Bugün varsayılan çıktı vanilla JS + Canvas (sıfır framework kilitlemesi, herhangi bir tarayıcıda çalışır); Godot 4 ve Unity motor hedefleri ise yol haritasında.
 
 ---
 
@@ -42,7 +42,7 @@ Agent Game Forge (**AGF**), bir AI kodlama agent'ının senin için eksiksiz 2D 
 - 🎨 **Üretim kalitesinde asset pipeline'ı** — sprite-sheet chroma-key, çok-aksiyonlu animasyon, 4 katmanlı tileable parallax + despill — hepsi birinci sınıf, sonradan eklenmiş değil.
 - 🖼️ **Çoklu sağlayıcılı görsel üretimi** — Gemini 2.5 Flash Image (ucuz, doğal multimodal) veya OpenAI gpt-image-1 (premium). API anahtarını sen sağlarsın; makinende kalır.
 - 🧱 **Görsel sahne editörü** — platformları, tehlikeleri, toplanabilirleri, collider'ları sürükle; hitbox overlay'i; Play sekmesine canlı yeniden yükleme.
-- 📦 **Vanilla JS + Canvas runtime** — üretilen oyunların hiçbir framework bağımlılığı yoktur. Klasörü GitHub Pages'e yükle, doğrudan çalışır.
+- 📦 **Yol haritasında çoklu motor** — Web (vanilla JS + Canvas) bugün sıfır framework kilitlemesiyle çıkıyor (klasörü GitHub Pages'e yükle, çalışır). Godot 4 ve Unity hedefleri planlanıyor.
 - 💻 **Local-first, açık kaynak** — daemon + web UI `localhost` üzerinde; proje dosyaların diskinde kalır; MIT tarzı niyet.
 - 💰 **Maliyet şeffaflığı** — Settings paneli bugünkü görsel üretim çağrı sayısını ve sağlayıcı başına tahmini $ harcamayı gösterir.
 
@@ -188,7 +188,13 @@ Faydalı komutlar:
 | Tower defense / arena | 🟡 kısmen | Önceki branch'lerden devralındı; cila gerekiyor |
 | Roguelike / Metroidvania | 🚧 planlandı | Launch sonrası |
 
-**Motorlar**: Web (vanilla JS + Canvas) varsayılan ve aktif olarak geliştirilen hedeftir. Godot 4 legacy projeler için hâlâ çalışır; yeni Godot özelliği eklenmiyor.
+**Motor hedefleri**:
+
+| Motor | Durum | Notlar |
+|---|---|---|
+| **Web** (vanilla JS + Canvas) | ✅ varsayılan | Aktif olarak geliştiriliyor. Sıfır framework bağımlılığı; klasörü GitHub Pages'e yükle, çalışır. |
+| **Godot 4** | 🟡 legacy + yol haritası | Mevcut Godot projeleri hâlâ yüklenip düzenlenebiliyor. Birinci sınıf yeniden yatırım, launch sonrası yol haritasında. |
+| **Unity** | 🚧 planlandı | Godot birinci sınıfa ulaştıktan sonra hedeflenecek. |
 
 ---
 

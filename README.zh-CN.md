@@ -4,7 +4,7 @@
 
 <p align="center">
   <b>本地优先、自选 AI agent 的 2D 游戏 IDE。</b><br/>
-  Codex 或 Claude Code 帮你写,输出纯 vanilla JS 浏览器游戏。
+  Codex 或 Claude Code 帮你写。Web 已就绪,Godot 和 Unity 在路线图上。
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@
 
 ---
 
-Agent Game Forge (简称 **AGF**) 是一个开源的桌面 IDE,让 AI coding agent 帮你做出完整的 2D 游戏 — 角色 sprite、parallax 背景、物理、伤害区、收集物、场景配置 — 同时提供一个可视化编辑器,让你拖拽调整 agent 没做对的部分。**你选 agent**(Codex CLI 或 Claude Code)、**你选图片生成模型**(Gemini 2.5 Flash Image 或 OpenAI gpt-image-1),产出的游戏是纯 JS + Canvas — 任何浏览器都能跑,没有 framework 绑定。
+Agent Game Forge (简称 **AGF**) 是一个开源的桌面 IDE,让 AI coding agent 帮你做出完整的 2D 游戏 — 角色 sprite、parallax 背景、物理、伤害区、收集物、场景配置 — 同时提供一个可视化编辑器,让你拖拽调整 agent 没做对的部分。**你选 agent**(Codex CLI 或 Claude Code)、**你选图片生成模型**(Gemini 2.5 Flash Image 或 OpenAI gpt-image-1)。目前默认输出是纯 vanilla JS + Canvas(零 framework 绑定,任何浏览器都能跑);Godot 4 和 Unity 引擎目标都在路线图上。
 
 ---
 
@@ -42,7 +42,7 @@ Agent Game Forge (简称 **AGF**) 是一个开源的桌面 IDE,让 AI coding age
 - 🎨 **正规 asset pipeline** — sprite-sheet chroma-key、多动作动画、parallax 4 层 tileable + despill — 都是第一级公民,不是外挂。
 - 🖼️ **多供应商 image gen** — Gemini 2.5 Flash Image(便宜、原生 multimodal)或 OpenAI gpt-image-1(高品质)。Key 自带,完全留在自己机器上。
 - 🧱 **可视化场景编辑器** — 拖拽 platform、hazard、pickup、collider;hitbox 红色虚线可视化;Play tab live reload。
-- 📦 **Vanilla JS + Canvas runtime** — 生成的游戏零 framework 依赖。把文件夹推到 GitHub Pages 直接跑。
+- 📦 **多引擎路线图** — Web(vanilla JS + Canvas)今天就能用,零 framework 绑定(推到 GitHub Pages 直接跑)。Godot 4 和 Unity 目标在规划中。
 - 💻 **本地优先、开源** — daemon + Web UI 跑在 `localhost`;你的项目文件留在你的硬盘;MIT 取向。
 - 💰 **成本透明** — Settings 面板显示今天 image-gen 次数 + 预估 $ 花费,按供应商分类。
 
@@ -188,7 +188,13 @@ npm run dev           # 三个都 watch mode(daemon 用 tsx 热重载)
 | Tower defense / arena | 🟡 部分 | 从早期 branch 继承;需要 polish |
 | Roguelike / Metroidvania | 🚧 规划中 | Launch 之后 |
 
-**引擎**:Web(vanilla JS + Canvas)是默认且积极开发的目标。Godot 4 对已有项目仍可用;不再增加 Godot 新功能。
+**引擎目标**:
+
+| 引擎 | 状态 | 备注 |
+|---|---|---|
+| **Web**(vanilla JS + Canvas) | ✅ 默认 | 积极开发中。零 framework 依赖;推到 GitHub Pages 直接跑。 |
+| **Godot 4** | 🟡 遗留 + 路线图 | 既有 Godot 项目仍可加载 + 编辑。launch 后路线图上的一等公民重投资目标。 |
+| **Unity** | 🚧 规划中 | 安排在 Godot 一等公民支持落地之后。 |
 
 ---
 
