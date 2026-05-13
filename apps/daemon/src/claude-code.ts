@@ -32,7 +32,7 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { appendFileSync, mkdirSync, statSync, truncateSync } from 'node:fs';
+import { appendFileSync, mkdirSync, statSync, truncateSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import type { AgentEvent } from '@ogf/contracts';
@@ -75,6 +75,71 @@ export interface ClaudeCodeRunOptions {
   resumeThreadId?: string;
   env?: NodeJS.ProcessEnv;
 }
+
+/** System prompt addendum injected on every Claude Code run.
+ *
+ *  Why this exists: Claude Code doesn't have Codex's built-in `image_gen`
+ *  tool. Even when a project's SKILL.md / agents/anthropic.yaml document
+ *  the alternative path (POST /api/gen-image OR `python .agents/tools/gen-image.py`),
+ *  Claude's auto-discovery doesn't reliably surface those files in every
+ *  conversation — especially for projects bootstrapped BEFORE multi-CLI
+ *  shipped, where the template updates never landed.
+ *
+ *  By injecting this at spawn time we guarantee Claude knows the image-
+ *  gen contract regardless of project state. Plain HTTP via curl works
+ *  in every project — no dependency on .agents/tools/ existing. */
+const OGF_SYSTEM_ADDENDUM = `
+=== OGF (Open Game Forge) runtime ===
+
+You ARE able to generate real model-quality images in this environment.
+
+The OGF daemon (already running on localhost:7621) routes image
+generation to Gemini 2.5 Flash Image or OpenAI gpt-image-1 using the
+user's saved API keys. Use it via Bash + curl whenever the user asks
+for sprites, backgrounds, parallax layers, prop art, or any other game
+asset.
+
+DO NOT use PIL, Pillow, ImageDraw, ASCII art, geometric primitives, or
+any other procedural drawing as a substitute. Those produce visibly
+inferior results and frustrate the user — they hired the AI to make
+real generated art. Procedural code is ONLY for layout guides /
+postprocessing of model output.
+
+How to call the image-gen endpoint:
+
+  curl -s -X POST http://localhost:7621/api/gen-image \\
+    -H "content-type: application/json" \\
+    -d '{
+      "prompt": "<descriptive prompt>",
+      "outputPath": "<absolute path .png>",
+      "magentaBg": false,
+      "refImagePaths": ["<absolute path>"]
+    }'
+
+Fields:
+- outputPath: ABSOLUTE path. Daemon writes the PNG there.
+- magentaBg: true (default) auto-appends "solid #FF00FF background" to
+  the prompt — use this for sprites that go through chroma-key. Pass
+  false for backgrounds / parallax / scene art that should look normal.
+- refImagePaths: optional list of reference images for image-to-image
+  / style continuity. Daemon handles base64 / file-upload per provider.
+- Response: {"path","provider":"gemini|openai","sizeBytes","model"}.
+
+If \`.agents/tools/gen-image.py\` exists in the project, prefer the
+wrapper form:
+  python .agents/tools/gen-image.py "<prompt>" <output.png> \\
+    [--ref PATH]... [--no-magenta-bg] [--provider gemini|openai]
+(But the curl form works in every project, including older ones.)
+
+After generating, run OGF's post-process scripts for chroma-key /
+frame extraction / parallax cleanup. Do NOT roll your own:
+  python .agents/skills/generate2dsprite/scripts/generate2dsprite.py process ...
+  python .agents/skills/generate2dmap/scripts/process_parallax_layer.py ...
+
+If the daemon endpoint returns an error like "No API key configured",
+tell the user to add a Gemini or OpenAI key in OGF Settings → Image
+generation API keys. Do not fall back to procedural drawing.
+`.trim();
 
 /** Curated tool allowlist for OGF flows. We turn OFF Claude Code's
  *  defaults that don't translate to OGF's batch / non-interactive model:
@@ -120,6 +185,23 @@ const OGF_ALLOWED_TOOLS = [
   'Skill',
 ];
 
+/** Write the OGF system addendum to a stable file under ~/.ogf and return
+ *  its path. We use a file (`--append-system-prompt-file`) instead of
+ *  passing the prompt inline (`--append-system-prompt`) because the
+ *  Windows cmd shell mangles multi-line strings when args travel through
+ *  `cmd.exe /c "<joined-args>"` — observed empirically: short prompts
+ *  survive ("PINEAPPLE" test), multi-line prompts silently drop or
+ *  truncate. The file path is a single token, no escaping risk.
+ *  Re-written on every spawn so live edits to OGF_SYSTEM_ADDENDUM take
+ *  effect immediately without daemon restart. */
+function writeOgfSystemPromptFile(): string {
+  const dir = path.join(homedir(), '.ogf');
+  mkdirSync(dir, { recursive: true });
+  const filePath = path.join(dir, 'claude-system-prompt.txt');
+  writeFileSync(filePath, OGF_SYSTEM_ADDENDUM, 'utf8');
+  return filePath;
+}
+
 export function buildClaudeCodeArgs(
   model?: string,
   resumeThreadId?: string,
@@ -154,6 +236,12 @@ export function buildClaudeCodeArgs(
     // are relevant to game-making. Combined with no `--mcp-config`, this
     // gives us a clean minimal tool surface.
     '--strict-mcp-config',
+    // Inject OGF-specific guidance (image-gen route, post-process scripts)
+    // so Claude knows them without relying on per-project SKILL.md
+    // discovery — works for old projects too. Via file (see helper above
+    // for why inline doesn't survive Windows cmd shell quoting).
+    '--append-system-prompt-file',
+    writeOgfSystemPromptFile(),
   ];
   if (model) {
     args.push('--model', model);
