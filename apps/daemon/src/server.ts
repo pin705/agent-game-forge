@@ -12,6 +12,7 @@ import {
 import { isSecretKey, listSecretStatuses, setSecret } from './secrets.js';
 import { generateImage, GenImageError, type GenImageRequest } from './gen-image.js';
 import { logGenImageCall, summarizeGenImageCalls } from './gen-image-log.js';
+import { isImageGenProviderPref, readPreferences, writePreferences, type Preferences } from './prefs.js';
 import { splitFormsFromText } from './question-form.js';
 import { RunManager } from './runs.js';
 import {
@@ -203,6 +204,34 @@ export function createServer() {
         error: err instanceof Error ? err.message : 'gen-image failed',
       });
     }
+  });
+
+  // User preferences (non-sensitive defaults) — image-gen provider/model
+  // pick when the caller doesn't pass explicit values. Sits in
+  // ~/.ogf/preferences.json next to secrets.json.
+  app.get('/api/preferences', (_req, res) => {
+    res.json(readPreferences());
+  });
+
+  app.post('/api/preferences', (req, res) => {
+    const body = req.body as Partial<Preferences> | undefined;
+    const current = readPreferences();
+    const ig: Partial<Preferences['image_gen']> = body?.image_gen ?? {};
+    const next: Preferences = {
+      image_gen: {
+        provider: isImageGenProviderPref(ig.provider) ? ig.provider : current.image_gen.provider,
+        geminiModel:
+          typeof ig.geminiModel === 'string' && ig.geminiModel.length > 0
+            ? ig.geminiModel
+            : current.image_gen.geminiModel,
+        openaiModel:
+          typeof ig.openaiModel === 'string' && ig.openaiModel.length > 0
+            ? ig.openaiModel
+            : current.image_gen.openaiModel,
+      },
+    };
+    writePreferences(next);
+    res.json(next);
   });
 
   // Cost / call-count summary for the Settings panel. Default window =

@@ -3,10 +3,19 @@ import type {
   AgentId,
   AgentInfo,
   GenImageSummary,
+  ImageGenProviderPref,
+  Preferences,
   SecretKey,
   SecretStatus,
 } from '@ogf/contracts';
-import { fetchAgents, fetchGenImageSummary, fetchSecrets, setSecret } from '../lib/api.js';
+import {
+  fetchAgents,
+  fetchGenImageSummary,
+  fetchPreferences,
+  fetchSecrets,
+  setPreferences,
+  setSecret,
+} from '../lib/api.js';
 import { I } from './icons.js';
 
 /** localStorage key for the user's preferred agent CLI. Read on app boot;
@@ -87,6 +96,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [saving, setSaving] = useState<Partial<Record<SecretKey, boolean>>>({});
   const [agents, setAgents] = useState<AgentInfo[] | null>(null);
   const [usage, setUsage] = useState<GenImageSummary | null>(null);
+  const [prefs, setPrefs] = useState<Preferences | null>(null);
+  const [savingPrefs, setSavingPrefs] = useState(false);
   const [preferredAgent, setPreferredAgent] = useState<AgentId>(() => {
     const v = localStorage.getItem(LS_PREFERRED_AGENT);
     return v === 'claude-code' ? 'claude-code' : 'codex';
@@ -94,18 +105,25 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([fetchSecrets(), fetchAgents(), fetchGenImageSummary()])
-      .then(([secretsResp, agentsResp, usageResp]) => {
+    void Promise.all([
+      fetchSecrets(),
+      fetchAgents(),
+      fetchGenImageSummary(),
+      fetchPreferences(),
+    ])
+      .then(([secretsResp, agentsResp, usageResp, prefsResp]) => {
         if (cancelled) return;
         setStatuses(secretsResp.secrets);
         setAgents(agentsResp.agents);
         setUsage(usageResp);
+        setPrefs(prefsResp);
       })
       .catch(() => {
         if (!cancelled) {
           setStatuses([]);
           setAgents([]);
           setUsage(null);
+          setPrefs(null);
         }
       });
     return () => {
@@ -119,6 +137,41 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     // Notify other components (App.tsx) so they switch immediately.
     window.dispatchEvent(new CustomEvent('ogf:preferred-agent-changed', { detail: id }));
   }
+
+  async function savePrefs(patch: Partial<Preferences['image_gen']>) {
+    if (!prefs) return;
+    const next: Preferences = {
+      image_gen: { ...prefs.image_gen, ...patch },
+    };
+    setPrefs(next); // optimistic
+    setSavingPrefs(true);
+    try {
+      const r = await setPreferences(next);
+      setPrefs(r);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('setPreferences failed', err);
+      // Roll back to server's view on failure by refetching.
+      void fetchPreferences()
+        .then(setPrefs)
+        .catch(() => {});
+    } finally {
+      setSavingPrefs(false);
+    }
+  }
+
+  // Known model options per provider. List can lag actual API releases —
+  // advanced users can edit ~/.ogf/preferences.json directly if they need
+  // a model that's not in this dropdown.
+  const GEMINI_MODELS = [
+    { id: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image · GA' },
+    { id: 'gemini-2.5-flash-image-preview', label: 'Gemini 2.5 Flash Image · preview' },
+  ];
+  const OPENAI_MODELS = [
+    { id: 'gpt-image-1', label: 'gpt-image-1 · GA' },
+    { id: 'gpt-image-1-mini', label: 'gpt-image-1-mini · cheap & fast' },
+    { id: 'gpt-image-2', label: 'gpt-image-2 · newer (if available)' },
+  ];
 
   async function save(key: SecretKey, value: string | null) {
     setSaving((s) => ({ ...s, [key]: true }));
@@ -412,6 +465,177 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               );
             })}
           </div>
+
+          {/* Image-gen defaults (provider + model). When the agent calls
+             /api/gen-image without an explicit provider/model, the daemon
+             uses these. Per-call overrides via the script still work. */}
+          {prefs && (
+            <section
+              style={{
+                display: 'grid',
+                gap: 10,
+                borderTop: '1px solid var(--line)',
+                paddingTop: 14,
+              }}
+            >
+              <div>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: 'var(--ink-0)',
+                  }}
+                >
+                  Image-gen defaults
+                </h3>
+                <p
+                  className="muted"
+                  style={{ margin: '4px 0 0', fontSize: 11, lineHeight: 1.5 }}
+                >
+                  Which provider and model the daemon uses when the agent
+                  doesn't pin them per-call.
+                </p>
+              </div>
+
+              {/* Provider radio */}
+              <div style={cardStyle}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: 'var(--ink-0)',
+                  }}
+                >
+                  Provider
+                </div>
+                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                  {(['auto', 'gemini', 'openai'] as const).map((p) => {
+                    const checked = prefs.image_gen.provider === p;
+                    const label =
+                      p === 'auto'
+                        ? 'Auto'
+                        : p === 'gemini'
+                          ? 'Gemini'
+                          : 'OpenAI';
+                    const hint =
+                      p === 'auto'
+                        ? 'pick whichever has a key (Gemini first)'
+                        : p === 'gemini'
+                          ? 'native multimodal, cheaper'
+                          : 'wider model selection';
+                    return (
+                      <label
+                        key={p}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: 12,
+                          cursor: savingPrefs ? 'wait' : 'pointer',
+                          color: checked ? 'var(--accent)' : 'var(--ink-1)',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="image-gen-provider"
+                          checked={checked}
+                          disabled={savingPrefs}
+                          onChange={() => void savePrefs({ provider: p })}
+                          style={{ accentColor: 'var(--accent)' }}
+                        />
+                        <span style={{ fontWeight: checked ? 600 : 400 }}>{label}</span>
+                        <span
+                          className="muted"
+                          style={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}
+                        >
+                          {hint}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Per-provider model dropdown */}
+              <div style={cardStyle}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: 'var(--ink-0)',
+                  }}
+                >
+                  Default model
+                </div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span
+                      style={{
+                        minWidth: 70,
+                        fontSize: 12,
+                        color: 'var(--ink-1)',
+                      }}
+                    >
+                      Gemini
+                    </span>
+                    <select
+                      value={prefs.image_gen.geminiModel}
+                      disabled={savingPrefs}
+                      onChange={(e) => void savePrefs({ geminiModel: e.target.value })}
+                      style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }}
+                    >
+                      {GEMINI_MODELS.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.label}
+                        </option>
+                      ))}
+                      {!GEMINI_MODELS.find((m) => m.id === prefs.image_gen.geminiModel) && (
+                        <option value={prefs.image_gen.geminiModel}>
+                          {prefs.image_gen.geminiModel} · (custom)
+                        </option>
+                      )}
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span
+                      style={{
+                        minWidth: 70,
+                        fontSize: 12,
+                        color: 'var(--ink-1)',
+                      }}
+                    >
+                      OpenAI
+                    </span>
+                    <select
+                      value={prefs.image_gen.openaiModel}
+                      disabled={savingPrefs}
+                      onChange={(e) => void savePrefs({ openaiModel: e.target.value })}
+                      style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }}
+                    >
+                      {OPENAI_MODELS.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.label}
+                        </option>
+                      ))}
+                      {!OPENAI_MODELS.find((m) => m.id === prefs.image_gen.openaiModel) && (
+                        <option value={prefs.image_gen.openaiModel}>
+                          {prefs.image_gen.openaiModel} · (custom)
+                        </option>
+                      )}
+                    </select>
+                  </div>
+                </div>
+                <p
+                  className="muted"
+                  style={{ margin: 0, fontSize: 10, lineHeight: 1.5 }}
+                >
+                  Need a model not listed? Edit{' '}
+                  <code>~/.ogf/preferences.json</code> directly.
+                </p>
+              </div>
+            </section>
+          )}
 
           {/* Usage / cost (last 24 h) */}
           {usage && usage.totalCount > 0 && (

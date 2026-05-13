@@ -17,6 +17,7 @@
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { resolveSecret } from './secrets.js';
+import { readPreferences } from './prefs.js';
 
 // ---------- Types ----------
 
@@ -280,8 +281,16 @@ async function callOpenAI(
 // ---------- Router ----------
 
 function pickProvider(explicit?: GenImageProvider): GenImageProvider {
+  // Per-call explicit choice always wins.
   if (explicit === 'gemini' || explicit === 'openai') return explicit;
-  // Auto: prefer Gemini (cheaper, native multimodal), fall back to OpenAI.
+
+  // User preference from Settings — overrides the cheap-default heuristic.
+  const pref = readPreferences().image_gen.provider;
+  if (pref === 'gemini' && resolveSecret('gemini_api_key')) return 'gemini';
+  if (pref === 'openai' && resolveSecret('openai_api_key')) return 'openai';
+
+  // Auto (or preferred provider has no key): prefer Gemini (cheaper, native
+  // multimodal), fall back to OpenAI.
   if (resolveSecret('gemini_api_key')) return 'gemini';
   if (resolveSecret('openai_api_key')) return 'openai';
   throw new GenImageError(
@@ -302,7 +311,14 @@ export async function generateImage(req: GenImageRequest): Promise<GenImageResul
   }
 
   const provider = pickProvider(req.provider);
-  const model = req.model ?? DEFAULT_MODEL[provider];
+  // Model selection precedence:
+  //   1. Per-call `req.model` (explicit override)
+  //   2. User preference from Settings
+  //   3. Hardcoded DEFAULT_MODEL (last-resort fallback)
+  const userPref = readPreferences().image_gen;
+  const preferredModel =
+    provider === 'gemini' ? userPref.geminiModel : userPref.openaiModel;
+  const model = req.model ?? preferredModel ?? DEFAULT_MODEL[provider];
 
   let result: { bytes: Uint8Array; text?: string };
   if (provider === 'gemini') {

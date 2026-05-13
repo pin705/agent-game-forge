@@ -35,6 +35,8 @@ import type {
   ReadFileResponse,
   RefImage,
   GenImageSummary,
+  Preferences,
+  PreferencesResponse,
   RefImagesResponse,
   SecretKey,
   SecretsResponse,
@@ -74,6 +76,16 @@ export const fetchGenImageSummary = (windowMs?: number) =>
   jsonFetch<GenImageSummary>(
     `/api/gen-image/summary${windowMs ? `?windowMs=${windowMs}` : ''}`,
   );
+
+// User preferences (non-sensitive: image-gen provider/model defaults, ...).
+export const fetchPreferences = () =>
+  jsonFetch<PreferencesResponse>('/api/preferences');
+export const setPreferences = (prefs: Partial<Preferences>) =>
+  jsonFetch<PreferencesResponse>('/api/preferences', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(prefs),
+  });
 
 // Projects
 export const fetchProjects = () => jsonFetch<ProjectsResponse>('/api/projects');

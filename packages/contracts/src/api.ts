@@ -303,6 +303,26 @@ export interface SetSecretRequest {
   value: string | null;
 }
 
+// -------- Image-gen preferences --------
+
+export type ImageGenProvider = 'gemini' | 'openai';
+export type ImageGenProviderPref = 'auto' | ImageGenProvider;
+
+export interface ImageGenPrefs {
+  /** 'auto' = prefer Gemini if keyed, else OpenAI. Specific value pins it. */
+  provider: ImageGenProviderPref;
+  /** Default model when the resolved provider is Gemini. */
+  geminiModel: string;
+  /** Default model when the resolved provider is OpenAI. */
+  openaiModel: string;
+}
+
+export interface Preferences {
+  image_gen: ImageGenPrefs;
+}
+
+export type PreferencesResponse = Preferences;
+
 // -------- Gen-image usage / cost --------
 
 export interface GenImageSummaryRow {
