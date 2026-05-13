@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
-import type { AgentId, AgentInfo, SecretKey, SecretStatus } from '@ogf/contracts';
-import { fetchAgents, fetchSecrets, setSecret } from '../lib/api.js';
+import type {
+  AgentId,
+  AgentInfo,
+  GenImageSummary,
+  SecretKey,
+  SecretStatus,
+} from '@ogf/contracts';
+import { fetchAgents, fetchGenImageSummary, fetchSecrets, setSecret } from '../lib/api.js';
 import { I } from './icons.js';
 
 /** localStorage key for the user's preferred agent CLI. Read on app boot;
@@ -80,6 +86,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [revealing, setRevealing] = useState<Partial<Record<SecretKey, boolean>>>({});
   const [saving, setSaving] = useState<Partial<Record<SecretKey, boolean>>>({});
   const [agents, setAgents] = useState<AgentInfo[] | null>(null);
+  const [usage, setUsage] = useState<GenImageSummary | null>(null);
   const [preferredAgent, setPreferredAgent] = useState<AgentId>(() => {
     const v = localStorage.getItem(LS_PREFERRED_AGENT);
     return v === 'claude-code' ? 'claude-code' : 'codex';
@@ -87,16 +94,18 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([fetchSecrets(), fetchAgents()])
-      .then(([secretsResp, agentsResp]) => {
+    void Promise.all([fetchSecrets(), fetchAgents(), fetchGenImageSummary()])
+      .then(([secretsResp, agentsResp, usageResp]) => {
         if (cancelled) return;
         setStatuses(secretsResp.secrets);
         setAgents(agentsResp.agents);
+        setUsage(usageResp);
       })
       .catch(() => {
         if (!cancelled) {
           setStatuses([]);
           setAgents([]);
+          setUsage(null);
         }
       });
     return () => {
@@ -403,6 +412,80 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               );
             })}
           </div>
+
+          {/* Usage / cost (last 24 h) */}
+          {usage && usage.totalCount > 0 && (
+            <section
+              style={{
+                display: 'grid',
+                gap: 8,
+                borderTop: '1px solid var(--line)',
+                paddingTop: 14,
+              }}
+            >
+              <h3
+                style={{
+                  margin: 0,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: 'var(--ink-0)',
+                }}
+              >
+                Image-gen usage · last 24h
+              </h3>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--ink-1)',
+                  display: 'grid',
+                  gap: 4,
+                }}
+              >
+                {usage.byProvider.map((row) => (
+                  <div
+                    key={row.provider}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12 }}
+                  >
+                    <span style={{ minWidth: 60, color: 'var(--ink-0)' }}>
+                      {row.provider}
+                    </span>
+                    <span style={{ minWidth: 60 }}>{row.count} calls</span>
+                    {row.errorCount > 0 && (
+                      <span style={{ color: 'var(--red, #ff6e6e)' }}>
+                        ({row.errorCount} fail)
+                      </span>
+                    )}
+                    <span style={{ flex: 1 }} />
+                    <span style={{ color: 'var(--ink-0)' }}>
+                      ~${row.estCostUsd.toFixed(3)}
+                    </span>
+                  </div>
+                ))}
+                <div
+                  style={{
+                    display: 'flex',
+                    paddingTop: 4,
+                    marginTop: 4,
+                    borderTop: '1px dashed var(--line)',
+                    color: 'var(--ink-0)',
+                    fontWeight: 600,
+                  }}
+                >
+                  <span>total</span>
+                  <span style={{ flex: 1 }} />
+                  <span>~${usage.totalEstCostUsd.toFixed(3)}</span>
+                </div>
+              </div>
+              <p
+                className="muted"
+                style={{ margin: 0, fontSize: 10, lineHeight: 1.5 }}
+              >
+                Cost is HEURISTIC (per-image list price × call count). Check
+                provider dashboard for actual billing.
+              </p>
+            </section>
+          )}
 
           <p
             className="muted"

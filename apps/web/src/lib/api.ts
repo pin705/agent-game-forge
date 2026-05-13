@@ -34,6 +34,7 @@ import type {
   ProjectsResponse,
   ReadFileResponse,
   RefImage,
+  GenImageSummary,
   RefImagesResponse,
   SecretKey,
   SecretsResponse,
@@ -67,6 +68,12 @@ export const setSecret = (key: SecretKey, value: string | null) =>
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ key, value } satisfies SetSecretRequest),
   });
+
+// Gen-image cost / call-count summary for the Settings panel.
+export const fetchGenImageSummary = (windowMs?: number) =>
+  jsonFetch<GenImageSummary>(
+    `/api/gen-image/summary${windowMs ? `?windowMs=${windowMs}` : ''}`,
+  );
 
 // Projects
 export const fetchProjects = () => jsonFetch<ProjectsResponse>('/api/projects');

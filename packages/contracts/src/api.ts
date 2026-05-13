@@ -303,6 +303,23 @@ export interface SetSecretRequest {
   value: string | null;
 }
 
+// -------- Gen-image usage / cost --------
+
+export interface GenImageSummaryRow {
+  provider: 'gemini' | 'openai';
+  count: number;
+  okCount: number;
+  errorCount: number;
+  estCostUsd: number;
+}
+
+export interface GenImageSummary {
+  windowMs: number;
+  totalCount: number;
+  totalEstCostUsd: number;
+  byProvider: GenImageSummaryRow[];
+}
+
 // -------- Godot runner --------
 
 export interface GodotDetectResponse {

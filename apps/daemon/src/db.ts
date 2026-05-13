@@ -75,4 +75,25 @@ function migrate(d: Database.Database) {
       INSERT INTO schema_version (version) VALUES (1);
     `);
   }
+
+  if (current < 2) {
+    // Phase 6 — cost tracking for /api/gen-image calls. One row per call.
+    // Used by the Settings panel to show today's spend per provider.
+    d.exec(`
+      CREATE TABLE gen_image_calls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts INTEGER NOT NULL,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        ok INTEGER NOT NULL,
+        est_cost_usd REAL NOT NULL,
+        duration_ms INTEGER NOT NULL,
+        error TEXT
+      );
+      CREATE INDEX idx_gen_image_calls_ts ON gen_image_calls(ts DESC);
+
+      INSERT INTO schema_version (version) VALUES (2);
+    `);
+  }
 }

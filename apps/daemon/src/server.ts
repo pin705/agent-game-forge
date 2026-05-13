@@ -11,6 +11,7 @@ import {
 } from './agents.js';
 import { isSecretKey, listSecretStatuses, setSecret } from './secrets.js';
 import { generateImage, GenImageError, type GenImageRequest } from './gen-image.js';
+import { logGenImageCall, summarizeGenImageCalls } from './gen-image-log.js';
 import { splitFormsFromText } from './question-form.js';
 import { RunManager } from './runs.js';
 import {
@@ -159,15 +160,34 @@ export function createServer() {
         .status(400)
         .json({ error: 'prompt (string) and outputPath (absolute string) are required' });
     }
+    const t0 = Date.now();
     try {
       const result = await generateImage(body as GenImageRequest);
-      // Log shape: provider + model + bytes — never the key, never the full prompt.
+      logGenImageCall({
+        provider: result.provider,
+        model: result.model,
+        sizeBytes: result.sizeBytes,
+        ok: true,
+        durationMs: Date.now() - t0,
+      });
       console.log(
         `[gen-image] ok provider=${result.provider} model=${result.model} bytes=${result.sizeBytes}`,
       );
       res.json(result);
     } catch (err) {
       if (err instanceof GenImageError) {
+        // Only log when we know which provider was being called (router-stage
+        // errors like "no key configured" aren't billable).
+        if (err.provider !== 'router') {
+          logGenImageCall({
+            provider: err.provider,
+            model: '-',
+            sizeBytes: 0,
+            ok: false,
+            durationMs: Date.now() - t0,
+            error: err.message,
+          });
+        }
         const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 500;
         console.error(
           `[gen-image] FAIL provider=${err.provider} status=${err.status ?? '-'} msg=${err.message}`,
@@ -183,6 +203,17 @@ export function createServer() {
         error: err instanceof Error ? err.message : 'gen-image failed',
       });
     }
+  });
+
+  // Cost / call-count summary for the Settings panel. Default window =
+  // last 24 hours; client can pass ?windowMs=... to widen.
+  app.get('/api/gen-image/summary', (req, res) => {
+    const windowMsRaw = Number(req.query.windowMs);
+    const windowMs =
+      Number.isFinite(windowMsRaw) && windowMsRaw > 0
+        ? windowMsRaw
+        : 24 * 60 * 60 * 1000;
+    res.json(summarizeGenImageCalls(windowMs));
   });
 
   // -------------------- Agents --------------------
