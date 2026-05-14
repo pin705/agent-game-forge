@@ -36,7 +36,7 @@
 
 ---
 
-Agent Game Forge (**AGF**) é uma IDE desktop open source que permite que um agente de codificação com IA construa jogos 2D completos por você — sprites, fundos parallax, física, perigos, itens coletáveis, layout de cenas — e te entrega um editor visual para ajustar arrastando aquilo que o agente não acertou. **Você escolhe o agente** (Codex CLI ou Claude Code) e **você escolhe o modelo de imagem** (Gemini 2.5 Flash Image ou OpenAI gpt-image-1). Hoje a saída padrão é JS + Canvas puro (zero lock-in de framework, roda em qualquer navegador); os targets de engine Godot 4 e Unity estão no roadmap.
+Agent Game Forge (**AGF**) é uma IDE desktop open source que permite que um agente de codificação com IA construa jogos 2D completos por você — sprites, fundos parallax, física, perigos, itens coletáveis, layout de cenas — e te entrega um editor visual para ajustar arrastando aquilo que o agente não acertou. **Você escolhe o agente** (Codex CLI ou Claude Code) e **você escolhe o image gen** — traga sua própria API key, ou use o image gen integrado do Codex CLI (GPT-Image2). Hoje a saída padrão é JS + Canvas puro (zero lock-in de framework, roda em qualquer navegador); os targets de engine Godot 4 e Unity estão no roadmap.
 
 ---
 
@@ -44,7 +44,7 @@ Agent Game Forge (**AGF**) é uma IDE desktop open source que permite que um age
 
 - 🤖 **Traga seu próprio agente** — Codex CLI ou Claude Code. Troque em Settings. Ao vivo.
 - 🎨 **Pipeline de assets nível produção** — chroma-key de sprite sheets, animação multi-ação, parallax de 4 camadas tileable + despill — tudo de primeira classe, não enxertado.
-- 🖼️ **Geração de imagens multi-provedor** — Gemini 2.5 Flash Image (barato, multimodal nativo) ou OpenAI gpt-image-1 (premium). Você fornece a API key; ela fica na sua máquina.
+- 🖼️ **Traga seu próprio image gen** — forneça uma API key para o seu provedor de imagens preferido, ou use o image gen integrado do Codex CLI (GPT-Image2). As keys ficam na sua máquina.
 - 🧱 **Editor visual de cenas** — arraste plataformas, perigos, itens, colisores; overlay de hitbox; reload ao vivo na aba Play.
 - 📦 **Multi-engine no roadmap** — Web (vanilla JS + Canvas) sai hoje com zero lock-in de framework (suba no GitHub Pages e funciona). Targets Godot 4 e Unity planejados.
 - 💻 **Local-first, open source** — daemon + UI web em `localhost`; seus arquivos de projeto ficam no seu disco; intenção no estilo MIT.

@@ -36,7 +36,7 @@
 
 ---
 
-Agent Game Forge (**AGF**) ist eine Open-Source-Desktop-IDE, mit der ein KI-Coding-Agent komplette 2D-Spiele für dich baut — Sprites, Parallax-Hintergründe, Physik, Gefahren, Pickups, Szenen-Layouts — und dir einen visuellen Editor an die Hand gibt, um per Drag-Tweak zu korrigieren, was der Agent nicht richtig hinbekommen hat. **Du wählst den Agent** (Codex CLI oder Claude Code) und **du wählst das Bildmodell** (Gemini 2.5 Flash Image oder OpenAI gpt-image-1). Heute ist die Default-Ausgabe reines JS + Canvas (null Framework-Lock-in, läuft in jedem Browser); Godot 4 und Unity als Engine-Ziele sind auf der Roadmap.
+Agent Game Forge (**AGF**) ist eine Open-Source-Desktop-IDE, mit der ein KI-Coding-Agent komplette 2D-Spiele für dich baut — Sprites, Parallax-Hintergründe, Physik, Gefahren, Pickups, Szenen-Layouts — und dir einen visuellen Editor an die Hand gibt, um per Drag-Tweak zu korrigieren, was der Agent nicht richtig hinbekommen hat. **Du wählst den Agent** (Codex CLI oder Claude Code) und **du wählst die Bildgenerierung** — bring deinen eigenen API-Key mit, oder nutze die in Codex CLI integrierte Bildgenerierung (GPT-Image2). Heute ist die Default-Ausgabe reines JS + Canvas (null Framework-Lock-in, läuft in jedem Browser); Godot 4 und Unity als Engine-Ziele sind auf der Roadmap.
 
 ---
 
@@ -44,7 +44,7 @@ Agent Game Forge (**AGF**) ist eine Open-Source-Desktop-IDE, mit der ein KI-Codi
 
 - 🤖 **Bring deinen eigenen Agent mit** — Codex CLI oder Claude Code. Umschalten in Settings. Live.
 - 🎨 **Asset-Pipeline auf Produktionsniveau** — Sprite-Sheet-Chroma-Key, Multi-Action-Animation, 4-Layer-tileable-Parallax + Despill — alles first-class, nicht nachträglich drangeklebt.
-- 🖼️ **Multi-Provider-Bildgenerierung** — Gemini 2.5 Flash Image (günstig, nativ multimodal) oder OpenAI gpt-image-1 (premium). Du lieferst den API-Key; er bleibt auf deinem Rechner.
+- 🖼️ **Bring deine eigene Bildgenerierung mit** — gib einen API-Key für deinen bevorzugten Bildanbieter an, oder nutze die in Codex CLI integrierte Bildgenerierung (GPT-Image2). Keys bleiben auf deinem Rechner.
 - 🧱 **Visueller Szenen-Editor** — ziehe Plattformen, Gefahren, Pickups, Collider; Hitbox-Overlay; Live-Reload im Play-Tab.
 - 📦 **Multi-Engine auf der Roadmap** — Web (Vanilla JS + Canvas) ist heute am Start mit null Framework-Lock-in (schiebe auf GitHub Pages, es läuft). Godot 4 und Unity als Ziele geplant.
 - 💻 **Local-first, Open Source** — Daemon + Web-UI auf `localhost`; deine Projektdateien bleiben auf deiner Platte; Lizenz-Intention im MIT-Stil.

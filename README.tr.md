@@ -36,7 +36,7 @@
 
 ---
 
-Agent Game Forge (**AGF**), bir AI kodlama agent'ının senin için eksiksiz 2D oyunlar inşa etmesine olanak tanıyan açık kaynaklı bir masaüstü IDE'sidir — sprite'lar, parallax arka planlar, fizik, tehlikeler, toplanabilirler, sahne düzenleri — ve agent'ın yanlış yaptıklarını sürükle-bırak ile ince ayar yapabilmen için görsel bir editör sunar. **Agent'ı sen seçersin** (Codex CLI veya Claude Code) ve **görsel modelini sen seçersin** (Gemini 2.5 Flash Image veya OpenAI gpt-image-1). Bugün varsayılan çıktı vanilla JS + Canvas (sıfır framework kilitlemesi, herhangi bir tarayıcıda çalışır); Godot 4 ve Unity motor hedefleri ise yol haritasında.
+Agent Game Forge (**AGF**), bir AI kodlama agent'ının senin için eksiksiz 2D oyunlar inşa etmesine olanak tanıyan açık kaynaklı bir masaüstü IDE'sidir — sprite'lar, parallax arka planlar, fizik, tehlikeler, toplanabilirler, sahne düzenleri — ve agent'ın yanlış yaptıklarını sürükle-bırak ile ince ayar yapabilmen için görsel bir editör sunar. **Agent'ı sen seçersin** (Codex CLI veya Claude Code) ve **image gen'i sen seçersin** — kendi API anahtarını getir, ya da Codex CLI'nın yerleşik image gen'ini (GPT-Image2) kullan. Bugün varsayılan çıktı vanilla JS + Canvas (sıfır framework kilitlemesi, herhangi bir tarayıcıda çalışır); Godot 4 ve Unity motor hedefleri ise yol haritasında.
 
 ---
 
@@ -44,7 +44,7 @@ Agent Game Forge (**AGF**), bir AI kodlama agent'ının senin için eksiksiz 2D 
 
 - 🤖 **Kendi agent'ını getir** — Codex CLI veya Claude Code. Settings'ten değiştir. Canlı olarak.
 - 🎨 **Üretim kalitesinde asset pipeline'ı** — sprite-sheet chroma-key, çok-aksiyonlu animasyon, 4 katmanlı tileable parallax + despill — hepsi birinci sınıf, sonradan eklenmiş değil.
-- 🖼️ **Çoklu sağlayıcılı görsel üretimi** — Gemini 2.5 Flash Image (ucuz, doğal multimodal) veya OpenAI gpt-image-1 (premium). API anahtarını sen sağlarsın; makinende kalır.
+- 🖼️ **Kendi image gen'ini getir** — tercih ettiğin görsel sağlayıcısının API anahtarını sağla, ya da Codex CLI'nın yerleşik image gen'ini (GPT-Image2) kullan. Anahtarlar makinende kalır.
 - 🧱 **Görsel sahne editörü** — platformları, tehlikeleri, toplanabilirleri, collider'ları sürükle; hitbox overlay'i; Play sekmesine canlı yeniden yükleme.
 - 📦 **Yol haritasında çoklu motor** — Web (vanilla JS + Canvas) bugün sıfır framework kilitlemesiyle çıkıyor (klasörü GitHub Pages'e yükle, çalışır). Godot 4 ve Unity hedefleri planlanıyor.
 - 💻 **Local-first, açık kaynak** — daemon + web UI `localhost` üzerinde; proje dosyaların diskinde kalır; MIT tarzı niyet.

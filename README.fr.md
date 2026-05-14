@@ -36,7 +36,7 @@
 
 ---
 
-Agent Game Forge (**AGF**) est un IDE de bureau open source qui permet à un agent de codage IA de construire pour vous des jeux 2D complets — sprites, arrière-plans parallax, physique, dangers, objets à ramasser, agencements de scènes — et qui vous offre un éditeur visuel pour ajuster par glisser-déposer tout ce que l'agent n'a pas réussi. **Vous choisissez l'agent** (Codex CLI ou Claude Code) et **vous choisissez le modèle d'image** (Gemini 2.5 Flash Image ou OpenAI gpt-image-1). Aujourd'hui, la sortie par défaut est du JS + Canvas pur (zéro verrouillage à un framework, fonctionne dans n'importe quel navigateur) ; les cibles moteur Godot 4 et Unity sont sur la roadmap.
+Agent Game Forge (**AGF**) est un IDE de bureau open source qui permet à un agent de codage IA de construire pour vous des jeux 2D complets — sprites, arrière-plans parallax, physique, dangers, objets à ramasser, agencements de scènes — et qui vous offre un éditeur visuel pour ajuster par glisser-déposer tout ce que l'agent n'a pas réussi. **Vous choisissez l'agent** (Codex CLI ou Claude Code) et **vous choisissez l'image gen** — apportez votre propre clé API, ou utilisez le générateur d'images intégré à Codex CLI (GPT-Image2). Aujourd'hui, la sortie par défaut est du JS + Canvas pur (zéro verrouillage à un framework, fonctionne dans n'importe quel navigateur) ; les cibles moteur Godot 4 et Unity sont sur la roadmap.
 
 ---
 
@@ -44,7 +44,7 @@ Agent Game Forge (**AGF**) est un IDE de bureau open source qui permet à un age
 
 - 🤖 **Bring your own agent** — Codex CLI ou Claude Code. Changez dans Settings. En direct.
 - 🎨 **Pipeline d'assets de niveau production** — chroma-key de sprite sheets, animation multi-actions, parallax 4 couches tileable + despill — tout est de première classe, pas rajouté après coup.
-- 🖼️ **Génération d'images multi-fournisseurs** — Gemini 2.5 Flash Image (bon marché, multimodal natif) ou OpenAI gpt-image-1 (premium). Vous fournissez la clé API ; elle reste sur votre machine.
+- 🖼️ **Apportez votre propre image gen** — fournissez une clé API pour votre fournisseur d'images préféré, ou utilisez le générateur d'images intégré à Codex CLI (GPT-Image2). Les clés restent sur votre machine.
 - 🧱 **Éditeur visuel de scènes** — glissez plateformes, dangers, objets, colliders ; superposition des hitbox ; rechargement à chaud dans l'onglet Play.
 - 📦 **Multi-moteur sur la roadmap** — Web (vanilla JS + Canvas) est livré aujourd'hui avec zéro verrouillage à un framework (poussez sur GitHub Pages, ça tourne). Cibles Godot 4 et Unity prévues.
 - 💻 **Local-first, open source** — daemon + UI web sur `localhost` ; les fichiers de votre projet restent sur votre disque ; intention de type MIT.

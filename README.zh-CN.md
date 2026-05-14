@@ -36,7 +36,7 @@
 
 ---
 
-Agent Game Forge (简称 **AGF**) 是一个开源的桌面 IDE,让 AI coding agent 帮你做出完整的 2D 游戏 — 角色 sprite、parallax 背景、物理、伤害区、收集物、场景配置 — 同时提供一个可视化编辑器,让你拖拽调整 agent 没做对的部分。**你选 agent**(Codex CLI 或 Claude Code)、**你选图片生成模型**(Gemini 2.5 Flash Image 或 OpenAI gpt-image-1)。目前默认输出是纯 vanilla JS + Canvas(零 framework 绑定,任何浏览器都能跑);Godot 4 和 Unity 引擎目标都在路线图上。
+Agent Game Forge (简称 **AGF**) 是一个开源的桌面 IDE,让 AI coding agent 帮你做出完整的 2D 游戏 — 角色 sprite、parallax 背景、物理、伤害区、收集物、场景配置 — 同时提供一个可视化编辑器,让你拖拽调整 agent 没做对的部分。**你选 agent**(Codex CLI 或 Claude Code)、**你选 image gen** —— 自带 API key,或使用 Codex CLI 内建的 image gen(GPT-Image2)。目前默认输出是纯 vanilla JS + Canvas(零 framework 绑定,任何浏览器都能跑);Godot 4 和 Unity 引擎目标都在路线图上。
 
 ---
 
@@ -44,7 +44,7 @@ Agent Game Forge (简称 **AGF**) 是一个开源的桌面 IDE,让 AI coding age
 
 - 🤖 **Bring Your Own Agent** — Codex CLI 或 Claude Code,在 Settings 实时切换。
 - 🎨 **正规 asset pipeline** — sprite-sheet chroma-key、多动作动画、parallax 4 层 tileable + despill — 都是第一级公民,不是外挂。
-- 🖼️ **多供应商 image gen** — Gemini 2.5 Flash Image(便宜、原生 multimodal)或 OpenAI gpt-image-1(高品质)。Key 自带,完全留在自己机器上。
+- 🖼️ **自带 image gen** — 提供你偏好的图片供应商 API key,或使用 Codex CLI 内建的 image gen(GPT-Image2)。Key 全部留在自己机器上。
 - 🧱 **可视化场景编辑器** — 拖拽 platform、hazard、pickup、collider;hitbox 红色虚线可视化;Play tab live reload。
 - 📦 **多引擎路线图** — Web(vanilla JS + Canvas)今天就能用,零 framework 绑定(推到 GitHub Pages 直接跑)。Godot 4 和 Unity 目标在规划中。
 - 💻 **本地优先、开源** — daemon + Web UI 跑在 `localhost`;你的项目文件留在你的硬盘;MIT 取向。

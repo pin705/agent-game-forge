@@ -36,7 +36,7 @@
 
 ---
 
-Agent Game Forge (**AGF**) es un IDE de escritorio de código abierto que permite a un agente de codificación con IA construir juegos 2D completos por ti — sprites, fondos parallax, físicas, peligros, ítems, disposición de escenas — y te ofrece un editor visual para ajustar arrastrando lo que el agente no haya hecho bien. **Eliges el agente** (Codex CLI o Claude Code) y **eliges el modelo de imagen** (Gemini 2.5 Flash Image u OpenAI gpt-image-1). Hoy la salida por defecto es JS + Canvas puro (cero lock-in de framework, corre en cualquier navegador); los targets de motor Godot 4 y Unity están en el roadmap.
+Agent Game Forge (**AGF**) es un IDE de escritorio de código abierto que permite a un agente de codificación con IA construir juegos 2D completos por ti — sprites, fondos parallax, físicas, peligros, ítems, disposición de escenas — y te ofrece un editor visual para ajustar arrastrando lo que el agente no haya hecho bien. **Eliges el agente** (Codex CLI o Claude Code) y **eliges el image gen** — trae tu propia API key, o usa el image gen integrado de Codex CLI (GPT-Image2). Hoy la salida por defecto es JS + Canvas puro (cero lock-in de framework, corre en cualquier navegador); los targets de motor Godot 4 y Unity están en el roadmap.
 
 ---
 
@@ -44,7 +44,7 @@ Agent Game Forge (**AGF**) es un IDE de escritorio de código abierto que permit
 
 - 🤖 **Trae tu propio agente** — Codex CLI o Claude Code. Cámbialo en Settings. En vivo.
 - 🎨 **Pipeline de assets de nivel producción** — chroma-key de sprite sheets, animación multi-acción, parallax de 4 capas tileable + despill — todo de primera clase, no pegado a posteriori.
-- 🖼️ **Generación de imágenes multi-proveedor** — Gemini 2.5 Flash Image (barato, multimodal nativo) o OpenAI gpt-image-1 (premium). Aportas la API key; se queda en tu máquina.
+- 🖼️ **Trae tu propio image gen** — proporciona una API key para tu proveedor de imágenes preferido, o usa el image gen integrado de Codex CLI (GPT-Image2). Las keys se quedan en tu máquina.
 - 🧱 **Editor visual de escenas** — arrastra plataformas, peligros, ítems, colisionadores; visualización de hitbox; recarga en vivo en la pestaña Play.
 - 📦 **Multi-motor en el roadmap** — Web (vanilla JS + Canvas) se entrega hoy con cero lock-in de framework (sube a GitHub Pages y funciona). Targets Godot 4 y Unity planeados.
 - 💻 **Local-first, código abierto** — daemon + UI web en `localhost`; tus archivos de proyecto se quedan en tu disco; intención estilo MIT.

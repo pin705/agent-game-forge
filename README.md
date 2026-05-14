@@ -36,7 +36,7 @@
 
 ---
 
-Agent Game Forge (**AGF**) is an open-source desktop IDE that lets an AI coding agent build complete 2D games for you — sprites, parallax backgrounds, physics, hazards, pickups, scene layouts — and gives you a visual editor to drag-tweak whatever the agent got wrong. **You pick the agent** (Codex CLI or Claude Code) and **you pick the image model** (Gemini 2.5 Flash Image or OpenAI gpt-image-1). Today the default output is vanilla JS + Canvas (zero framework lock-in, runs in any browser); Godot 4 and Unity engine targets are on the roadmap.
+Agent Game Forge (**AGF**) is an open-source desktop IDE that lets an AI coding agent build complete 2D games for you — sprites, parallax backgrounds, physics, hazards, pickups, scene layouts — and gives you a visual editor to drag-tweak whatever the agent got wrong. **You pick the agent** (Codex CLI or Claude Code) and **you pick the image gen** — bring your own API key, or use Codex CLI's built-in image gen (GPT-Image2). Today the default output is vanilla JS + Canvas (zero framework lock-in, runs in any browser); Godot 4 and Unity engine targets are on the roadmap.
 
 ---
 
@@ -44,7 +44,7 @@ Agent Game Forge (**AGF**) is an open-source desktop IDE that lets an AI coding 
 
 - 🤖 **Bring your own agent** — Codex CLI or Claude Code. Switch in Settings. Live.
 - 🎨 **Production-grade asset pipeline** — sprite-sheet chroma-key, multi-action animation, parallax 4-layer tileable + despill — all first-class, not bolted on.
-- 🖼️ **Multi-provider image gen** — Gemini 2.5 Flash Image (cheap, native multimodal) or OpenAI gpt-image-1 (premium). You supply the API key; it stays on your machine.
+- 🖼️ **Bring your own image gen** — supply an API key for your preferred image provider, or use Codex CLI's built-in image gen (GPT-Image2). Keys stay on your machine.
 - 🧱 **Visual scene editor** — drag platforms, hazards, pickups, colliders; hitbox overlay; live reload to the Play tab.
 - 📦 **Multi-engine on the roadmap** — Web (vanilla JS + Canvas) ships today with zero framework lock-in (push to GitHub Pages, it runs). Godot 4 and Unity targets planned.
 - 💻 **Local-first, open source** — daemon + web UI on `localhost`; your project files stay on your disk; MIT-style intent.
