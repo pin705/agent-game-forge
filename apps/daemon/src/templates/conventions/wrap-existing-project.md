@@ -67,6 +67,34 @@ level file fails this check, opening it in the editor produces:
 
 See `genres/<your-genre>.md` for the full per-genre schema.
 
+### Collision data — top-level OR via `collisionSource`
+
+The Scene editor draws + edits `walkBounds[]` + `blockers[]` overlaid on
+the map. It reads them from one of two places at the **top level** of the
+scene file:
+
+1. **Inline**: top-level `blockers: [...]` and/or `walkBounds: [...]`
+2. **Sidecar reference**: top-level `collisionSource: "data/<scene>-collision-map.json"`
+   — the loader follows the pointer and reads `blockers[]` + `walkBounds[]`
+   from that file.
+
+**Common wrap-existing failure**: agent embeds the existing game's
+collision data into a NESTED `collision: { blockers, walkBounds }`
+object inside the scene file. The editor reads top-level only → both
+arrays show up empty → user can't drag-edit any wall or walkable region.
+
+**Fix**: if the existing project already has its own collision file
+(common for ad-hoc Canvas games), add `collisionSource: "data/<path>.json"`
+to the scene's top level. Don't duplicate the data inline AND in a
+nested `collision` object — pick one (sidecar via collisionSource is
+preferred so the existing runtime + the OGF editor share a single
+source of truth).
+
+> ⚠️ `levels.json`'s `collisionSource` field (in the level registry)
+> is NOT read by the Scene editor. The pointer MUST live in each scene
+> file's top level. Mirror it into both if your existing registry
+> already has it — that's harmless.
+
 ### Extra fields are fine
 
 You MAY keep project-specific fields the existing runtime needs — `source`,
