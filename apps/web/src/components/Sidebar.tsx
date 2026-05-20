@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AgentInfo, FileNode, Project } from '@ogf/contracts';
+import type {
+  AgentInfo,
+  Entity,
+  EntityGroup,
+  FileNode,
+  Project,
+  SceneSummary,
+} from '@ogf/contracts';
 import { I } from './icons.js';
 import { FileTree } from './FileTree.js';
+import { AssetLanes } from './AssetLanes.js';
+
+const LS_SIDEBAR_VIEW = 'ogf:sidebarView';
+type SidebarView = 'grouped' | 'files';
 
 export type Theme = 'dark' | 'light';
 export type Density = 'compact' | 'regular' | 'comfy';
@@ -30,6 +41,14 @@ interface Props {
   usedAssets?: Set<string>;
   mainScene?: string | null;
   sceneFiles?: Set<string>;
+  /** Asset-centric view — derived entity groups + scenes. */
+  entityGroups: EntityGroup[];
+  scenes: SceneSummary[];
+  entityErrors: Array<{ catalog: string; error: string }>;
+  entitiesLoading: boolean;
+  selectedEntityId: string | null;
+  onSelectEntity: (entity: Entity) => void;
+  onSelectScene: (file: string) => void;
 }
 
 export function Sidebar(props: Props) {
@@ -54,6 +73,15 @@ export function Sidebar(props: Props) {
   useEffect(() => {
     setSearch('');
   }, [props.project?.path]);
+
+  // View mode — the grouped asset-centric view vs the raw file tree.
+  // Persisted globally (not per-project): it's a workflow preference.
+  const [view, setView] = useState<SidebarView>(
+    () => (localStorage.getItem(LS_SIDEBAR_VIEW) as SidebarView) ?? 'grouped',
+  );
+  useEffect(() => {
+    localStorage.setItem(LS_SIDEBAR_VIEW, view);
+  }, [view]);
   // Cmd/Ctrl+K → focus search.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -117,11 +145,37 @@ export function Sidebar(props: Props) {
         </button>
       </div>
 
-      {/* Project search — substring filter over file paths. ⌘K / Ctrl+K
-          jumps focus here from anywhere in the app. The FileTree below
-          auto-expands every dir containing a match; clearing restores
-          the user's prior expansion state. */}
+      {/* View toggle — grouped asset-centric view vs the raw file tree.
+          The user picked "toggle between two views" over a Files lane:
+          each view stays uncluttered. */}
       {props.project && (
+        <div className="side-view-toggle" role="tablist" aria-label="Sidebar view">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'grouped'}
+            className={`side-view-btn ${view === 'grouped' ? 'active' : ''}`}
+            onClick={() => setView('grouped')}
+            title="Group by entity & scene"
+          >
+            Grouped
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'files'}
+            className={`side-view-btn ${view === 'files' ? 'active' : ''}`}
+            onClick={() => setView('files')}
+            title="Raw file tree"
+          >
+            Files
+          </button>
+        </div>
+      )}
+
+      {/* Project search — files view only (the grouped view has its own
+          structure). ⌘K / Ctrl+K jumps focus here. */}
+      {props.project && view === 'files' && (
         <div className="side-search">
           <span className="side-search-icon" aria-hidden>{I.search ?? '⌕'}</span>
           <input
@@ -154,10 +208,25 @@ export function Sidebar(props: Props) {
         </div>
       )}
 
-      {/* The full file tree fills the rest of the sidebar with its v1 chrome
-          intact — head row (file count + 'show only used' toggle + refresh)
-          on top, scrolling list below. */}
-      {props.project && (
+      {/* Body — grouped lanes OR the raw file tree, per the toggle. */}
+      {props.project && view === 'grouped' && (
+        <div className="side-files">
+          <AssetLanes
+            groups={props.entityGroups}
+            scenes={props.scenes}
+            errors={props.entityErrors}
+            tree={props.tree}
+            loading={props.entitiesLoading}
+            selectedEntityId={props.selectedEntityId}
+            selectedFile={props.selectedFile?.relPath ?? null}
+            onSelectEntity={props.onSelectEntity}
+            onSelectScene={props.onSelectScene}
+            onSelectFile={props.onSelectFile}
+            scopeKey={props.project.path}
+          />
+        </div>
+      )}
+      {props.project && view === 'files' && (
         <div className="side-files">
           <FileTree
             tree={props.tree}

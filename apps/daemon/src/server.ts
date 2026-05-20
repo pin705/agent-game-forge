@@ -49,6 +49,7 @@ import {
 import { readFileSync } from 'node:fs';
 import { analyzeProject } from './analyze.js';
 import { findUsages } from './usages.js';
+import { discoverEntities, discoverScenes } from './entities.js';
 import { findSessionsForCwd, replaySession } from './codex-sessions.js';
 import { applyOps as applySceneOps, loadScene } from './scenes.js';
 import { detectGodot, GodotRunManager } from './godot.js';
@@ -479,6 +480,37 @@ export function createServer() {
     try {
       const hits = findUsages(abs, relPath);
       res.json({ hits });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Asset-centric view — derived entity + scene lists for the grouped
+  // sidebar. Pure read: parses catalog JSON + the level registry, never
+  // writes. See docs/asset-centric-view-plan.md.
+  app.get('/api/projects/entities', (req, res) => {
+    const projectPath = req.query.projectPath;
+    if (typeof projectPath !== 'string') {
+      return res.status(400).json({ error: 'projectPath query required' });
+    }
+    const abs = path.resolve(projectPath);
+    if (!existsSync(abs)) return res.status(404).json({ error: 'project folder missing' });
+    try {
+      res.json(discoverEntities(abs));
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.get('/api/projects/scenes', (req, res) => {
+    const projectPath = req.query.projectPath;
+    if (typeof projectPath !== 'string') {
+      return res.status(400).json({ error: 'projectPath query required' });
+    }
+    const abs = path.resolve(projectPath);
+    if (!existsSync(abs)) return res.status(404).json({ error: 'project folder missing' });
+    try {
+      res.json({ scenes: discoverScenes(abs) });
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }

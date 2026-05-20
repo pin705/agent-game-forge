@@ -4,11 +4,14 @@ import type {
   AgentEvent,
   AgentInfo,
   Conversation,
+  Entity,
+  EntityGroup,
   FileNode,
   Message,
   Project,
   ReasoningEffort,
   RefImage,
+  SceneSummary,
 } from '@ogf/contracts';
 import type { PendingSliceEntry, QuestionFormAnswers } from '@ogf/contracts';
 import {
@@ -21,9 +24,11 @@ import {
   fetchAgents,
   fetchAnalyze,
   fetchConversations,
+  fetchEntities,
   fetchFileContent,
   fetchFileTree,
   fetchMessages,
+  fetchScenes,
   fetchActiveRun,
   fetchPendingSlices,
   fetchProjects,
@@ -38,6 +43,7 @@ import { Turn, type TurnStatus } from './components/Turn.js';
 import { SpecProgressCard } from './components/SpecProgressCard.js';
 import { FileTree } from './components/FileTree.js';
 import { FileEditor } from './components/FileEditor.js';
+import { EntityInspector } from './components/EntityInspector.js';
 import { SceneEditor } from './components/SceneEditor.js';
 import { PlayPane } from './components/PlayPane.js';
 import { Sidebar, type Theme } from './components/Sidebar.js';
@@ -268,6 +274,15 @@ export function App() {
   // SceneEditor's mapSize check.
   const [webLevelFiles, setWebLevelFiles] = useState<Set<string>>(new Set());
 
+  // Asset-centric view — derived entity groups + scenes for the grouped
+  // sidebar. Refreshed on the same cadence as the file tree.
+  const [entityGroups, setEntityGroups] = useState<EntityGroup[]>([]);
+  const [assetScenes, setAssetScenes] = useState<SceneSummary[]>([]);
+  const [entityErrors, setEntityErrors] = useState<Array<{ catalog: string; error: string }>>([]);
+  const [entitiesLoading, setEntitiesLoading] = useState(false);
+  // When set, the editor pane shows the EntityInspector instead of a file.
+  const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
+
   // Pack staging — generate2dsprite writes a whole anim folder into
   // .ogf/regen/<dir>/. We poll on project select + after each run end.
   const [pendingPacks, setPendingPacks] = useState<import('@ogf/contracts').PendingPack[]>([]);
@@ -461,6 +476,9 @@ export function App() {
     if (!p) {
       setFileTree(null);
       setUsedAssets(new Set());
+      setEntityGroups([]);
+      setAssetScenes([]);
+      setEntityErrors([]);
       return;
     }
     try {
@@ -478,7 +496,43 @@ export function App() {
         setUsedAssets(new Set());
         setMainScene(null);
       });
+    // Asset-centric view — derived entity + scene lists. Kept in sync with
+    // the file tree so new catalogs/sprites surface as the agent works.
+    setEntitiesLoading(true);
+    fetchEntities(p.path)
+      .then((r) => {
+        setEntityGroups(r.groups);
+        setEntityErrors(r.errors);
+      })
+      .catch(() => {
+        setEntityGroups([]);
+        setEntityErrors([]);
+      })
+      .finally(() => setEntitiesLoading(false));
+    fetchScenes(p.path)
+      .then((r) => setAssetScenes(r.scenes))
+      .catch(() => setAssetScenes([]));
   }, []);
+
+  // Keep `selectedEntity` fresh: after entityGroups reloads (post-run,
+  // post-catalog-edit), re-bind the selection to the new row so the
+  // inspector shows updated stats instead of a stale snapshot.
+  useEffect(() => {
+    const cur = selectedEntity;
+    if (!cur) return;
+    let next: Entity | null = null;
+    for (const g of entityGroups) {
+      for (const e of g.entities) {
+        if (e.id === cur.id && e.catalog === cur.catalog) {
+          next = e;
+          break;
+        }
+      }
+      if (next) break;
+    }
+    if (next && next !== cur) setSelectedEntity(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityGroups]);
 
   // While a turn is running, refresh the file tree periodically as a
   // safety net. The subscribeRun loop schedules debounced refreshes on
@@ -604,6 +658,7 @@ export function App() {
       setProject(p);
       setRecentlyChanged(new Set());
       setRefs([]);
+      setSelectedEntity(null);
 
       // Restore last tab + file for THIS project, if any.
       let restoredFile = false;
@@ -1134,6 +1189,7 @@ export function App() {
           const isScene = ext === 'tscn';
           const isWebLevel =
             project?.engine === 'web' && isWebLevelCandidate(relPosix, webLevelFiles);
+          setSelectedEntity(null);
           setTab(isScene || isWebLevel ? 'scenes' : 'assets');
           setSelectedFile({ relPath: rel, fileKind: fk });
         }}
@@ -1143,6 +1199,21 @@ export function App() {
         usedAssets={usedAssets}
         mainScene={mainScene}
         sceneFiles={webLevelFiles}
+        entityGroups={entityGroups}
+        scenes={assetScenes}
+        entityErrors={entityErrors}
+        entitiesLoading={entitiesLoading}
+        selectedEntityId={selectedEntity?.id ?? null}
+        onSelectEntity={(ent) => {
+          setSelectedFile(null);
+          setSelectedEntity(ent);
+          setTab('assets');
+        }}
+        onSelectScene={(file) => {
+          setSelectedEntity(null);
+          setTab('scenes');
+          setSelectedFile({ relPath: file, fileKind: 'text' });
+        }}
       />
 
       <div
@@ -1168,6 +1239,9 @@ export function App() {
             project={project}
             tree={fileTree}
             selectedFile={selectedFile}
+            selectedEntity={selectedEntity}
+            entityScenes={assetScenes}
+            onCatalogChanged={() => void refreshTree(project)}
             onSelectFile={(rel, fk) => {
               // .tscn → scenes; web JSON levels per isWebLevelCandidate
               // (single source of truth shared with the picker list).
@@ -1176,6 +1250,7 @@ export function App() {
               const isScene = ext === 'tscn';
               const isWebLevel =
                 project?.engine === 'web' && isWebLevelCandidate(relPosix, webLevelFiles);
+              setSelectedEntity(null);
               setTab(isScene || isWebLevel ? 'scenes' : 'assets');
               setSelectedFile({ relPath: rel, fileKind: fk });
             }}
@@ -1436,6 +1511,9 @@ function EditorPane(props: {
   project: Project;
   tree: FileNode | null;
   selectedFile: { relPath: string; fileKind?: FileNode['fileKind'] } | null;
+  selectedEntity: Entity | null;
+  entityScenes: SceneSummary[];
+  onCatalogChanged: () => void;
   onSelectFile: (rel: string, fk: FileNode['fileKind']) => void;
   onCloseFile: () => void;
   onNewFile: () => void;
@@ -1521,7 +1599,21 @@ function EditorPane(props: {
 
       <div className="editor-body">
         {props.tab === 'assets' && (
-          props.selectedFile ? (
+          props.selectedEntity ? (
+            <EntityInspector
+              key={`${props.selectedEntity.catalog}#${props.selectedEntity.id}`}
+              projectPath={props.project.path}
+              entity={props.selectedEntity}
+              scenes={props.entityScenes}
+              onOpenFile={(rel) => {
+                const ext = rel.split('.').pop()?.toLowerCase() ?? '';
+                props.onSelectFile(rel, isImageExt(ext) ? 'image' : 'text');
+              }}
+              onOpenScene={(rel) => props.onSelectFile(rel, 'text')}
+              onAskAgent={props.onAskCodex}
+              onCatalogChanged={props.onCatalogChanged}
+            />
+          ) : props.selectedFile ? (
             <FileEditor
               key={props.selectedFile.relPath}
               projectPath={props.project.path}
@@ -1725,6 +1817,16 @@ Write OGF-shaped JSON catalogs reflecting what you found. **Don't modify existin
 - \`data/enemies.json\` / \`data/heroes.json\` / \`data/towers.json\` etc. as appropriate. Each entry: \`{ id, displayW, displayH, anchor?, animations?, stats? }\` referencing existing sprite paths.
 - \`data/levels.json\` (registry) + \`data/<level_id>.json\` (per-level) IF you found level definitions. Mirror the existing data — don't redesign the level layout.
 - \`data/audio.json\` if audio files exist.
+
+### CRITICAL — level file schema
+
+Every \`data/<level_id>.json\` you create MUST carry these at the **TOP LEVEL**, or OGF's Scene editor rejects it with "JSON file is not a level (missing mapSize)":
+
+- \`id\` (string)
+- \`mapSize: { width, height }\` — both numbers
+- \`background\` (string path) **OR** \`layers[]\` **OR** \`props[]\` — at least one present
+
+If collision data (walkBounds / blockers) lives in a separate file, point at it with a **top-level** \`collisionSource: "data/<file>.json"\`. Do NOT bury collision inside a nested \`collision\` object and do NOT bury size info inside a nested \`map\` object — the editor reads the top level only. Extra project-specific fields (\`map\`, \`source\`, \`camera\`, …) are fine to keep ALONGSIDE the required top-level ones.
 
 The point of sidecar mode: the existing game still runs on its existing code. The new JSON files are ADDITIONAL — OGF reads them for the asset-centric view. Don't refactor the engine, don't move files, don't rename anything.
 

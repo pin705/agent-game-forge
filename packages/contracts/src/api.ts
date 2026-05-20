@@ -198,6 +198,85 @@ export interface DiscardPackResponse {
   discarded: string[];
 }
 
+// ── Asset-centric view: entities + scenes ──
+//
+// The asset-centric sidebar groups the project by what the user thinks
+// in — entities (Scout, Archer Tower) and scenes (Guandu Pass) — instead
+// of raw file paths. Both are DERIVED views: the daemon reads existing
+// catalog JSON + the level registry and computes these on demand. No
+// schema change, no files written. See docs/asset-centric-view-plan.md.
+
+export type EntityKind =
+  | 'player'
+  | 'enemy'
+  | 'hero'
+  | 'boss'
+  | 'tower'
+  | 'pickup'
+  | 'npc'
+  | 'projectile'
+  | 'item'
+  | 'hazard'
+  | 'unknown';
+
+/** One sprite belonging to an entity. */
+export interface EntitySprite {
+  /** Action label (idle / walk / attack / …) parsed from path or catalog. */
+  action: string;
+  /** Project-relative path to the sheet PNG (the file the game reads). */
+  relPath: string;
+  /** True when relPath sits in an animation-pack dir (sheet.png + pipeline-meta.json). */
+  isPack: boolean;
+}
+
+export interface Entity {
+  id: string;
+  /** Display name — catalog `name`/`label` field, else id. */
+  name: string;
+  kind: EntityKind;
+  /** Catalog file this entity was discovered from (e.g. data/enemies.json). */
+  catalog: string;
+  /** Sprites discovered for this entity (may be empty when broken). */
+  sprites: EntitySprite[];
+  /** True when the catalog row exists but no sprites could be resolved. */
+  broken: boolean;
+  /** The raw catalog row, verbatim — inspector reads stats/display from it. */
+  raw: Record<string, unknown>;
+}
+
+/** Entities sharing one catalog file form a group (= a sidebar sub-lane). */
+export interface EntityGroup {
+  /** Catalog file (data/enemies.json). */
+  catalog: string;
+  /** Lane label ("Enemies"). */
+  label: string;
+  kind: EntityKind;
+  entities: Entity[];
+}
+
+export interface EntitiesResponse {
+  groups: EntityGroup[];
+  /** Catalog files detected but failed to parse — surfaced, never hidden. */
+  errors: Array<{ catalog: string; error: string }>;
+}
+
+/** A scene/level summarized for the Scenes lane. */
+export interface SceneSummary {
+  id: string;
+  /** Display name. */
+  name: string;
+  /** Project-relative level JSON path. */
+  file: string;
+  /** Background image path if the level declares one. */
+  background: string | null;
+  /** Collision sidecar the level points at via collisionSource. */
+  collisionSource: string | null;
+}
+
+export interface ScenesResponse {
+  scenes: SceneSummary[];
+}
+
 export interface RefImage {
   relPath: string;
   size: number;

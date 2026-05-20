@@ -149,6 +149,32 @@ export const fetchUsages = (projectPath: string, relPath: string) =>
     `/api/projects/usages?projectPath=${encodeURIComponent(projectPath)}&relPath=${encodeURIComponent(relPath)}`,
   );
 
+/** base64url-encode the same way Node's Buffer does, so the slug matches
+ *  the daemon's /api/web-play/:slug decoder. */
+function base64Url(s: string): string {
+  const bytes = new TextEncoder().encode(s);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** Static URL for any project file (image src etc.) via the daemon's
+ *  web-play static mount. Works for any registered web project. */
+export function projectFileUrl(projectPath: string, relPath: string): string {
+  return `/api/web-play/${base64Url(projectPath)}/${relPath.replace(/\\/g, '/')}`;
+}
+
+// Asset-centric view — derived entity + scene lists for the grouped sidebar.
+export const fetchEntities = (projectPath: string) =>
+  jsonFetch<import('@ogf/contracts').EntitiesResponse>(
+    `/api/projects/entities?projectPath=${encodeURIComponent(projectPath)}`,
+  );
+
+export const fetchScenes = (projectPath: string) =>
+  jsonFetch<import('@ogf/contracts').ScenesResponse>(
+    `/api/projects/scenes?projectPath=${encodeURIComponent(projectPath)}`,
+  );
+
 export const fetchPendingSlices = (projectPath: string) =>
   jsonFetch<PendingSlicesResponse>(
     `/api/projects/pending-slices?projectPath=${encodeURIComponent(projectPath)}`,

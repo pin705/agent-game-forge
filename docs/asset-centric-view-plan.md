@@ -1,6 +1,29 @@
 # Asset-Centric View — Plan
 
-> **Status:** Discussion / proposal. Branch `feature/asset-centric-view`. No code yet.
+> **Status:** IMPLEMENTED (2026-05). Built on `main`.
+>
+> What shipped:
+> - **Phase 1 + 2** — grouped sidebar (`AssetLanes.tsx`) with a Grouped⇄Files
+>   **toggle** (the user chose a toggle over an in-sidebar "Files" lane, so
+>   each view stays uncluttered), daemon discovery (`apps/daemon/src/entities.ts`
+>   + `/api/projects/entities` & `/api/projects/scenes`), and a full
+>   `EntityInspector.tsx` (animated sprite strip, editable stats written back
+>   to the catalog JSON, display panel, used-in derived from the usage scan,
+>   "Regenerate whole pack" action).
+> - **Phase 3** — animation-pack regenerate (`/api/files/regen/packs`,
+>   `apply-pack`, `discard-pack`, `PackReviewModal.tsx`) was already in place.
+> - **Phase 4** — `refactorCopy` + the "Refactor existing JS game" welcome
+>   card already existed; the refactor prompt now inlines the level-file
+>   schema rule (top-level `mapSize` + `background`/`layers`/`props` +
+>   `collisionSource`) so imported projects don't repeat the
+>   test-2drpg-pokemon bug.
+>
+> Implementation notes vs the original proposal:
+> - Entity discovery reuses the catalog blacklist convention from
+>   `App.tsx` (`DATA_CATALOG_NAMES` / `isCatalogName`) — `entities.ts`
+>   carries the same `NON_ENTITY_JSON` set so `levels.json`, `maps.json`,
+>   `*-collision-map.json` etc. are never mistaken for entity catalogs.
+> - "Files (raw)" is a toggle target, NOT an in-sidebar lane (see above).
 
 ## The problem in one screenshot's worth of words
 
@@ -617,9 +640,15 @@ Phase 2-3 each add real workflow value but Phase 1 is the foundation that makes 
 
 Phase 4 (refactor existing project) is the marketing win — it's what gets external users to try OGF. But it's the riskiest and shouldn't block Phase 1-3.
 
-## Next step (for the human)
+## Follow-ups (post-implementation)
 
-Pick one:
-- **(a)** Approve plan → I start Phase 1 in this branch
-- **(b)** Push back on UI / discovery rules / phasing
-- **(c)** Cut scope — e.g. "just whole-pack regenerate, skip the sidebar redesign for now"
+Things deliberately left for a later pass:
+- **Sidebar search in grouped view** — the search box only shows in Files
+  view. Add a name filter across lanes once entity counts grow.
+- **EntityInspector "used in" scenes** — derived from the sprite-path
+  usage scan (accurate but only catches scenes that reference the sprite
+  path). A daemon-side per-scene entity scan would catch id-only refs.
+- **Animated preview in Files-view FileEditor** — the inspector animates
+  packs; the raw FileEditor still shows a static sheet.
+- **Whole-pack regenerate** currently fires a chat prompt; wiring it to
+  stage directly into `.ogf/regen/` (no chat round-trip) is a nice-to-have.
