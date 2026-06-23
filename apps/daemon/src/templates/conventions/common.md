@@ -12,6 +12,17 @@ Implications:
 - **Web-first.** New projects default to the `web` engine. Godot still works for legacy projects.
 - **Editor incompleteness is OK; agent incompleteness is not.** If the editor can't visualize something yet, fine — they'll chat about it. Your job is to make sure the GAME works.
 
+## How a build runs — follow the pipeline (START HERE)
+
+OGF builds follow a **declarative pipeline**, not an ad-hoc plan. At the very start of any new game:
+
+1. Read `.ogf/pipelines/game-build.yaml` (the stage spine) and `.ogf/pipelines/tools.yaml` (your tool menu).
+2. Run `python .agents/tools/pipeline.py next` — it names the current stage, the director skill to read, and whether that stage needs user approval.
+3. Read that stage's director in `.ogf/pipelines/stages/`, do the work, then checkpoint: `python .agents/tools/pipeline.py done <stage> [--approved]`.
+4. Repeat until `publish`. Full protocol: `.ogf/pipelines/checkpoint-protocol.md`.
+
+Stages: `discovery → spec → art_direction → assets → scaffold → systems → verify → publish`. The detailed per-system phase plan (the rest of this doc + the genre file) is the INNER plan executed during the **systems** stage. This pipeline is the OUTER spine; everything else here fills in the stages. **Free-asset-first** (`asset-sourcing.md`) and **verify after each phase** (`verification.md`) are pipeline rules, not options.
+
 ## Spec authorship — describe WHAT, not HOW
 
 `.ogf/spec.md` is the GAME DESCRIPTION. It tells future phases what the game IS. It does NOT prescribe how visual assets get made — that emerges from the skill rules at invocation time.

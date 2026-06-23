@@ -213,6 +213,40 @@ function vendoredAgentToolFiles(): ScaffoldFile[] {
   return out;
 }
 
+// ── Vendored pipelines (declarative build orchestration) ────────────────
+//
+// The orchestration layer (adopted from OpenMontage's pipeline pattern):
+//   pipelines/game-build.yaml      — declarative stage list (the build spine)
+//   pipelines/stages/*-director.md — per-stage director skills (HOW to think)
+//   pipelines/checkpoint-protocol.md, tools.yaml, README.md
+// Land under .ogf/pipelines/. Paired with `.agents/tools/pipeline.py` (the
+// state machine, auto-vendored as an agent-tool). Agent reads game-build.yaml
+// at Phase 0 and walks the stages via pipeline.py.
+const PIPELINES_SRC_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  'pipelines',
+);
+
+function vendoredPipelineFiles(): ScaffoldFile[] {
+  if (!existsSync(PIPELINES_SRC_DIR)) return [];
+  const out: ScaffoldFile[] = [];
+  const walk = (absDir: string, relSegments: string[]): void => {
+    for (const entry of readdirSync(absDir)) {
+      const absChild = path.join(absDir, entry);
+      const stat = statSync(absChild);
+      if (stat.isDirectory()) {
+        walk(absChild, [...relSegments, entry]);
+        continue;
+      }
+      if (!/\.(ya?ml|md|json)$/.test(entry)) continue;
+      const projectRel = ['.ogf', 'pipelines', ...relSegments, entry].join('/');
+      out.push({ rel: projectRel, body: readFileSync(absChild, 'utf8') });
+    }
+  };
+  walk(PIPELINES_SRC_DIR, []);
+  return out;
+}
+
 interface ScaffoldFile {
   rel: string;
   body: string;
@@ -316,6 +350,7 @@ function godotFiles(name: string, conventions: string): ScaffoldFile[] {
     ...vendoredRecipeFiles(),
     ...vendoredSkillFiles(),
     ...vendoredAgentToolFiles(),
+    ...vendoredPipelineFiles(),
     { rel: 'data/.gitkeep', body: '' },
     { rel: 'assets/.gitkeep', body: '' },
   ];
@@ -595,6 +630,7 @@ function webFiles(name: string, conventions: string): ScaffoldFile[] {
     ...vendoredRecipeFiles(),
     ...vendoredSkillFiles(),
     ...vendoredAgentToolFiles(),
+    ...vendoredPipelineFiles(),
     ...vendoredFoundationSeedFiles(), // staged under .ogf/foundation-seeds/
     { rel: 'assets/maps/.gitkeep', body: '' },
     { rel: 'assets/sprites/.gitkeep', body: '' },

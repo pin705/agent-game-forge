@@ -1,0 +1,60 @@
+# OGF tool registry — the agent's tool menu.
+#
+# Adopted from OpenMontage's ToolRegistry / provider-menu pattern: a single
+# manifest cataloguing every CLI tool a project ships, what it's for, what it
+# costs, and when to reach for it. Read this once at Phase 0 so you know your
+# toolbox before planning. (The OGF web UI can also render this as a tool panel.)
+#
+# All tools are stdlib-only Python you invoke via `python .agents/tools/<tool>`.
+# They run on the USER's machine — no platform cost for running them.
+
+tools:
+  - name: fetch-asset
+    capability: asset_sourcing
+    cost: free                 # downloads existing CC0/CC-BY assets — $0
+    runtime: network
+    when: >-
+      FIRST CHOICE for any sprite/tile/sfx/music. Search free libraries
+      (OpenGameArt, Kenney, Freesound) and download a commercial-safe match
+      before ever generating. Records attribution automatically.
+    commands:
+      - 'search "<query>" --kind <sprite|tileset|pickup|background|sfx|music>'
+      - 'fetch  "<query>" assets/<path> --kind <kind>'
+    docs: .ogf/conventions/asset-sourcing.md
+
+  - name: gen-image
+    capability: image_generation
+    cost: paid                 # uses the user's Gemini/OpenAI key — FALLBACK ONLY
+    runtime: api
+    when: >-
+      Fallback when fetch-asset has no match that fits a restrictive/custom art
+      style. Generates a sprite/background via the daemon's /api/gen-image.
+    commands:
+      - '"<prompt>" <output.png> [--ref PATH] [--no-magenta-bg]'
+    docs: .ogf/conventions/common.md
+
+  - name: verify-game
+    capability: verification
+    cost: free
+    runtime: local
+    when: >-
+      After scaffold and after each systems phase. Static pre-flight: JS syntax,
+      JSON validity, OGF level schema, asset-path resolution, index.html refs.
+      You are headless — this is how you "check" without opening the Play tab.
+    commands:
+      - '            # run from project root; exit 0 = OK, 1 = errors listed'
+    docs: .ogf/conventions/verification.md
+
+  - name: pipeline
+    capability: orchestration
+    cost: free
+    runtime: local
+    when: >-
+      The build state machine. `next` to see the current stage + its director
+      skill; `done` to checkpoint. Drives the whole game-build pipeline.
+    commands:
+      - 'next'
+      - 'start <stage>'
+      - 'done <stage> --artifact <path> [--approved]'
+      - 'status'
+    docs: .ogf/pipelines/checkpoint-protocol.md

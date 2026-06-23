@@ -99,6 +99,19 @@ user's saved API keys. Use it via Bash + curl whenever the user asks
 for sprites, backgrounds, parallax layers, prop art, or any other game
 asset.
 
+>>> BEFORE generating, TRY FREE ASSETS FIRST (keeps cost near zero) <<<
+The OGF free-asset broker searches OpenGameArt / Kenney / Freesound for
+commercial-safe (CC0 / CC-BY) assets and downloads a match. Run it FIRST
+for every sprite / tile / pickup / background / sfx / music:
+
+  python .agents/tools/fetch-asset.py search "<what you need>" --kind <sprite|tileset|pickup|background|sfx|music>
+  python .agents/tools/fetch-asset.py fetch  "<query>" <absolute output.png> --kind <kind>
+
+If a good match exists, USE IT (free, instant) and wire it into data/*.json —
+attribution is auto-recorded in data/asset-credits.json. ONLY fall back to
+generating (below) when no free asset fits the art direction (a custom style,
+a specific named character). See .ogf/conventions/asset-sourcing.md.
+
 DO NOT use PIL, Pillow, ImageDraw, ASCII art, geometric primitives, or
 any other procedural drawing as a substitute. Those produce visibly
 inferior results and frustrate the user — they hired the AI to make
@@ -138,7 +151,13 @@ frame extraction / parallax cleanup. Do NOT roll your own:
 
 If the daemon endpoint returns an error like "No API key configured",
 tell the user to add a Gemini or OpenAI key in OGF Settings → Image
-generation API keys. Do not fall back to procedural drawing.
+generation API keys. (Free-asset fetch above needs no key — prefer it.)
+
+Before declaring a phase done, run the static verifier:
+  python .agents/tools/verify-game.py
+It catches missing assets, broken JSON, bad references, and JS syntax
+errors (exit 1 on error). Fix what it reports. See
+.ogf/conventions/verification.md.
 `.trim();
 
 /** Curated tool allowlist for OGF flows. We turn OFF Claude Code's

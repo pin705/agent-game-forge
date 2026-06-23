@@ -49,4 +49,9 @@ copyTemplateDir('recipes', ['.md']);
 // Agent tools (OGF v2 multi-CLI): CLI helpers landed at .agents/tools/.
 // gen-image.py POSTs to daemon's /api/gen-image so non-Codex agents
 // (Claude Code, future Gemini CLI, bash wrappers) can drive image gen.
-copyTemplateDir('agent-tools', ['.py', '.sh', '.md']);
+copyTemplateDir('agent-tools', ['.py', '.sh', '.md'], { skipDirNames: ['__pycache__'] });
+
+// Pipelines (orchestration layer): game-build.yaml manifest + stages/*-director.md
+// + tools.yaml + checkpoint-protocol.md + README.md. Landed at .ogf/pipelines/.
+// Paired with .agents/tools/pipeline.py (copied via agent-tools above).
+copyTemplateDir('pipelines', ['.yaml', '.yml', '.md', '.json']);
