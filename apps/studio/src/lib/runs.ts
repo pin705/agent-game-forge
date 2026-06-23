@@ -7,15 +7,104 @@
 export type AgentId = 'codex' | 'claude-code';
 export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 
+// ---------------------------------------------------------------------------
+// Question-form protocol (mirror of @ogf/contracts forms.ts).
+// The agent emits <question-form id="...">{...JSON...}</question-form> inline;
+// the daemon parses it and streams a typed `form` event. The UI renders an
+// interactive card and feeds the user's answers back as the next turn.
+// ---------------------------------------------------------------------------
+
+export type FormFieldType = 'select' | 'radio' | 'checkbox' | 'text' | 'textarea';
+
+export interface FormFieldOption {
+  value: string;
+  label: string;
+  detail?: string;
+}
+
+export interface FormField {
+  key: string;
+  label: string;
+  type: FormFieldType;
+  options?: FormFieldOption[];
+  default?: string | string[];
+  placeholder?: string;
+  hint?: string;
+  required?: boolean;
+}
+
+export interface QuestionForm {
+  id: string;
+  title: string;
+  intro?: string;
+  fields: FormField[];
+  submitLabel?: string;
+}
+
+export interface QuestionFormAnswers {
+  formId: string;
+  answers: Record<string, string | string[]>;
+}
+
+// ---------------------------------------------------------------------------
+// Pending changes (sprite-slicing sidecars). Mirror of @ogf/contracts
+// PendingSliceEntry / UsageHit (api.ts). These are local .ogf-slice.json edits
+// the user made in the slicer that haven't been written into the engine yet.
+// ---------------------------------------------------------------------------
+
+export interface UsageHit {
+  file: string;
+  line: number;
+  col: number;
+  snippet: string;
+}
+
+export interface PendingSliceEntry {
+  /** Source sprite path, e.g. assets/enemies/scout/sheet-transparent.png. */
+  sourcePath: string;
+  /** Path of the .ogf-slice.json sidecar. */
+  sidecarPath: string;
+  cols: number;
+  rows: number;
+  fps: number;
+  anchor: string;
+  padding: number;
+  offsetX: number;
+  offsetY: number;
+  frameW?: number;
+  frameH?: number;
+  mtimeMs: number;
+  /** Where the source sprite is referenced in the project. */
+  usages: UsageHit[];
+}
+
+export interface TokenUsage {
+  input?: number;
+  output?: number;
+  cachedRead?: number;
+}
+
 /** Mirror of @ogf/contracts AgentEvent (events.ts). */
 export type AgentEvent =
   | { type: 'status'; label: string }
   | { type: 'text_delta'; delta: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; toolUseId: string; content: string; isError: boolean }
-  | { type: 'usage'; usage: { input?: number; output?: number; cachedRead?: number } }
-  | { type: 'form'; form: unknown }
+  | { type: 'usage'; usage: TokenUsage }
+  | { type: 'form'; form: QuestionForm }
   | { type: 'raw'; raw: unknown };
+
+/** Mirror of @ogf/contracts Message (api.ts). Persisted chat history; the
+ *  agent's `events` array is replayed verbatim to rebuild a turn on refresh. */
+export interface Message {
+  id: number;
+  conversationId: string;
+  role: 'user' | 'agent';
+  content: string;
+  events?: AgentEvent[];
+  position: number;
+  createdAt: number;
+}
 
 export interface Conversation {
   id: string;
@@ -69,6 +158,60 @@ export const createConversation = (
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ projectPath, agentId, title }),
   });
+
+/** Persisted message history for a conversation. Used on mount to rebuild the
+ *  transcript (markdown + tool chips + forms) after a refresh / tab switch. */
+export const fetchMessages = (conversationId: string) =>
+  jsonFetch<{ messages: Message[] }>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
+  );
+
+// -------------------- Files --------------------
+
+/** Read a project file. Returns markdown/text in `content`, or base64 bytes in
+ *  `base64` (with kind === 'image'). Used by the spec-approval form's inline
+ *  viewer and by inline image previews in tool results. */
+export const fetchFileContent = (projectPath: string, relPath: string) =>
+  jsonFetch<{ kind?: 'text' | 'image' | 'binary'; content?: string; base64?: string }>(
+    `/api/files/content?projectPath=${encodeURIComponent(projectPath)}&relPath=${encodeURIComponent(relPath)}`,
+  );
+
+// -------------------- Pending changes --------------------
+
+/** List the project's pending sprite-slicing edits (unapplied .ogf-slice.json
+ *  sidecars). Daemon route: GET /api/projects/pending-slices. */
+export const fetchPendingSlices = (projectPath: string) =>
+  jsonFetch<{ pending: PendingSliceEntry[] }>(
+    `/api/projects/pending-slices?projectPath=${encodeURIComponent(projectPath)}`,
+  );
+
+/** Discard ALL pending slicing changes (deletes every .ogf-slice.json sidecar;
+ *  the underlying engine files are untouched). Daemon supports a bulk DELETE
+ *  only — there is no per-sidecar discard endpoint. Daemon route:
+ *  DELETE /api/projects/pending-slices. */
+export const clearPendingSlices = (projectPath: string) =>
+  jsonFetch<{ ok: true; removed: number }>(
+    `/api/projects/pending-slices?projectPath=${encodeURIComponent(projectPath)}`,
+    { method: 'DELETE' },
+  );
+
+// -------------------- Question forms --------------------
+
+/** Format submitted answers as the prose block the agent reads on the next
+ *  turn. Mirrors apps/web/src/App.tsx#onSubmitForm exactly so the daemon /
+ *  agent sees an identical payload. The Chat sends this string as a normal
+ *  run; there is no dedicated answer endpoint. */
+export function formatFormAnswers(answers: QuestionFormAnswers): string {
+  const lines: string[] = [`## Form answers (id=${answers.formId})`, ''];
+  for (const [key, value] of Object.entries(answers.answers)) {
+    if (Array.isArray(value)) {
+      lines.push(`- **${key}**: ${value.join(', ') || '(none)'}`);
+    } else {
+      lines.push(`- **${key}**: ${value}`);
+    }
+  }
+  return lines.join('\n');
+}
 
 // -------------------- Runs --------------------
 
