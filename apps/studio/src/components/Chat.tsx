@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Flame, Send, Square, Loader2, Pencil, Terminal, Image as ImageIcon, Sparkles, Wrench, AlertTriangle } from 'lucide-react';
+import { Flame, Send, Square, Loader2, Pencil, Terminal, Image as ImageIcon, Sparkles, Wrench, AlertTriangle, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +19,7 @@ import {
   type ReasoningEffort,
 } from '@/lib/runs';
 import { QuestionFormCard } from '@/components/QuestionFormCard';
+import { Markdown } from '@/components/Markdown';
 import { useSettings } from '@/lib/settings';
 
 // ---------------------------------------------------------------------------
@@ -408,7 +409,12 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
         <div className="flex items-end gap-2">
           <Textarea
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={(e) => {
+              setPrompt(e.target.value);
+              const t = e.target;
+              t.style.height = 'auto';
+              t.style.height = Math.min(t.scrollHeight, 160) + 'px';
+            }}
             onKeyDown={onKey}
             rows={1}
             placeholder="Describe a change…"
@@ -469,9 +475,7 @@ function TurnView({
 
           {blocks.map((b, i) =>
             b.kind === 'text' ? (
-              <div key={i} className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                {b.text}
-              </div>
+              <Markdown key={i} text={b.text} />
             ) : b.kind === 'form' ? (
               <QuestionFormCard
                 key={i}
@@ -481,7 +485,7 @@ function TurnView({
                 onSubmit={onSubmitForm}
               />
             ) : (
-              <ToolChip key={i} family={b.family} items={b.items} streaming={streaming} />
+              <ToolCard key={i} family={b.family} items={b.items} streaming={streaming} />
             ),
           )}
 
@@ -492,27 +496,82 @@ function TurnView({
   );
 }
 
-function ToolChip({ family, items, streaming }: { family: ToolFamily; items: ToolItem[]; streaming: boolean }) {
+function toolInputText(it: ToolItem): string {
+  const inp = it.input as Record<string, unknown> | undefined;
+  if (it.family === 'shell') return String(inp?.command ?? '');
+  if (it.family === 'image') return String(inp?.prompt ?? '');
+  if (it.family === 'edit') {
+    const ch = (inp?.changes as { path?: string }[] | undefined) ?? [];
+    return ch.map((c) => c.path).filter(Boolean).join('\n');
+  }
+  try {
+    return JSON.stringify(it.input, null, 2);
+  } catch {
+    return String(it.input ?? '');
+  }
+}
+
+function clamp(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n) + '\n…(truncated)' : s;
+}
+
+// Collapsible tool call (Claude/Cursor-style): summary row + expandable
+// input/output. Long output is capped + scrolls inside its own box.
+function ToolCard({ family, items, streaming }: { family: ToolFamily; items: ToolItem[]; streaming: boolean }) {
+  const [open, setOpen] = useState(false);
   const Icon = familyIcon(family);
   const running = streaming && items.some((it) => it.output === undefined);
   const anyError = items.some((it) => it.isError);
   const detail = chipDetail(family, items);
 
   return (
-    <div
-      className={cn(
-        'inline-flex max-w-full items-center gap-2 rounded-md border bg-card px-2.5 py-1.5 text-xs',
-        anyError && 'border-destructive/40',
-      )}
-    >
-      {running ? (
-        <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
-      ) : (
-        <Icon className={cn('size-3.5 shrink-0', anyError ? 'text-destructive' : 'text-muted-foreground')} />
-      )}
-      <span className="font-medium">{familyLabel(family, items)}</span>
-      {detail ? <span className="truncate text-muted-foreground">{detail}</span> : null}
-      {running ? <span className="shrink-0 text-primary">running…</span> : null}
+    <div className={cn('overflow-hidden rounded-lg border bg-card/60', anyError && 'border-destructive/40')}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-accent/40"
+      >
+        {running ? (
+          <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
+        ) : (
+          <Icon className={cn('size-3.5 shrink-0', anyError ? 'text-destructive' : 'text-muted-foreground')} />
+        )}
+        <span className="shrink-0 font-medium">{familyLabel(family, items)}</span>
+        {detail ? <span className="min-w-0 truncate text-muted-foreground">{detail}</span> : null}
+        {running ? <span className="ml-auto shrink-0 text-primary">running…</span> : null}
+        <ChevronRight
+          className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', running ? '' : 'ml-auto', open && 'rotate-90')}
+        />
+      </button>
+      {open ? (
+        <div className="space-y-2 border-t bg-muted/20 p-2.5">
+          {items.map((it) => {
+            const input = toolInputText(it);
+            return (
+              <div key={it.id} className="min-w-0 space-y-1">
+                <div className="font-mono text-[11px] text-muted-foreground">{it.name}</div>
+                {input ? (
+                  <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-background/70 p-2 font-mono text-[11px] leading-relaxed">
+                    {clamp(input, 2000)}
+                  </pre>
+                ) : null}
+                {it.output !== undefined ? (
+                  <pre
+                    className={cn(
+                      'max-h-56 overflow-auto whitespace-pre-wrap break-words rounded bg-background p-2 font-mono text-[11px] leading-relaxed',
+                      it.isError && 'text-destructive',
+                    )}
+                  >
+                    {clamp(it.output, 4000)}
+                  </pre>
+                ) : running ? (
+                  <div className="text-[11px] text-primary">running…</div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
