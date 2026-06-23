@@ -97,7 +97,9 @@ def iter_json():
 
 ID_ARRAYS = ("props", "platforms", "pickups", "colliders", "zones", "paths",
              "enemies", "hazards", "checkpoints", "spawn_points", "npcs",
-             "blockers", "walkBounds", "walkable")
+             "blockers", "walkBounds", "walkable",
+             # grid-logic / tower-defense / ui-heavy catalogs:
+             "entities", "towers", "waves", "buildSpots", "cards", "nodes")
 ASSET_RE = re.compile(r'(assets/[^"\s\\]+\.(?:png|jpg|jpeg|gif|ogg|wav|mp3|json))')
 
 
@@ -127,8 +129,8 @@ def check_json_and_assets():
             ms = data.get("mapSize") or {}
             if not (isinstance(ms.get("width"), (int, float)) and isinstance(ms.get("height"), (int, float))):
                 err(f"{rel(f)}: mapSize must have numeric width+height")
-            if not any(k in data for k in ("background", "layers", "props", "platforms")):
-                err(f"{rel(f)}: level has no renderable field (background | layers | props | platforms) — Scene editor/Play will be empty")
+            if not any(k in data for k in ("background", "layers", "props", "platforms", "grid", "cells")):
+                err(f"{rel(f)}: level has no renderable field (background | layers | props | platforms | grid) — Scene editor/Play will be empty")
             for key in ID_ARRAYS:
                 for i, e in enumerate(data.get(key, []) or []):
                     if isinstance(e, dict) and "id" not in e:
