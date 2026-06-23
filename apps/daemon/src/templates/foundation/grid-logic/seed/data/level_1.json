@@ -1,0 +1,28 @@
+{
+  "id": "level_1",
+  "name": "Shadow Dungeon 1",
+  "cols": 14,
+  "rows": 9,
+  "cellSize": 64,
+  "mapSize": { "width": 896, "height": 576 },
+  "grid": [
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,5,2,2,2,1,2,2,2,2,2,1,2,1],
+    [1,2,1,1,2,1,2,1,1,1,2,1,2,1],
+    [1,2,1,1,2,2,2,1,2,2,2,2,2,1],
+    [1,2,2,2,2,1,2,2,2,1,1,1,2,1],
+    [1,1,1,2,1,1,2,1,2,1,2,2,2,1],
+    [1,2,2,2,2,2,2,2,2,2,2,1,2,1],
+    [1,2,1,1,1,1,1,1,1,2,2,2,3,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+  ],
+  "cellLegend": { "0":"empty","1":"wall","2":"floor","3":"goal","4":"hazard","5":"spawn" },
+  "entities": [
+    { "id": "player_1", "type": "player", "gridX": 1, "gridY": 1, "hp": 5 },
+    { "id": "enemy_1",  "type": "enemy",  "gridX": 8, "gridY": 3, "hp": 3 },
+    { "id": "enemy_2",  "type": "enemy",  "gridX": 5, "gridY": 6, "hp": 3 },
+    { "id": "enemy_3",  "type": "enemy",  "gridX": 11,"gridY": 5, "hp": 2 },
+    { "id": "item_1",   "type": "item",   "gridX": 2, "gridY": 4 },
+    { "id": "item_2",   "type": "item",   "gridX": 9, "gridY": 1 }
+  ]
+}

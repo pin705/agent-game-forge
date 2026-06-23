@@ -20,16 +20,19 @@ foundation/
 
 Genre folder names match `templates/conventions/genres/<genre>.md`.
 
-## Currently shipped
+## Currently shipped (all ★★★)
 
-- `top-down-rpg/seed/` — Sengoku-Era-ogf-derived, 36 files.
+| Genre | Seed | Notes |
+|---|---|---|
+| `side-scroll/` | ✅ 14 src files | Sengoku-Era platform action, juice layer, error overlay |
+| `top-down-rpg/` | ✅ 36 files | Sengoku-Era-ogf-derived, full feature set |
+| `arena-survivor/` | ✅ 14 src files | VS-style; object pools, ring spawner, auto-fire, XP orbs, level-up |
+| `shmup/` | ✅ 14 src files | Vertical scroll; pooled bullets, wave director, star field |
+| `tower-defense/` | ✅ 14 src files | Polyline path, archer/cannon towers, 4-wave economy |
+| `grid-logic/` | ✅ 14 src files | Roguelike step-mode; undo stack, enemy AI, items, goal |
+| `ui-heavy/` | ✅ 13 src files | Card battler; deck/hand/energy, screen-stack, click regions |
 
-## Not yet shipped (agent builds from scratch)
-
-- `arena-survivor/`
-- `shmup/`
-- `side-scroll/`
-- `tower-defense/`
+All 7 seeds pass the headless smoke test (240 frames, boot + play mode, no runtime errors).
 
 The agent's Phase 0 (see `conventions/common.md`) handles the
 seed-or-from-scratch decision per project genre. Adding a new genre's

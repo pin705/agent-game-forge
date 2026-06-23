@@ -1,0 +1,8 @@
+[
+  { "id": "strike",    "name": "Strike",    "type": "attack", "cost": 1, "value": 6, "text": "Deal 6 damage." },
+  { "id": "defend",    "name": "Defend",    "type": "block",  "cost": 1, "value": 5, "text": "Gain 5 block." },
+  { "id": "bash",      "name": "Bash",      "type": "attack", "cost": 2, "value": 8, "text": "Deal 8 damage." },
+  { "id": "first_aid", "name": "First Aid", "type": "heal",   "cost": 1, "value": 5, "text": "Heal 5 HP." },
+  { "id": "whirlwind", "name": "Whirlwind", "type": "attack", "cost": 2, "value": 4, "text": "Deal 4 twice." },
+  { "id": "armor",     "name": "Iron Shell","type": "block",  "cost": 1, "value": 8, "text": "Gain 8 block." }
+]
