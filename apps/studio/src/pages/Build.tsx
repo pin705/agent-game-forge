@@ -11,6 +11,7 @@ import { PlayPane } from '@/components/PlayPane';
 import { SceneEditor } from '@/components/SceneEditor';
 import { AssetsPanel } from '@/components/AssetsPanel';
 import { SettingsButton } from '@/components/SettingsDialog';
+import { StatusBar } from '@/components/StatusBar';
 
 export function Build() {
   const { id } = useParams();
@@ -95,6 +96,7 @@ export function Build() {
           </Tabs>
         </div>
       </div>
+      <StatusBar project={project} />
     </div>
   );
 }

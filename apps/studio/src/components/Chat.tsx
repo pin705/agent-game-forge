@@ -11,9 +11,15 @@ import {
   createRun,
   fetchActiveRun,
   fetchConversations,
+  formatFormAnswers,
   subscribeRun,
   type AgentEvent,
+  type QuestionForm,
+  type QuestionFormAnswers,
+  type ReasoningEffort,
 } from '@/lib/runs';
+import { QuestionFormCard } from '@/components/QuestionFormCard';
+import { useSettings } from '@/lib/settings';
 
 // ---------------------------------------------------------------------------
 // Turn model + block builder (simplified port of apps/web/src/lib/blocks.ts).
@@ -34,7 +40,8 @@ interface ToolItem {
 
 type Block =
   | { kind: 'text'; text: string }
-  | { kind: 'tool-group'; family: ToolFamily; items: ToolItem[] };
+  | { kind: 'tool-group'; family: ToolFamily; items: ToolItem[] }
+  | { kind: 'form'; form: QuestionForm };
 
 interface UiTurn {
   id: string;
@@ -113,7 +120,12 @@ function buildBlocks(events: AgentEvent[]): Block[] {
       case 'tool_result':
         attachResult(ev.toolUseId, ev.content, ev.isError);
         break;
-      // status / usage / form / raw: dropped for the v1 clean view.
+      case 'form':
+        flushText();
+        flushGroup();
+        blocks.push({ kind: 'form', form: ev.form });
+        break;
+      // status / usage / raw: dropped for the v1 clean view.
       default:
         break;
     }
@@ -176,6 +188,8 @@ export function Chat({ projectPath, initialPrompt }: ChatProps) {
   const [prompt, setPrompt] = useState('');
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submittedForms, setSubmittedForms] = useState<Set<string>>(() => new Set());
+  const { agentId, model, reasoning } = useSettings();
 
   const conversationIdRef = useRef<string | null>(null);
   const runIdRef = useRef<string | null>(null);
@@ -258,7 +272,9 @@ export function Chat({ projectPath, initialPrompt }: ChatProps) {
 
       try {
         const r = await createRun({
-          agentId: 'codex',
+          agentId,
+          model,
+          reasoning: reasoning as ReasoningEffort | undefined,
           prompt: text,
           projectPath,
           conversationId: conversationIdRef.current ?? undefined,
@@ -280,7 +296,15 @@ export function Chat({ projectPath, initialPrompt }: ChatProps) {
         runIdRef.current = null;
       }
     },
-    [prompt, running, projectPath, subscribeToRun, finalizeLastTurn],
+    [prompt, running, projectPath, agentId, model, reasoning, subscribeToRun, finalizeLastTurn],
+  );
+
+  const onSubmitForm = useCallback(
+    (a: QuestionFormAnswers) => {
+      setSubmittedForms((prev) => new Set(prev).add(a.formId));
+      void send(formatFormAnswers(a));
+    },
+    [send],
   );
 
   const stop = useCallback(async () => {
@@ -356,7 +380,13 @@ export function Chat({ projectPath, initialPrompt }: ChatProps) {
           ) : null}
 
           {turns.map((t) => (
-            <TurnView key={t.id} turn={t} />
+            <TurnView
+              key={t.id}
+              turn={t}
+              projectPath={projectPath}
+              submittedForms={submittedForms}
+              onSubmitForm={onSubmitForm}
+            />
           ))}
 
           {error ? (
@@ -393,7 +423,17 @@ export function Chat({ projectPath, initialPrompt }: ChatProps) {
   );
 }
 
-function TurnView({ turn }: { turn: UiTurn }) {
+function TurnView({
+  turn,
+  projectPath,
+  submittedForms,
+  onSubmitForm,
+}: {
+  turn: UiTurn;
+  projectPath: string;
+  submittedForms: Set<string>;
+  onSubmitForm: (a: QuestionFormAnswers) => void;
+}) {
   const blocks = buildBlocks(turn.events);
   const streaming = turn.status === 'streaming';
 
@@ -426,6 +466,14 @@ function TurnView({ turn }: { turn: UiTurn }) {
               <div key={i} className="whitespace-pre-wrap break-words text-sm leading-relaxed">
                 {b.text}
               </div>
+            ) : b.kind === 'form' ? (
+              <QuestionFormCard
+                key={i}
+                form={b.form}
+                projectPath={projectPath}
+                locked={submittedForms.has(b.form.id)}
+                onSubmit={onSubmitForm}
+              />
             ) : (
               <ToolChip key={i} family={b.family} items={b.items} streaming={streaming} />
             ),
