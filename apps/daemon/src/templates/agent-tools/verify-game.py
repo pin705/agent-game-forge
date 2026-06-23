@@ -235,10 +235,42 @@ def ensure_protocol_seed() -> None:
             pass
 
 
+def check_juice():
+    # Game-feel gate (advisory): once a project has real code, it should ship and
+    # wire src/juice.js. Distilled from OpenGame's effects layer — see
+    # conventions/juice.md. Warns only; never blocks the Play tab.
+    files = sorted(ROOT.glob("src/**/*.js"))
+    gameplay = [f for f in files if f.name != "juice.js"]
+    if len(gameplay) < 3:
+        return  # too early — bare scaffold, nothing to juice yet
+    if not (ROOT / "src" / "juice.js").exists():
+        warn("no src/juice.js — game-feel layer missing (conventions/juice.md): every game "
+             "ships the juice library and wires updateJuice(dt)+drawJuice(ctx)")
+        return
+    src_text = ""
+    for f in gameplay:
+        try:
+            src_text += f.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            pass
+    if "updateJuice(" not in src_text:
+        warn("src/juice.js present but updateJuice(dt) is never called — wire it into the frame loop (conventions/juice.md)")
+    elif "drawJuice(" not in src_text:
+        warn("juice updates but never draws — call drawJuice(ctx) after render so floaters/trails show (conventions/juice.md)")
+    else:
+        ok("juice layer wired (updateJuice + drawJuice)")
+    has_combat = any(k in src_text for k in ("hp -=", "hp-=", "damage", "takeDamage"))
+    has_feedback = any(k in src_text for k in ("screenshake(", "hitstop(", "floater(", "burstParticles("))
+    if has_combat and not has_feedback:
+        warn("combat code found but no juice calls (screenshake/hitstop/floater/burstParticles) — "
+             "hits need feedback (conventions/juice.md per-event checklist)")
+
+
 def verify() -> None:
     check_js()
     check_json_and_assets()
     check_index()
+    check_juice()
     for m in OKS:
         print(f"  ✓ {m}")
     for m in WARNINGS:

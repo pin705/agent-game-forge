@@ -3,9 +3,11 @@ const MAIN_ACTIONS = [openMoveMenu, performBind, openBattleSwitch, runBattle];
 const MOVE_ACTIONS = [performAttack, performSkill, closeMoveMenu, null];
 
 function update(dt) {
+  if (state.hitstop > 0) state.hitstop = Math.max(0, state.hitstop - dt);
   if (state.transition) updateTransition(dt);
   if (state.mode === "overworld") updateOverworld(dt);
   if (state.mode === "battle") updateBattleAnimations(dt);
+  updateJuice(dt);
 }
 
 function draw(now) {
@@ -14,6 +16,7 @@ function draw(now) {
   else if (state.mode === "battle") drawBattle(now);
   else drawOverworld(now);
   drawTransition();
+  drawJuice(ctx);
 }
 
 let previous = performance.now();

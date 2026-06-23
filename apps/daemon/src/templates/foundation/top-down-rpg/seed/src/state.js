@@ -34,4 +34,11 @@ const state = {
   menuMessage: "",
   debugCollision: false,
   transition: null,
+  // juice.js — game-feel layer (floating text, tweens, trails, hit-stop, combo)
+  floaters: [],
+  tweens: [],
+  trails: [],
+  hitstop: 0,
+  combo: 0,
+  comboT: 0,
 };

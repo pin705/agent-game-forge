@@ -17,13 +17,19 @@ function frame(nowMs) {
   lastFrame = now;
   state.time += dt;
   state.titleBlink += dt;
+  // Hit-stop: gameplay freezes while the timer runs, but FX + render keep going
+  // so the freeze-frame reads as impact weight, not a stutter. (juice.js)
+  if (state.hitstop > 0) state.hitstop = Math.max(0, state.hitstop - dt);
+  const sdt = state.hitstop > 0 ? 0 : dt;
   updateInput();
   handleGlobalInput();
-  updateScene(dt);
-  updateDialogue(dt);
+  updateScene(sdt);
+  updateDialogue(sdt);
   updateParticles(dt);
+  updateJuice(dt);
   tickMusic(dt);
   renderFrame();
+  drawJuice(dom.ctx);
   requestAnimationFrame(frame);
 }
 

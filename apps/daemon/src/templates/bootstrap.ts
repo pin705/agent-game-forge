@@ -407,6 +407,7 @@ const WEB_GAME_JS = `// Entry point. Boots the renderer + scene + input, then ru
 import { initRenderer, errorScreen } from './render.js';
 import { loadLevels, switchScene, drawCurrent } from './scene.js';
 import { initInput } from './input.js';
+import { updateJuice, drawJuice } from './juice.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -419,8 +420,14 @@ async function start() {
   const first = levels.levels?.[0]?.id ?? 'level1';
   await switchScene(first);
 
-  function frame(now) {
-    drawCurrent(now);
+  let last = 0;
+  function frame(nowMs) {
+    const now = nowMs / 1000;
+    const dt = Math.min(0.05, last ? now - last : 0);
+    last = now;
+    updateJuice(dt);        // tweens / floaters / trails / hit-stop
+    drawCurrent(nowMs);
+    drawJuice(ctx);         // floating text + motion trails on top
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -577,6 +584,81 @@ export function loadImage(rel) {
 }
 `;
 
+const WEB_JUICE_JS = `// juice.js — the game-feel layer (vanilla, zero deps). ES-module form for the
+// starter; the per-genre seeds ship the same API in global-script form. This is
+// the studio's reusable polish core — reach for it on every hit / death /
+// pickup so the game FEELS alive, not merely correct. See
+// .ogf/conventions/juice.md for the mandate + per-event checklist.
+
+export const ease = {
+  linear: (t) => t,
+  outQuad: (t) => 1 - (1 - t) * (1 - t),
+  inOutQuad: (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2),
+  outCubic: (t) => 1 - Math.pow(1 - t, 3),
+  outBack: (t) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); },
+  outElastic: (t) => { const c4 = (2 * Math.PI) / 3; return t === 0 ? 0 : t === 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1; },
+  outBounce: (t) => { const n1 = 7.5625, d1 = 2.75; if (t < 1 / d1) return n1 * t * t; if (t < 2 / d1) return n1 * (t -= 1.5 / d1) * t + 0.75; if (t < 2.5 / d1) return n1 * (t -= 2.25 / d1) * t + 0.9375; return n1 * (t -= 2.625 / d1) * t + 0.984375; },
+};
+
+let _tweens = [], _floaters = [], _trails = [];
+let _hitstop = 0, _combo = 0, _comboT = 0;
+
+// Animate numeric props: tween(sprite, { x: 200, alpha: 0 }, 0.4, "outBack")
+export function tween(target, props, dur, easeName = "outQuad", onDone) {
+  _tweens.push({ target, dur: Math.max(1e-4, dur), t: 0, ease: ease[easeName] || ease.outQuad, onDone,
+    from: Object.fromEntries(Object.keys(props).map((k) => [k, target[k] ?? 0])), to: props });
+}
+// Floating text — damage numbers, "+1", pickups. x,y in the space you draw.
+export function floater(text, x, y, opts = {}) {
+  _floaters.push({ text: String(text), x, y, vy: opts.vy ?? -46, life: opts.life ?? 0.9, maxLife: opts.life ?? 0.9,
+    color: opts.color ?? "#fff", size: (opts.size ?? 18) * comboMul(), drift: (Math.random() * 2 - 1) * (opts.drift ?? 12) });
+}
+// Motion trail — drop several along a dash for a streak. img may be null.
+export function ghost(x, y, img, opts = {}) {
+  _trails.push({ x, y, img: img ?? null, w: opts.w ?? 32, h: opts.h ?? 32, life: opts.life ?? 0.25, maxLife: opts.life ?? 0.25,
+    color: opts.color ?? "rgba(120,180,255,0.5)", scale: opts.scale ?? 1, endScale: opts.endScale ?? 1.25 });
+}
+// Hit-stop — freeze-frame for impact weight. Gate gameplay dt: if (hitstopActive()) dt = 0;
+export function hitstop(sec) { _hitstop = Math.max(_hitstop, sec); }
+export function hitstopActive() { return _hitstop > 0; }
+// Combo escalation — bumpCombo() per chained hit; comboMul() scales feedback.
+export function bumpCombo(window = 1.2) { _combo += 1; _comboT = window; }
+export function comboMul() { return 1 + Math.min(_combo, 8) * 0.12; }
+// Hurt flash — white-out alpha for a sprite given a decreasing hit timer.
+export function hurtFlash(timer, dur = 0.18) { return timer > 0 ? Math.min(1, timer / dur) * 0.8 : 0; }
+
+export function updateJuice(dt) {
+  if (_hitstop > 0) _hitstop = Math.max(0, _hitstop - dt);
+  if (_comboT > 0) { _comboT -= dt; if (_comboT <= 0) _combo = 0; }
+  for (const a of _tweens) { a.t = Math.min(1, a.t + dt / a.dur); const e = a.ease(a.t); for (const k in a.to) a.target[k] = a.from[k] + (a.to[k] - a.from[k]) * e; if (a.t >= 1 && a.onDone) a.onDone(); }
+  _tweens = _tweens.filter((a) => a.t < 1);
+  for (const f of _floaters) { f.life -= dt; f.y += f.vy * dt; f.x += f.drift * dt; f.vy += 34 * dt; }
+  _floaters = _floaters.filter((f) => f.life > 0);
+  for (const g of _trails) g.life -= dt;
+  _trails = _trails.filter((g) => g.life > 0);
+}
+export function drawJuice(ctx) {
+  for (const g of _trails) {
+    const k = g.life / g.maxLife, s = g.scale + (g.endScale - g.scale) * (1 - k);
+    ctx.save(); ctx.globalAlpha = k * 0.6;
+    if (g.img) ctx.drawImage(g.img, g.x - (g.w * s) / 2, g.y - (g.h * s) / 2, g.w * s, g.h * s);
+    else { ctx.fillStyle = g.color; ctx.beginPath(); ctx.arc(g.x, g.y, (g.w * s) / 2, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+  if (_floaters.length) {
+    ctx.save(); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (const f of _floaters) {
+      ctx.globalAlpha = Math.min(1, f.life / (f.maxLife * 0.5));
+      ctx.font = \`bold \${Math.round(f.size)}px system-ui, sans-serif\`;
+      ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,0.6)";
+      ctx.strokeText(f.text, f.x, f.y);
+      ctx.fillStyle = f.color; ctx.fillText(f.text, f.x, f.y);
+    }
+    ctx.restore();
+  }
+}
+`;
+
 const WEB_LEVELS_JSON = `{
   "levels": [
     { "id": "level1", "file": "data/level1.json" }
@@ -622,6 +704,7 @@ function webFiles(name: string, conventions: string): ScaffoldFile[] {
     { rel: 'src/render.js', body: WEB_RENDER_JS },
     { rel: 'src/input.js', body: WEB_INPUT_JS },
     { rel: 'src/assets.js', body: WEB_ASSETS_JS },
+    { rel: 'src/juice.js', body: WEB_JUICE_JS },
     { rel: 'data/levels.json', body: WEB_LEVELS_JSON },
     { rel: 'data/level1.json', body: WEB_LEVEL1_JSON },
     { rel: '.gitignore', body: WEB_GITIGNORE },

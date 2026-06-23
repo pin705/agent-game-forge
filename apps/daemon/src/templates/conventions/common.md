@@ -655,6 +655,8 @@ Phase plans have VERIFY rows (e.g. "open Play tab and see X"). You CAN'T open th
 
 **Run the static verifier instead** — at the end of a phase: `python .agents/tools/verify-game.py`. It checks JS syntax, JSON validity, OGF level schema, asset-path resolution, and index.html refs (exit 1 on errors). This is the chassis-correct, headless distillation of OpenGame's debug loop. See `.ogf/conventions/verification.md`.
 
+**Game feel is mandatory, not a final polish pass.** Before a phase counts as done, apply `.ogf/conventions/juice.md`: every hit / death / pickup / transition fires the right mix of screen shake, hit-stop, particles, floating text, and eased motion via `src/juice.js`. A game that resolves combat with no feedback is NOT done — it reads as a prototype. The verifier warns when `src/juice.js` isn't wired into the loop.
+
 What you CAN verify:
 
 - File exists with correct path + size

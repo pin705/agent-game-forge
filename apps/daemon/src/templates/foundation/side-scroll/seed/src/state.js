@@ -15,6 +15,12 @@ const state = {
   projectiles: [],
   attacks: [],
   particles: [],
+  floaters: [],   // juice.js — floating damage/pickup text
+  tweens: [],     // juice.js — active property tweens
+  trails: [],     // juice.js — motion ghosts
+  hitstop: 0,     // juice.js — freeze-frame timer (gameplay dt → 0 while > 0)
+  combo: 0,       // juice.js — current hit-chain count
+  comboT: 0,      // juice.js — combo reset timer
   pickups: [],
   hazards: [],
   storyTriggers: {},
@@ -36,6 +42,12 @@ function resetRunState() {
   state.projectiles.length = 0;
   state.attacks.length = 0;
   state.particles.length = 0;
+  state.floaters.length = 0;
+  state.tweens.length = 0;
+  state.trails.length = 0;
+  state.hitstop = 0;
+  state.combo = 0;
+  state.comboT = 0;
   state.storyTriggers = {};
   state.lastCheckpointId = null;
   state.message = null;
