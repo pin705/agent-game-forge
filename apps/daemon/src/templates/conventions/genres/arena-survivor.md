@@ -273,6 +273,14 @@ OGF does not yet have a strong arena-survivor reference project. **For Phase pla
 | `src/overworld.js` | `src/spawner.js` (spawn director instead of NPC overworld) |
 | `data/battle-config.json` | `data/weapon-stats.json` + `data/enemy-spawn-curve.json` |
 
+## Recipes (read at phase-execute time)
+
+Implement these subsystems against the schemas defined above. Read the relevant recipe before writing that module:
+
+- `recipes/arena-survivor/wave-spawner.md` — time-keyed wave director, ring-outside-viewport spawn, alive-cap, difficulty curve
+- `recipes/arena-survivor/auto-attack.md` — auto-firing weapons dispatched by kind, pooled projectiles, level-merged stats
+- `recipes/arena-survivor/xp-and-levelup.md` — XP orbs + magnet, rising level curve, weighted 3-of-N upgrade-card draw
+
 ## Reference repos
 
 - [Emanuele Feronato VS prototype](https://emanueleferonato.com/2024/11/29/quick-html5-prototype-of-vampire-survivors-built-with-phaser-like-the-original-game/) — single-file canonical

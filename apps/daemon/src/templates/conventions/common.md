@@ -267,6 +267,17 @@ Every named animation = one separate `generate2dsprite` call. Player has 4 anims
 
 Use **inline** when the entity appears once or twice and doesn't need shared stats. Use **catalog** when multiple instances share definition.
 
+## Asset sourcing — try FREE assets BEFORE generating (read first)
+
+Generating every sprite/tile/sfx with an image model is the biggest recurring COST. Before any `generate2dsprite` / `generate2dmap` call, try the free-asset broker — it downloads commercial-safe (CC0 / cleared) assets that already exist, for $0:
+
+```
+python .agents/tools/fetch-asset.py search "<what you need>" --kind <sprite|tileset|pickup|sfx|music|background>
+python .agents/tools/fetch-asset.py fetch  "<query>" assets/<path>.png --kind <kind>
+```
+
+Fetched assets are plain PNGs wired into `data/*.json` exactly like generated ones — Scene editor + Play tab are unchanged. **Read `.ogf/conventions/asset-sourcing.md` for the free-first rule + commercial-safety policy** (fetch is commercial-safe by default; attribution auto-recorded in `data/asset-credits.json`). Generate only when no free asset fits a restrictive/custom art style.
+
 ## Image generation skill — read these in order
 
 1. `.agents/skills/generate2dmap/agents/openai.yaml` (distilled defaults)
@@ -626,6 +637,8 @@ Sprites land on disk + the user reloads the game and sees nothing = you stopped 
 ## Phase verification — you are headless, don't try to see
 
 Phase plans have VERIFY rows (e.g. "open Play tab and see X"). You CAN'T open the Play tab — the user does. Don't try to spawn Chrome, run `npm run dev`, screenshot, or otherwise simulate visual verification. Those attempts fail and waste 1-2 minutes per phase.
+
+**Run the static verifier instead** — at the end of a phase: `python .agents/tools/verify-game.py`. It checks JS syntax, JSON validity, OGF level schema, asset-path resolution, and index.html refs (exit 1 on errors). This is the chassis-correct, headless distillation of OpenGame's debug loop. See `.ogf/conventions/verification.md`.
 
 What you CAN verify:
 

@@ -292,6 +292,14 @@ OGF does not yet have a strong shmup reference project. **For Phase planning + m
 | `src/overworld.js` | `src/stages.js` (segment-based scroll instead of free overworld) |
 | `data/battle-config.json` | `data/bullet-patterns.json` + `data/wave-script.json` |
 
+## Recipes (read at phase-execute time)
+
+Implement these subsystems against the schemas defined above. Read the relevant recipe before writing that module:
+
+- `recipes/shmup/bullet-patterns.md` — data-driven emitters (stream/spread/ring/homing/lateral_pod), pooled bullets, grazing hitbox
+- `recipes/shmup/enemy-waves.md` — wave-script executor, formations × flight paths, boss-as-final-wave
+- `recipes/shmup/scrolling-bg.md` — autoscroll + segmented background (fixes "stuck-in-place" feel), looping parallax
+
 ## Reference repos
 
 - [Phaser Coding Tips 7](https://phaser.io/tutorials/coding-tips-007) — official walkthrough
