@@ -235,6 +235,35 @@ def ensure_protocol_seed() -> None:
             pass
 
 
+def check_start_scene():
+    # Catch the "Boot failed: unknown scene" class STATICALLY: GAME.startScene
+    # (src/constants.js) must have a matching level id in data/levels.json.
+    # This is a runtime crash the other checks can't see — so check it here.
+    import re
+    levels_f = ROOT / "data" / "levels.json"
+    if not levels_f.exists():
+        return
+    try:
+        manifest = json.loads(levels_f.read_text(encoding="utf-8"))
+    except Exception:
+        return  # malformed JSON is reported by check_json_and_assets
+    ids = [l.get("id") for l in manifest.get("levels", []) if isinstance(l, dict)]
+    start = None
+    for f in sorted(ROOT.glob("src/**/*.js")):
+        m = re.search(r"""startScene\s*:\s*["']([^"']+)["']""", f.read_text(encoding="utf-8", errors="ignore"))
+        if m:
+            start = m.group(1)
+            break
+    if start is None:
+        return  # no startScene declared (non-side-scroll runtime) — skip
+    if not ids:
+        err(f"startScene is '{start}' but data/levels.json has no levels — the game can't boot. Add a level whose id is '{start}'.")
+    elif start not in ids:
+        err(f"startScene '{start}' has no matching id in data/levels.json (have: {ids}) — boot fails with 'Unknown scene'.")
+    else:
+        ok(f"startScene '{start}' resolves to a level")
+
+
 def check_juice():
     # Game-feel gate (advisory): once a project has real code, it should ship and
     # wire src/juice.js. Distilled from OpenGame's effects layer — see
@@ -270,6 +299,7 @@ def verify() -> None:
     check_js()
     check_json_and_assets()
     check_index()
+    check_start_scene()
     check_juice()
     for m in OKS:
         print(f"  ✓ {m}")

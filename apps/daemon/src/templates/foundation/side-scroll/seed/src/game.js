@@ -1,8 +1,36 @@
 let lastFrame = 0;
 
+// Visible error screen: any boot / runtime / async error is painted on the canvas
+// (message + top stack) instead of silently freezing with only a console log.
+// This is the in-game half of the debug protocol — the player can see + report it.
+function drawErrorOverlay(err, label) {
+  const ctx = typeof dom !== "undefined" && dom.ctx;
+  if (!ctx) return;
+  const w = (dom.canvas && dom.canvas.width) || 1280;
+  const h = (dom.canvas && dom.canvas.height) || 720;
+  ctx.save();
+  ctx.fillStyle = "#2a0d0d";
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = "#ffd7d7";
+  ctx.font = "bold 20px monospace";
+  ctx.fillText((label || "Error") + ":", 28, 48);
+  ctx.fillStyle = "#ffecec";
+  ctx.font = "15px monospace";
+  const msg = (err && (err.message || err.toString())) || String(err);
+  let y = 84;
+  for (const ln of (String(msg).match(/.{1,92}/g) || [String(msg)]).slice(0, 4)) { ctx.fillText(ln, 28, y); y += 24; }
+  ctx.fillStyle = "#e7b7b7";
+  ctx.font = "12px monospace";
+  y += 8;
+  for (const s of (err && err.stack ? String(err.stack).split("\n").slice(1, 6) : [])) { ctx.fillText(s.trim().slice(0, 110), 28, y); y += 18; }
+  ctx.restore();
+}
+
 async function boot() {
   initDom();
   initInput();
+  window.addEventListener("error", (e) => drawErrorOverlay(e.error || e.message, "Error"));
+  window.addEventListener("unhandledrejection", (e) => drawErrorOverlay(e.reason, "Async error"));
   await loadConfigs();
   await loadCatalogs();
   await loadGameData();
@@ -12,25 +40,32 @@ async function boot() {
 }
 
 function frame(nowMs) {
-  const now = nowMs / 1000;
-  const dt = Math.min(0.05, lastFrame ? now - lastFrame : 0);
-  lastFrame = now;
-  state.time += dt;
-  state.titleBlink += dt;
-  // Hit-stop: gameplay freezes while the timer runs, but FX + render keep going
-  // so the freeze-frame reads as impact weight, not a stutter. (juice.js)
-  if (state.hitstop > 0) state.hitstop = Math.max(0, state.hitstop - dt);
-  const sdt = state.hitstop > 0 ? 0 : dt;
-  updateInput();
-  handleGlobalInput();
-  updateScene(sdt);
-  updateDialogue(sdt);
-  updateParticles(dt);
-  updateJuice(dt);
-  tickMusic(dt);
-  renderFrame();
-  drawJuice(dom.ctx);
-  requestAnimationFrame(frame);
+  try {
+    const now = nowMs / 1000;
+    const dt = Math.min(0.05, lastFrame ? now - lastFrame : 0);
+    lastFrame = now;
+    state.time += dt;
+    state.titleBlink += dt;
+    // Hit-stop: gameplay freezes while the timer runs, but FX + render keep going
+    // so the freeze-frame reads as impact weight, not a stutter. (juice.js)
+    if (state.hitstop > 0) state.hitstop = Math.max(0, state.hitstop - dt);
+    const sdt = state.hitstop > 0 ? 0 : dt;
+    updateInput();
+    handleGlobalInput();
+    updateScene(sdt);
+    updateDialogue(sdt);
+    updateParticles(dt);
+    updateJuice(dt);
+    tickMusic(dt);
+    renderFrame();
+    drawJuice(dom.ctx);
+    requestAnimationFrame(frame);
+  } catch (err) {
+    // Don't silently freeze: show the error on-canvas (loop stops, overlay stays).
+    console.error(err);
+    state.error = err;
+    drawErrorOverlay(err, "Runtime error");
+  }
 }
 
 function handleGlobalInput() {
@@ -51,11 +86,5 @@ function handleGlobalInput() {
 boot().catch((err) => {
   console.error(err);
   state.error = err;
-  if (dom.ctx) {
-    dom.ctx.fillStyle = "#300";
-    dom.ctx.fillRect(0, 0, VIEW.w, VIEW.h);
-    dom.ctx.fillStyle = "#f2e7d0";
-    dom.ctx.font = "18px monospace";
-    dom.ctx.fillText("Boot failed: " + (err.message || err), 30, 60);
-  }
+  drawErrorOverlay(err, "Boot failed");
 });

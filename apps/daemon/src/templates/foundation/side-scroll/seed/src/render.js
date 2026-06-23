@@ -44,8 +44,19 @@ function drawLevel(ctx) {
     ctx.fillRect(0, 0, VIEW.w, VIEW.h);
     return;
   }
-  ctx.fillStyle = COLORS.ink;
-  ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+  const bg = (typeof state.level.background === "string" && state.level.background[0] === "#") ? state.level.background : COLORS.ink;
+  if (state.level.layers && state.level.layers.length) {
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+  } else {
+    // No parallax art yet → a simple vertical sky gradient so the level reads as
+    // a place, not a black void (graceful pre-art look; real bg layers replace this).
+    const grad = ctx.createLinearGradient(0, 0, 0, VIEW.h);
+    grad.addColorStop(0, bg);
+    grad.addColorStop(1, "#11161f");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+  }
   drawParallax(ctx, state.level);
   drawPlatforms(ctx, state.level);
   drawHazards(ctx);

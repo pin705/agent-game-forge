@@ -5,10 +5,20 @@ async function loadGameData() {
 }
 
 async function switchScene(sceneId, options = {}) {
-  const entry = levelsManifest.levels.find((level) => level.id === sceneId);
-  if (!entry) throw new Error("Unknown scene: " + sceneId);
+  const levels = levelsManifest?.levels || [];
+  let entry = levels.find((level) => level.id === sceneId);
+  if (!entry) {
+    // Never hard-crash the boot on a missing scene id (e.g. GAME.startScene or
+    // an exit target not authored yet). Fall back to the first level so live
+    // preview keeps working; only error if there are truly no levels.
+    if (levels.length === 0) {
+      throw new Error("No levels in data/levels.json yet — add one whose id matches GAME.startScene ('" + sceneId + "').");
+    }
+    console.warn("Unknown scene '" + sceneId + "' — falling back to '" + levels[0].id + "'. Check GAME.startScene / exit targets against data/levels.json.");
+    entry = levels[0];
+  }
   const level = await loadJSON(entry.file);
-  state.sceneId = sceneId;
+  state.sceneId = entry.id;
   state.level = level;
   state.projectiles.length = 0;
   state.attacks.length = 0;

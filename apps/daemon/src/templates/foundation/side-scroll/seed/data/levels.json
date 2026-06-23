@@ -1,4 +1,6 @@
 {
-  "_doc": "Level registry. Each entry: { id, name, file }. Agent populates per spec. First entry is the start scene; later entries are reachable via exit triggers.",
-  "levels": []
+  "_doc": "Level registry. Each entry: { id, name, file }. Agent populates per spec. First entry is the start scene; later entries are reachable via exit triggers. At least one entry must match GAME.startScene (src/constants.js) or the game can't boot.",
+  "levels": [
+    { "id": "border_road", "name": "Border Road", "file": "data/border_road.json" }
+  ]
 }
