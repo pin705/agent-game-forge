@@ -13,6 +13,8 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
+import { RenameDialog } from '@/components/RenameDialog';
+import { DeleteConfirm } from '@/components/DeleteConfirm';
 import { fetchProjects, projectId, type Project } from '@/lib/api';
 
 function timeAgo(ts?: number) {
@@ -26,10 +28,16 @@ function timeAgo(ts?: number) {
 
 export function Dashboard() {
   const [projects, setProjects] = useState<Project[] | null>(null);
-  useEffect(() => {
+  const [renameFor, setRenameFor] = useState<Project | null>(null);
+  const [deleteFor, setDeleteFor] = useState<Project | null>(null);
+
+  const reload = () =>
     fetchProjects()
       .then((r) => setProjects(r.projects))
       .catch(() => setProjects([]));
+
+  useEffect(() => {
+    void reload();
   }, []);
 
   return (
@@ -90,14 +98,14 @@ export function Dashboard() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => toast('Rename — coming soon')}>
+                          <DropdownMenuItem onClick={() => setRenameFor(p)}>
                             <Pencil />
                             Rename
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => toast('Duplicate — coming soon')}>Duplicate</DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-destructive" onClick={() => toast('Delete — coming soon')}>
-                            Delete
+                          <DropdownMenuItem className="text-destructive" onClick={() => setDeleteFor(p)}>
+                            Remove
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -132,6 +140,21 @@ export function Dashboard() {
           </div>
         )}
       </div>
+
+      <RenameDialog
+        open={!!renameFor}
+        onOpenChange={(o) => !o && setRenameFor(null)}
+        projectPath={renameFor?.path ?? ''}
+        currentName={renameFor?.name ?? ''}
+        onRenamed={reload}
+      />
+      <DeleteConfirm
+        open={!!deleteFor}
+        onOpenChange={(o) => !o && setDeleteFor(null)}
+        projectPath={deleteFor?.path ?? ''}
+        projectName={deleteFor?.name ?? ''}
+        onDeleted={reload}
+      />
     </AppShell>
   );
 }
