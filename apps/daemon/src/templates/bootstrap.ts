@@ -204,7 +204,7 @@ function vendoredAgentToolFiles(): ScaffoldFile[] {
     const abs = path.join(AGENT_TOOLS_SRC_DIR, entry);
     const stat = statSync(abs);
     if (!stat.isFile()) continue;
-    if (!/\.(py|sh|md)$/.test(entry)) continue;
+    if (!/\.(py|sh|md|mjs|cjs|js)$/.test(entry)) continue;
     out.push({
       rel: ['.agents', 'tools', entry].join('/'),
       body: readFileSync(abs, 'utf8'),

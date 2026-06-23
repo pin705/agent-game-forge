@@ -12,57 +12,67 @@ function renderFrame() {
   drawParticles(ctx);
   drawHud(ctx);
   if (state.mode === "levelup") drawLevelUpOverlay(ctx);
-  if (state.mode === "paused") {
-    ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(0,0,VIEW.w,VIEW.h);
-    ctx.fillStyle = COLORS.text; ctx.font = "bold 36px monospace"; ctx.textAlign = "center";
-    ctx.fillText("PAUSED", VIEW.w/2, VIEW.h/2);
-    ctx.textAlign = "left";
-  }
+  if (state.mode === "paused") drawPauseOverlay(ctx);
 }
 
 function drawLoading(ctx) {
-  ctx.fillStyle = COLORS.ink; ctx.fillRect(0,0,VIEW.w,VIEW.h);
-  ctx.fillStyle = COLORS.text; ctx.font = "24px monospace"; ctx.textAlign = "center";
-  ctx.fillText("Loading...", VIEW.w/2, VIEW.h/2); ctx.textAlign = "left";
+  ctx.fillStyle = COLORS.ink; ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+  crispText(ctx, "Loading...", VIEW.w / 2, VIEW.h / 2, "24px system-ui, sans-serif", COLORS.text, "center");
 }
 
 function drawTitle(ctx) {
-  ctx.fillStyle = COLORS.ink; ctx.fillRect(0,0,VIEW.w,VIEW.h);
-  ctx.fillStyle = COLORS.gold; ctx.font = "bold 56px monospace"; ctx.textAlign = "center";
-  ctx.fillText(GAME.title.toUpperCase(), VIEW.w/2, 240);
-  ctx.fillStyle = COLORS.text; ctx.font = "22px monospace";
-  ctx.fillText("Survive the endless horde", VIEW.w/2, 295);
+  verticalBackdrop(ctx, "#141d30", "#070a12");
+  vignette(ctx, VIEW.w, VIEW.h, "rgba(60,196,122,0.05)", "rgba(0,0,0,0.6)");
+  var pulse = 1 + Math.sin(state.time * 2) * 0.03;
+  ctx.save();
+  ctx.translate(VIEW.w / 2, 232);
+  ctx.scale(pulse, pulse);
+  crispText(ctx, GAME.title.toUpperCase(), 0, 0, "bold 58px system-ui, sans-serif", COLORS.gold, "center");
+  ctx.restore();
+  crispText(ctx, "Survive the endless horde", VIEW.w / 2, 292, "20px system-ui, sans-serif", COLORS.text, "center");
   if (Math.floor(state.titleBlink * 2) % 2 === 0)
-    ctx.fillText("Press Enter to Start", VIEW.w/2, 380);
-  ctx.textAlign = "left";
+    crispText(ctx, "Press Enter to Start", VIEW.w / 2, 384, "18px system-ui, sans-serif", COLORS.muted, "center");
 }
 
 function drawGameOver(ctx) {
-  ctx.fillStyle = COLORS.ink; ctx.fillRect(0,0,VIEW.w,VIEW.h);
-  ctx.fillStyle = COLORS.hp; ctx.font = "bold 52px monospace"; ctx.textAlign = "center";
-  ctx.fillText("GAME OVER", VIEW.w/2, 280);
-  ctx.fillStyle = COLORS.text; ctx.font = "22px monospace";
-  ctx.fillText("Kills: " + state.killCount + "  Score: " + state.score, VIEW.w/2, 340);
-  if (Math.floor(state.titleBlink * 2) % 2 === 0) ctx.fillText("Press Enter to Retry", VIEW.w/2, 400);
-  ctx.textAlign = "left";
+  verticalBackdrop(ctx, "#2a0f12", "#080507");
+  vignette(ctx, VIEW.w, VIEW.h, "rgba(217,54,43,0.06)", "rgba(0,0,0,0.7)");
+  crispText(ctx, "GAME OVER", VIEW.w / 2, 270, "bold 56px system-ui, sans-serif", COLORS.hp, "center");
+  crispText(ctx, "Kills " + state.killCount + "   ·   Score " + state.score, VIEW.w / 2, 332, "22px system-ui, sans-serif", COLORS.text, "center");
+  if (Math.floor(state.titleBlink * 2) % 2 === 0)
+    crispText(ctx, "Press Enter to Retry", VIEW.w / 2, 404, "18px system-ui, sans-serif", COLORS.muted, "center");
+}
+
+function drawPauseOverlay(ctx) {
+  ctx.fillStyle = "rgba(7,10,18,0.62)"; ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+  crispText(ctx, "PAUSED", VIEW.w / 2, VIEW.h / 2, "bold 40px system-ui, sans-serif", COLORS.text, "center");
+}
+
+function verticalBackdrop(ctx, top, bottom) {
+  var g = ctx.createLinearGradient(0, 0, 0, VIEW.h);
+  g.addColorStop(0, top); g.addColorStop(1, bottom);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, VIEW.w, VIEW.h);
 }
 
 function worldToScreen(wx, wy) {
   var sx = wx - state.camera.x + VIEW.w / 2;
   var sy = wy - state.camera.y + VIEW.h / 2;
-  var shake = state.camera.shake > 0 ? (Math.random()*2-1)*state.camera.shake : 0;
+  var shake = state.camera.shake > 0 ? (Math.random() * 2 - 1) * state.camera.shake : 0;
   return { x: sx + shake, y: sy + shake };
 }
 
 function drawArena(ctx) {
-  ctx.fillStyle = COLORS.arena; ctx.fillRect(0,0,VIEW.w,VIEW.h);
-  // Grid lines for visual reference
-  ctx.strokeStyle = "rgba(255,255,255,0.04)"; ctx.lineWidth = 1;
+  verticalBackdrop(ctx, "#1d2740", "#0d1322");
   var gridSize = 64;
-  var offX = (-(state.camera.x % gridSize) + VIEW.w/2) % gridSize;
-  var offY = (-(state.camera.y % gridSize) + VIEW.h/2) % gridSize;
-  for (var gx = offX; gx < VIEW.w; gx += gridSize) { ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,VIEW.h); ctx.stroke(); }
-  for (var gy = offY; gy < VIEW.h; gy += gridSize) { ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(VIEW.w,gy); ctx.stroke(); }
+  var offX = (-(state.camera.x % gridSize) + VIEW.w / 2) % gridSize;
+  var offY = (-(state.camera.y % gridSize) + VIEW.h / 2) % gridSize;
+  ctx.strokeStyle = "rgba(120,160,220,0.07)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (var gx = offX; gx < VIEW.w; gx += gridSize) { ctx.moveTo(gx, 0); ctx.lineTo(gx, VIEW.h); }
+  for (var gy = offY; gy < VIEW.h; gy += gridSize) { ctx.moveTo(0, gy); ctx.lineTo(VIEW.w, gy); }
+  ctx.stroke();
+  vignette(ctx, VIEW.w, VIEW.h, "rgba(80,150,255,0.05)", "rgba(0,0,0,0.55)");
 }
 
 function drawPlayerOnCanvas(ctx) {
@@ -71,10 +81,25 @@ function drawPlayerOnCanvas(ctx) {
   var s = worldToScreen(p.x, p.y);
   var flicker = p.invuln > 0 && Math.floor(state.time * 18) % 2 === 0;
   if (flicker) return;
-  ctx.fillStyle = COLORS.jade;
-  ctx.fillRect(s.x - p.w/2, s.y - p.h/2, p.w, p.h);
-  // Direction dot
-  ctx.fillStyle = "#fff"; ctx.fillRect(s.x - 3, s.y - 3, 6, 6);
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.beginPath();
+  ctx.ellipse(s.x, s.y + p.h / 2 - 2, p.w * 0.5, p.h * 0.22, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  softShape(ctx, s.x - p.w / 2, s.y - p.h / 2, p.w, p.h, 9, COLORS.jade, {
+    gradTop: "#5fe6a8", gradBottom: "#1f8a57", glow: "rgba(60,196,122,0.7)", glowBlur: 16, stroke: "rgba(220,255,235,0.5)", lineWidth: 2
+  });
+  var dir = playerAimDir(p);
+  glowDot(ctx, s.x + dir.x * (p.w * 0.22), s.y + dir.y * (p.h * 0.22), 4, "#eafff5", 8);
+}
+
+function playerAimDir(p) {
+  if (typeof findNearest === "function") {
+    var t = findNearest();
+    if (t) { var dx = t.x - p.x, dy = t.y - p.y, l = Math.hypot(dx, dy) || 1; return { x: dx / l, y: dy / l }; }
+  }
+  return { x: 1, y: 0 };
 }
 
 function drawEnemiesOnCanvas(ctx) {
@@ -83,11 +108,20 @@ function drawEnemiesOnCanvas(ctx) {
   for (var i = 0; i < alive.length; i++) {
     var e = alive[i];
     var s = worldToScreen(e.x, e.y);
-    ctx.fillStyle = e.color; ctx.fillRect(s.x - e.w/2, s.y - e.h/2, e.w, e.h);
-    // HP bar
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.30)";
+    ctx.beginPath();
+    ctx.ellipse(s.x, s.y + e.h / 2 - 1, e.w * 0.5, e.h * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    softShape(ctx, s.x - e.w / 2, s.y - e.h / 2, e.w, e.h, 7, e.color, {
+      gradTop: "#ff7a6e", gradBottom: e.color, glow: "rgba(220,70,60,0.5)", glowBlur: 12, stroke: "rgba(0,0,0,0.35)", lineWidth: 1, highlight: false
+    });
+    ctx.fillStyle = "rgba(20,8,8,0.85)";
+    ctx.fillRect(s.x - e.w * 0.22, s.y - e.h * 0.12, 4, 4);
+    ctx.fillRect(s.x + e.w * 0.22 - 4, s.y - e.h * 0.12, 4, 4);
     if (e.hp < e.maxHp) {
-      ctx.fillStyle = "#400"; ctx.fillRect(s.x - e.w/2, s.y - e.h/2 - 6, e.w, 4);
-      ctx.fillStyle = COLORS.hp; ctx.fillRect(s.x - e.w/2, s.y - e.h/2 - 6, e.w * (e.hp/e.maxHp), 4);
+      gradientBar(ctx, s.x - e.w / 2, s.y - e.h / 2 - 8, e.w, 4, e.hp / e.maxHp, "#ff5d5d", "#ffd23f", "rgba(0,0,0,0.55)");
     }
   }
 }
@@ -98,17 +132,26 @@ function drawProjectilesOnCanvas(ctx) {
   for (var i = 0; i < alive.length; i++) {
     var proj = alive[i];
     var s = worldToScreen(proj.x, proj.y);
-    ctx.fillStyle = proj.color; ctx.fillRect(s.x - proj.w/2, s.y - proj.h/2, proj.w, proj.h);
+    var vlen = Math.hypot(proj.vx || 0, proj.vy || 0) || 1;
+    var tx = s.x - (proj.vx / vlen) * 12, ty = s.y - (proj.vy / vlen) * 12;
+    ctx.save();
+    ctx.strokeStyle = "rgba(120,210,255,0.5)";
+    ctx.lineWidth = 3; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(s.x, s.y); ctx.stroke();
+    ctx.restore();
+    glowDot(ctx, s.x, s.y, 5, "#aee9ff", 12);
   }
 }
 
 function drawXpOrbs(ctx) {
   if (!xpPool) return;
   var alive = xpPool.alive();
+  var pulse = 1 + Math.sin(state.time * 6) * 0.18;
   for (var i = 0; i < alive.length; i++) {
     var o = alive[i];
     var s = worldToScreen(o.x, o.y);
-    ctx.fillStyle = COLORS.xp;
-    ctx.beginPath(); ctx.arc(s.x, s.y, 5, 0, Math.PI*2); ctx.fill();
+    glowDot(ctx, s.x, s.y, 4.5 * pulse, COLORS.xp, 10);
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.fillRect(s.x - 1, s.y - 1, 2, 2);
   }
 }

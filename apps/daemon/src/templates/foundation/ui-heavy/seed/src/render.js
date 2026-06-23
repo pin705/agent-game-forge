@@ -10,65 +10,84 @@ function renderFrame() {
   drawHud(ctx);
 }
 
+function verticalBackdrop(ctx, top, bottom) {
+  const g = ctx.createLinearGradient(0, 0, 0, VIEW.h);
+  g.addColorStop(0, top); g.addColorStop(1, bottom);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+}
+
 function drawLoading(ctx) {
-  ctx.fillStyle = COLORS.ink; ctx.fillRect(0, 0, VIEW.w, VIEW.h);
-  ctx.fillStyle = COLORS.text; ctx.font = "24px monospace"; ctx.textAlign = "center";
-  ctx.fillText("Loading...", VIEW.w / 2, VIEW.h / 2);
-  ctx.textAlign = "left";
+  verticalBackdrop(ctx, "#141d30", "#070a12");
+  crispText(ctx, "Loading...", VIEW.w / 2, VIEW.h / 2, "24px system-ui, sans-serif", COLORS.text, "center");
 }
 
 function drawTitle(ctx) {
-  ctx.fillStyle = COLORS.ink; ctx.fillRect(0, 0, VIEW.w, VIEW.h);
-  ctx.fillStyle = COLORS.gold; ctx.font = "bold 56px monospace"; ctx.textAlign = "center";
-  ctx.fillText(GAME.title.toUpperCase(), VIEW.w / 2, 240);
-  ctx.fillStyle = COLORS.text; ctx.font = "20px monospace";
-  ctx.fillText("A card-battler dungeon", VIEW.w / 2, 290);
+  verticalBackdrop(ctx, "#1a1320", "#08060c");
+  vignette(ctx, VIEW.w, VIEW.h, "rgba(229,200,74,0.06)", "rgba(0,0,0,0.65)");
+  const pulse = 1 + Math.sin(state.time * 2) * 0.03;
+  ctx.save();
+  ctx.translate(VIEW.w / 2, 240);
+  ctx.scale(pulse, pulse);
+  crispText(ctx, GAME.title.toUpperCase(), 0, 0, "bold 58px system-ui, sans-serif", COLORS.gold, "center");
+  ctx.restore();
+  crispText(ctx, "A card-battler dungeon", VIEW.w / 2, 296, "20px system-ui, sans-serif", COLORS.text, "center");
   if (Math.floor(state.titleBlink * 2) % 2 === 0) {
-    ctx.fillText("Press Enter / Click to Start", VIEW.w / 2, 380);
+    crispText(ctx, "Press Enter / Click to Start", VIEW.w / 2, 384, "18px system-ui, sans-serif", COLORS.text, "center");
   }
-  ctx.fillStyle = COLORS.muted; ctx.font = "14px monospace";
-  ctx.fillText("Floor " + state.floor + "   Score " + state.runScore, VIEW.w / 2, 460);
-  ctx.textAlign = "left";
+  crispText(ctx, "Floor " + state.floor + "   Score " + state.runScore, VIEW.w / 2, 460, "14px system-ui, sans-serif", COLORS.muted, "center");
   // Register start region
   clearClickRegions();
   registerClickRegion("start", 0, 0, VIEW.w, VIEW.h, startGame);
 }
 
 function drawBattleScreen(ctx) {
-  // Background
-  ctx.fillStyle = COLORS.ink; ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+  // Lit-stage backdrop
+  verticalBackdrop(ctx, "#1d2436", "#0a0d16");
+  // faint floor line under the combatants
+  ctx.save();
+  ctx.strokeStyle = "rgba(120,150,200,0.10)";
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, 392); ctx.lineTo(VIEW.w, 392); ctx.stroke();
+  ctx.restore();
+  vignette(ctx, VIEW.w, VIEW.h, "rgba(90,120,200,0.05)", "rgba(0,0,0,0.6)");
 
   // Floor indicator
-  ctx.fillStyle = COLORS.muted; ctx.font = "14px monospace"; ctx.textAlign = "center";
-  ctx.fillText("Floor " + state.floor, VIEW.w / 2, 30);
-  ctx.textAlign = "left";
+  crispText(ctx, "Floor " + state.floor, VIEW.w / 2, 30, "14px system-ui, sans-serif", COLORS.muted, "center");
 
-  // Enemy (right side)
+  // Enemy (right side) — rect 760,160,180x220 unchanged
   const e = state.enemy;
   if (e) {
-    ctx.fillStyle = e.color || COLORS.enemyColor;
-    ctx.fillRect(760, 160, 180, 220);
-    // HP bar
-    ctx.fillStyle = COLORS.hpBack; ctx.fillRect(760, 155, 180, 10);
-    ctx.fillStyle = COLORS.hp;
-    const enemyHpFrac = Math.max(0, e.hp / e.maxHp);
-    ctx.fillRect(760, 155, 180 * enemyHpFrac, 10);
-    ctx.fillStyle = COLORS.text; ctx.font = "14px monospace";
-    ctx.fillText((e.name || "Enemy") + " " + e.hp + "/" + e.maxHp, 760, 150);
-    if (e.block > 0) { ctx.fillStyle = COLORS.block; ctx.fillText("Blk:" + e.block, 920, 150); }
+    const ec = e.color || COLORS.enemyColor;
+    softShape(ctx, 760, 160, 180, 220, 16, ec, {
+      gradTop: "#ff8a7a", gradBottom: ec, glow: "rgba(232,64,96,0.5)", glowBlur: 22,
+      stroke: "rgba(20,8,12,0.5)", lineWidth: 2, highlight: false
+    });
+    // simple eyes for character
+    ctx.fillStyle = "rgba(20,8,12,0.85)";
+    ctx.fillRect(810, 232, 12, 12);
+    ctx.fillRect(878, 232, 12, 12);
+    // HP bar (same footprint: 760,155,180x10)
+    gradientBar(ctx, 760, 155, 180, 10, Math.max(0, e.hp / e.maxHp), "#ff5d5d", "#ffd23f", COLORS.hpBack);
+    crispText(ctx, (e.name || "Enemy") + " " + e.hp + "/" + e.maxHp, 760, 150, "bold 14px system-ui, sans-serif", COLORS.text, "left");
+    if (e.block > 0) crispText(ctx, "Blk:" + e.block, 920, 150, "bold 14px system-ui, sans-serif", COLORS.block, "left");
     // Intent label
-    ctx.fillStyle = COLORS.muted; ctx.font = "12px monospace";
-    ctx.fillText("Intent: atk " + (e.intent ? e.intent.value : "?"), 760, 400);
+    crispText(ctx, "Intent: atk " + (e.intent ? e.intent.value : "?"), 760, 400, "12px system-ui, sans-serif", COLORS.muted, "left");
   }
 
-  // Player (left side)
+  // Player (left side) — rect 340,160,120x160 unchanged
   const p = state.player;
   if (p) {
-    ctx.fillStyle = p.color || COLORS.playerColor;
-    ctx.fillRect(340, 160, 120, 160);
+    const pc = p.color || COLORS.playerColor;
+    softShape(ctx, 340, 160, 120, 160, 14, pc, {
+      gradTop: "#9bfde0", gradBottom: "#1f9c84", glow: "rgba(74,248,192,0.55)", glowBlur: 20,
+      stroke: "rgba(220,255,245,0.45)", lineWidth: 2
+    });
     if (p.block > 0) {
-      ctx.fillStyle = COLORS.block + "88";
-      ctx.fillRect(330, 150, 140, 180);
+      // translucent blue rounded shield overlay (330,150,140x180) with a glow
+      softShape(ctx, 330, 150, 140, 180, 16, "rgba(72,136,200,0.28)", {
+        shadow: false, glow: "rgba(72,136,200,0.55)", glowBlur: 16,
+        stroke: "rgba(140,190,240,0.7)", lineWidth: 2, highlight: false
+      });
     }
   }
 
@@ -78,79 +97,97 @@ function drawBattleScreen(ctx) {
     drawCard(ctx, state.hand[i], i, state.hand.length, i === state.hoveredCard);
   }
 
-  // End Turn button
+  // End Turn button — rect etX,etY,160x50 unchanged
   const etX = VIEW.w - 180, etY = VIEW.h - CARD_H - 110;
-  ctx.fillStyle = state.turn === "player" ? COLORS.gold : COLORS.muted;
-  ctx.fillRect(etX, etY, 160, 50);
-  ctx.fillStyle = COLORS.ink; ctx.font = "bold 16px monospace"; ctx.textAlign = "center";
-  ctx.fillText("End Turn", etX + 80, etY + 30);
-  ctx.textAlign = "left";
+  const active = state.turn === "player";
+  softShape(ctx, etX, etY, 160, 50, 12, active ? COLORS.gold : COLORS.muted, {
+    gradTop: active ? "#ffe27a" : "#8a93a6", gradBottom: active ? "#c79a1f" : "#5a6172",
+    glow: active ? "rgba(229,200,74,0.45)" : null, glowBlur: 16,
+    stroke: "rgba(0,0,0,0.35)", lineWidth: 1, highlight: false
+  });
+  crispText(ctx, "End Turn", etX + 80, etY + 32, "bold 16px system-ui, sans-serif", COLORS.ink, "center");
   registerClickRegion("endTurn", etX, etY, 160, 50, function() { if (state.turn === "player") endPlayerTurn(); });
+}
+
+function cardBandColors(type) {
+  if (type === "attack") return { c0: "#e86a5c", c1: COLORS.cardAttack };
+  if (type === "block") return { c0: "#62a4e0", c1: COLORS.cardBlock };
+  if (type === "heal") return { c0: "#68d88c", c1: COLORS.cardHeal };
+  return { c0: COLORS.cardEdge, c1: COLORS.cardEdge };
 }
 
 function drawCard(ctx, card, index, total, hovered) {
   const r = cardRect(index, total);
   const y = hovered ? r.y - 20 : r.y;
-  ctx.fillStyle = COLORS.cardBg;
-  ctx.fillRect(r.x, y, r.w, r.h);
-  ctx.strokeStyle = hovered ? COLORS.cardHighlight : cardColor(card.type);
-  ctx.lineWidth = 2;
-  ctx.strokeRect(r.x, y, r.w, r.h);
-  // Card name
-  ctx.fillStyle = COLORS.text; ctx.font = "bold 13px monospace"; ctx.textAlign = "center";
-  ctx.fillText(card.name, r.x + r.w / 2, y + 24);
-  // Cost gem
-  ctx.fillStyle = COLORS.energyColor;
-  ctx.beginPath(); ctx.arc(r.x + 18, y + 18, 12, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = COLORS.ink; ctx.font = "bold 14px monospace";
-  ctx.fillText(String(card.cost), r.x + 18, y + 23);
-  // Type color band
-  ctx.fillStyle = cardColor(card.type);
-  ctx.fillRect(r.x + 8, y + 36, r.w - 16, 4);
-  // Art area placeholder
-  ctx.fillStyle = cardColor(card.type) + "33";
-  ctx.fillRect(r.x + 8, y + 48, r.w - 16, 80);
-  // Type icon (text-only, no emoji to avoid font issues)
-  ctx.fillStyle = cardColor(card.type); ctx.font = "bold 14px monospace";
+  const accent = cardColor(card.type);
+  // Polished card body: vertical dark-slate gradient + drop shadow (deeper when raised),
+  // glowing stroke when hovered. Footprint stays r.x/r.w and CARD_H — hit-test intact.
+  softShape(ctx, r.x, y, r.w, r.h, 12, COLORS.cardBg, {
+    gradTop: "#222c40", gradBottom: "#121826",
+    shadowBlur: hovered ? 24 : 12, shadowOffsetY: hovered ? 10 : 5,
+    glow: hovered ? (accent + "cc") : null, glowBlur: 22,
+    stroke: hovered ? COLORS.cardHighlight : accent, lineWidth: hovered ? 3 : 2,
+    highlight: false
+  });
+  // Colored top band by type
+  const band = cardBandColors(card.type);
+  const bandG = ctx.createLinearGradient(r.x, y, r.x + r.w, y);
+  bandG.addColorStop(0, band.c0); bandG.addColorStop(1, band.c1);
+  fillRoundRect(ctx, r.x + 8, y + 8, r.w - 16, 26, 7, bandG);
+  // Card name (on the band)
+  crispText(ctx, card.name, r.x + r.w / 2, y + 26, "bold 13px system-ui, sans-serif", "#fff", "center");
+  // Art area placeholder — faint tinted panel
+  fillRoundRect(ctx, r.x + 8, y + 44, r.w - 16, 84, 8, accent + "26");
+  // Type icon (text-only)
   const typeLabel = card.type === "attack" ? "ATK" : card.type === "block" ? "DEF" : "HEL";
-  ctx.fillText(typeLabel, r.x + r.w / 2, y + 94);
+  crispText(ctx, typeLabel, r.x + r.w / 2, y + 92, "bold 14px system-ui, sans-serif", accent, "center");
   // Value
-  ctx.fillStyle = COLORS.text; ctx.font = "bold 18px monospace";
-  ctx.fillText(String(card.value), r.x + r.w / 2, y + 148);
-  // Text
-  ctx.fillStyle = COLORS.muted; ctx.font = "11px monospace";
+  crispText(ctx, String(card.value), r.x + r.w / 2, y + 152, "bold 20px system-ui, sans-serif", COLORS.text, "center");
+  // Text (wrapped)
   const words = card.text.split(' ');
-  let line = '', ly = y + 168;
+  let line = '', ly = y + 172;
   for (let wi = 0; wi < words.length; wi++) {
     const w = words[wi];
     const test = line + w + ' ';
-    if (test.length > 16 && line) { ctx.fillText(line, r.x + r.w / 2, ly); line = w + ' '; ly += 14; }
-    else { line = test; }
+    if (test.length > 16 && line) {
+      crispText(ctx, line, r.x + r.w / 2, ly, "11px system-ui, sans-serif", COLORS.muted, "center");
+      line = w + ' '; ly += 14;
+    } else { line = test; }
   }
-  if (line) ctx.fillText(line, r.x + r.w / 2, ly);
-  ctx.textAlign = "left";
+  if (line) crispText(ctx, line, r.x + r.w / 2, ly, "11px system-ui, sans-serif", COLORS.muted, "center");
+  // Cost gem (glowing) with the number on top — drawn last so it sits above the band
+  glowDot(ctx, r.x + 18, y + 18, 13, COLORS.energyColor, 12);
+  crispText(ctx, String(card.cost), r.x + 18, y + 23, "bold 14px system-ui, sans-serif", COLORS.ink, "center");
 }
 
 function drawGameOver(ctx) {
-  ctx.fillStyle = COLORS.ink; ctx.fillRect(0, 0, VIEW.w, VIEW.h);
-  ctx.fillStyle = COLORS.hp; ctx.font = "bold 52px monospace"; ctx.textAlign = "center";
-  ctx.fillText("DEFEAT", VIEW.w / 2, 280);
-  ctx.fillStyle = COLORS.text; ctx.font = "22px monospace";
-  ctx.fillText("Score: " + state.runScore, VIEW.w / 2, 340);
-  if (Math.floor(state.titleBlink * 2) % 2 === 0) ctx.fillText("Press Enter to Retry", VIEW.w / 2, 420);
-  ctx.textAlign = "left";
+  verticalBackdrop(ctx, "#2a0f12", "#080507");
+  vignette(ctx, VIEW.w, VIEW.h, "rgba(217,54,43,0.06)", "rgba(0,0,0,0.7)");
+  const pulse = 1 + Math.sin(state.time * 2) * 0.03;
+  ctx.save();
+  ctx.translate(VIEW.w / 2, 280);
+  ctx.scale(pulse, pulse);
+  crispText(ctx, "DEFEAT", 0, 0, "bold 52px system-ui, sans-serif", COLORS.hp, "center");
+  ctx.restore();
+  crispText(ctx, "Score: " + state.runScore, VIEW.w / 2, 340, "22px system-ui, sans-serif", COLORS.text, "center");
+  if (Math.floor(state.titleBlink * 2) % 2 === 0)
+    crispText(ctx, "Press Enter to Retry", VIEW.w / 2, 420, "18px system-ui, sans-serif", COLORS.muted, "center");
   clearClickRegions();
   registerClickRegion("retry", 0, 0, VIEW.w, VIEW.h, startGame);
 }
 
 function drawResult(ctx) {
-  ctx.fillStyle = COLORS.ink; ctx.fillRect(0, 0, VIEW.w, VIEW.h);
-  ctx.fillStyle = COLORS.gold; ctx.font = "bold 48px monospace"; ctx.textAlign = "center";
-  ctx.fillText("VICTORY!", VIEW.w / 2, 260);
-  ctx.fillStyle = COLORS.text; ctx.font = "22px monospace";
-  ctx.fillText("Score: " + Math.round(state.runScore), VIEW.w / 2, 330);
-  if (Math.floor(state.titleBlink * 2) % 2 === 0) ctx.fillText("Press Enter for Next Battle", VIEW.w / 2, 410);
-  ctx.textAlign = "left";
+  verticalBackdrop(ctx, "#141d30", "#070a12");
+  vignette(ctx, VIEW.w, VIEW.h, "rgba(229,200,74,0.07)", "rgba(0,0,0,0.65)");
+  const pulse = 1 + Math.sin(state.time * 2) * 0.03;
+  ctx.save();
+  ctx.translate(VIEW.w / 2, 260);
+  ctx.scale(pulse, pulse);
+  crispText(ctx, "VICTORY!", 0, 0, "bold 48px system-ui, sans-serif", COLORS.gold, "center");
+  ctx.restore();
+  crispText(ctx, "Score: " + Math.round(state.runScore), VIEW.w / 2, 330, "22px system-ui, sans-serif", COLORS.text, "center");
+  if (Math.floor(state.titleBlink * 2) % 2 === 0)
+    crispText(ctx, "Press Enter for Next Battle", VIEW.w / 2, 410, "18px system-ui, sans-serif", COLORS.muted, "center");
   clearClickRegions();
   registerClickRegion("next", 0, 0, VIEW.w, VIEW.h, startNextBattle);
 }

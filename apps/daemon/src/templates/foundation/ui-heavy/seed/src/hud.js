@@ -1,26 +1,19 @@
 function drawHud(ctx) {
   if (state.screen !== "battle") return;
-  // Player HP bar (left side)
   const p = state.player;
-  ctx.fillStyle = COLORS.panel;
-  ctx.fillRect(20, VIEW.h - CARD_H - 110, 240, 80);
-  ctx.fillStyle = COLORS.hpBack;
-  ctx.fillRect(30, VIEW.h - CARD_H - 90, 220, 16);
-  ctx.fillStyle = COLORS.hp;
-  ctx.fillRect(30, VIEW.h - CARD_H - 90, 220 * (p.hp / p.maxHp), 16);
-  ctx.fillStyle = COLORS.text;
-  ctx.font = "14px monospace";
-  ctx.fillText("HP: " + p.hp + " / " + p.maxHp, 30, VIEW.h - CARD_H - 100);
+  // Player stat panel (left side) — same footprint: 20, VIEW.h-CARD_H-110, 240x80
+  const panelY = VIEW.h - CARD_H - 110;
+  softShape(ctx, 20, panelY, 240, 80, 12, COLORS.panel, {
+    shadowBlur: 14, highlight: false, stroke: "rgba(120,160,220,0.18)", lineWidth: 1
+  });
+  // HP label + bar (bar at 30, VIEW.h-CARD_H-90, 220x16)
+  crispText(ctx, "HP: " + p.hp + " / " + p.maxHp, 30, VIEW.h - CARD_H - 100, "bold 14px system-ui, sans-serif", COLORS.text, "left");
   if (p.block > 0) {
-    ctx.fillStyle = COLORS.block;
-    ctx.fillText("Shield: " + p.block, 160, VIEW.h - CARD_H - 100);
+    crispText(ctx, "Shield: " + p.block, 160, VIEW.h - CARD_H - 100, "bold 14px system-ui, sans-serif", COLORS.block, "left");
   }
+  gradientBar(ctx, 30, VIEW.h - CARD_H - 90, 220, 16, Math.max(0, p.hp / p.maxHp), "#ff5d5d", "#ff9a3f", COLORS.hpBack);
   // Energy
-  ctx.fillStyle = COLORS.energyColor;
-  ctx.font = "bold 20px monospace";
-  ctx.fillText("E: " + state.energy + "/" + state.maxEnergy, 30, VIEW.h - CARD_H - 60);
+  crispText(ctx, "E: " + state.energy + "/" + state.maxEnergy, 30, VIEW.h - CARD_H - 60, "bold 20px system-ui, sans-serif", COLORS.energyColor, "left");
   // Deck/discard counts
-  ctx.fillStyle = COLORS.muted;
-  ctx.font = "13px monospace";
-  ctx.fillText("Deck: " + state.deck.length + "  Discard: " + state.discard.length, 30, VIEW.h - CARD_H - 40);
+  crispText(ctx, "Deck: " + state.deck.length + "  Discard: " + state.discard.length, 30, VIEW.h - CARD_H - 40, "13px system-ui, sans-serif", COLORS.muted, "left");
 }

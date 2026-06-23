@@ -1,16 +1,20 @@
 function drawHud(ctx) {
   var p = state.player;
   if (!p) return;
-  // HP
-  ctx.fillStyle = COLORS.hpBack; ctx.fillRect(20, 20, 120, 12);
-  ctx.fillStyle = COLORS.hp; ctx.fillRect(20, 20, 120 * Math.max(0, p.hp/p.maxHp), 12);
-  ctx.fillStyle = COLORS.text; ctx.font = "13px monospace";
-  ctx.fillText("HP " + p.hp + "/" + p.maxHp, 20, 16);
-  // Score
-  ctx.fillText("Score: " + state.score, VIEW.w - 150, 30);
-  // Lives
-  ctx.fillText("Lives: " + p.lives, VIEW.w - 150, 50);
-  // Side panels
-  ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.fillRect(0, 0, PLAY_X, VIEW.h);
-  ctx.fillRect(PLAY_X + PLAY_W, 0, VIEW.w - PLAY_X - PLAY_W, VIEW.h);
+
+  // top-left stat panel: rounded translucent body
+  softShape(ctx, 16, 14, 220, 70, 12, "rgba(8,12,22,0.72)", {
+    shadowBlur: 14, highlight: false, stroke: "rgba(74,248,239,0.18)", lineWidth: 1
+  });
+  // HP as a gradient pill bar
+  gradientBar(ctx, 28, 28, 184, 14, Math.max(0, p.hp / p.maxHp), "#ff5d5d", "#ff9a3f", "rgba(0,0,0,0.5)");
+  crispText(ctx, "HP " + p.hp + "/" + p.maxHp, 32, 39, "bold 11px system-ui, sans-serif", "#fff", "left");
+  crispText(ctx, "Lives " + p.lives, 28, 70, "bold 14px system-ui, sans-serif", COLORS.gold, "left");
+
+  // top-right score panel
+  var scoreStr = "Score " + state.score;
+  softShape(ctx, VIEW.w - 196, 14, 180, 40, 12, "rgba(8,12,22,0.72)", {
+    shadowBlur: 14, highlight: false, stroke: "rgba(74,248,239,0.18)", lineWidth: 1
+  });
+  crispText(ctx, scoreStr, VIEW.w - 106, 40, "bold 20px system-ui, sans-serif", COLORS.text, "center");
 }

@@ -116,10 +116,17 @@ let browser;
 try {
   browser = await playwright.chromium.launch({ executablePath: chromePath, headless: true, args: ['--no-sandbox', '--disable-gpu', '--mute-audio'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+  const isNoise = (u) => /\/favicon\.ico(\?|$)/.test(u || '');
+  page.on('console', (m) => {
+    if (m.type() !== 'error') return;
+    // Network 404s are reported (WITH url) by the response handler below — don't
+    // double-count the browser's generic "Failed to load resource" console line.
+    if (/Failed to load resource/i.test(m.text())) return;
+    consoleErrors.push(m.text());
+  });
   page.on('pageerror', (e) => pageErrors.push(e.message || String(e)));
-  page.on('requestfailed', (r) => { const u = r.url(); if (!u.startsWith('data:')) failedRequests.push(`${u} (${r.failure()?.errorText || '?'})`); });
-  page.on('response', (r) => { if (r.status() >= 400) failedRequests.push(`${r.url()} → HTTP ${r.status()}`); });
+  page.on('requestfailed', (r) => { const u = r.url(); if (!u.startsWith('data:') && !isNoise(u)) failedRequests.push(`${u} (${r.failure()?.errorText || '?'})`); });
+  page.on('response', (r) => { const u = r.url(); if (r.status() >= 400 && !isNoise(u)) failedRequests.push(`${u} → HTTP ${r.status()}`); });
 
   // 1) Load
   await page.goto(url, { waitUntil: 'networkidle', timeout: 15000 }).catch((e) => fail(`page.goto failed: ${e.message}`));
@@ -175,9 +182,10 @@ try {
   }
 
   // 4) Real-browser error channels
+  const uniqReqs = [...new Set(failedRequests.map((s) => s.replace(/ (→ HTTP \d+|\(.*\))$/, '')))];
   if (consoleErrors.length) fail(`${consoleErrors.length} console error(s): ${consoleErrors.slice(0, 4).join(' | ')}`);
   if (pageErrors.length) fail(`${pageErrors.length} uncaught page exception(s): ${pageErrors.slice(0, 4).join(' | ')}`);
-  if (failedRequests.length) fail(`${failedRequests.length} failed/404 request(s): ${failedRequests.slice(0, 5).join(' | ')}`);
+  if (uniqReqs.length) fail(`${uniqReqs.length} missing/failed asset(s): ${uniqReqs.slice(0, 6).join(' | ')}`);
 
 } catch (e) {
   fail(`harness error: ${e.message}`);
