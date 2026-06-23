@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { RenameDialog } from '@/components/RenameDialog';
 import { DeleteConfirm } from '@/components/DeleteConfirm';
+import { SettingsButton } from '@/components/SettingsDialog';
 import { fetchProjects, projectId, type Project } from '@/lib/api';
 
 function timeAgo(ts?: number) {
@@ -43,12 +44,15 @@ export function Dashboard() {
   return (
     <AppShell
       right={
-        <Button asChild size="sm">
-          <Link to="/new">
-            <Plus />
-            New game
-          </Link>
-        </Button>
+        <>
+          <SettingsButton />
+          <Button asChild size="sm">
+            <Link to="/new">
+              <Plus />
+              New game
+            </Link>
+          </Button>
+        </>
       }
     >
       <div className="mx-auto w-full max-w-6xl px-6 py-8">

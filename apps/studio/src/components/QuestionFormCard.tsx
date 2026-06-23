@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { fetchFileContent, type FormField, type QuestionForm, type QuestionFormAnswers } from '@/lib/runs';
-import { Markdown } from '@/components/Chat';
+import { Markdown } from '@/components/Markdown';
 
 interface Props {
   form: QuestionForm;
