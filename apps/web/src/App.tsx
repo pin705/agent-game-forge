@@ -19,6 +19,7 @@ import {
   clearPendingSlices,
   createConversation,
   createProject,
+  fsList,
   createRun,
   deleteFile,
   fetchAgents,
@@ -41,6 +42,7 @@ import {
 } from './lib/api.js';
 import { Turn, type TurnStatus } from './components/Turn.js';
 import { SpecProgressCard } from './components/SpecProgressCard.js';
+import { CostChip } from './components/CostChip.js';
 import { FileTree } from './components/FileTree.js';
 import { FileEditor } from './components/FileEditor.js';
 import { EntityInspector } from './components/EntityInspector.js';
@@ -261,7 +263,7 @@ export function App() {
   }, [turns]);
 
   // Files / editor
-  const [tab, setTab] = useState<Tab>('assets');
+  const [tab, setTab] = useState<Tab>('play');
   const [fileTree, setFileTree] = useState<FileNode | null>(null);
   const [selectedFile, setSelectedFile] = useState<{ relPath: string; fileKind?: FileNode['fileKind'] } | null>(null);
   const [recentlyChanged, setRecentlyChanged] = useState<Set<string>>(new Set());
@@ -917,6 +919,44 @@ export function App() {
     [selectProject, notify],
   );
 
+  // Prompt-first onboarding: turn a one-line idea into a real game — auto-create
+  // a web project (no folder/engine picker), then carry the idea into the chat
+  // composer (focused, ready to run) instead of throwing it away.
+  const onCreateFromIdea = useCallback(
+    async (idea: string) => {
+      const text = idea.trim();
+      try {
+        const listing = await fsList('');
+        const parent = listing.cwd;
+        const sep = parent.includes('\\') ? '\\' : '/';
+        const base =
+          text.split(/\s+/).slice(0, 4).join('-').toLowerCase().replace(/[^a-z0-9-]/g, '') ||
+          'my-game';
+        const slug = `${base}-${Date.now().toString(36).slice(-4)}`;
+        const fullPath = `${parent}${parent.endsWith(sep) ? '' : sep}GameForge${sep}${slug}`;
+        const r = await createProject({ path: fullPath, engine: 'web', name: slug });
+        setProjects((prev) => [r.project, ...prev.filter((p) => p.path !== r.project.path)]);
+        setShowOpenModal(false);
+        await selectProject(r.project);
+        if (text) {
+          setPrompt(text);
+          window.setTimeout(() => {
+            const el = document.querySelector('.composer-box textarea') as HTMLTextAreaElement | null;
+            el?.focus();
+            el?.setSelectionRange(text.length, text.length);
+          }, 80);
+        }
+      } catch (err) {
+        notify({
+          kind: 'error',
+          title: 'Could not create game',
+          body: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+    [selectProject, notify],
+  );
+
   function appendEventToLastTurn(ev: AgentEvent) {
     setTurns((prev) => {
       if (prev.length === 0) return prev;
@@ -1294,7 +1334,7 @@ export function App() {
             onForward={navForward}
           />
         ) : (
-          <EmptyEditor onOpen={() => setShowOpenModal(true)} />
+          <EmptyEditor onOpen={() => setShowOpenModal(true)} onCreateFromIdea={onCreateFromIdea} />
         )}
 
         {!agentCollapsed && (
@@ -1343,11 +1383,11 @@ export function App() {
             type="button"
             className="agent-restore"
             onClick={() => setAgentCollapsed(false)}
-            title="Show Codex chat (⌘⇧A)"
-            aria-label="Show Codex chat"
+            title="Show Assistant (⌘⇧A)"
+            aria-label="Show Assistant"
           >
             <span className="agent-restore-chev">{I.caret}</span>
-            <span className="agent-restore-lbl">Codex</span>
+            <span className="agent-restore-lbl">Assistant</span>
           </button>
         )}
       </div>
@@ -1587,6 +1627,7 @@ function EditorPane(props: {
           </button>
         </div>
         <span className="grow" />
+        <CostChip projectPath={props.project.path} rev={props.metadataRev} />
         <button
           type="button"
           className="btn btn-sm btn-ghost btn-icon"
@@ -2028,27 +2069,48 @@ function PlaceholderView({ title, hint }: { title: string; hint: string }) {
 }
 
 function EmptyEditor({ onOpen }: { onOpen: () => void }) {
+  const [idea, setIdea] = useState('');
+  const genres = ['Platformer', 'Top-down', 'Tower defense', 'Survivor', 'Shmup', 'Grid puzzle', 'Card battler'];
   return (
     <div className="empty-state">
-      <div className="empty-card">
-        <img
-          className="empty-logo"
-          src="/ogf-logo-256.png"
-          srcSet="/ogf-logo-128.png 1x, /ogf-logo-256.png 2x, /ogf-logo-512.png 4x"
-          alt=""
-          width={128}
-          height={128}
-        />
+      <div className="home-hero">
         <span className="brand-title brand-title-large" aria-label="Agent Game Forge">
           <span className="brand-agent">Agent</span>
           <span className="brand-game">Game</span>
           <span className="brand-forge">Forge</span>
         </span>
-        <h2>Open a project to begin</h2>
-        <p>Pick a Godot, Unity, or web game folder. Codex will run with that folder as its workspace.</p>
-        <button className="btn btn-primary" onClick={onOpen}>
-          {I.folder} Open project folder
-        </button>
+        <h2 className="home-h1">What do you want to make?</h2>
+        <p className="home-sub">
+          Describe a game — the Assistant builds it with free assets and a live preview. Ships at <b>$0</b>.
+        </p>
+        <div className="home-box">
+          <textarea
+            value={idea}
+            onChange={(e) => setIdea(e.target.value)}
+            rows={2}
+            placeholder="A sokoban puzzle in a stone dungeon — push crates onto glowing targets…"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                onOpen();
+              }
+            }}
+          />
+          <div className="home-box-row">
+            <span className="home-hint">7 genres · no code</span>
+            <button className="btn btn-primary" onClick={onOpen}>
+              Create →
+            </button>
+          </div>
+        </div>
+        <div className="home-chips">
+          {genres.map((g) => (
+            <button key={g} className="home-chip" onClick={onOpen}>
+              {g}
+            </button>
+          ))}
+        </div>
+        <p className="home-foot">Open or create a project folder to begin — then tell the Assistant your idea.</p>
       </div>
     </div>
   );
