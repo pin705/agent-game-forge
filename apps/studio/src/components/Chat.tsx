@@ -181,9 +181,12 @@ function shortPath(p: string): string {
 export interface ChatProps {
   projectPath: string;
   initialPrompt?: string;
+  /** When set, this panel binds to a specific conversation (from the
+   *  ConversationList). When undefined, it binds to the latest conversation. */
+  conversationId?: string;
 }
 
-export function Chat({ projectPath, initialPrompt }: ChatProps) {
+export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) {
   const [turns, setTurns] = useState<UiTurn[]>([]);
   const [prompt, setPrompt] = useState('');
   const [running, setRunning] = useState(false);
@@ -326,11 +329,14 @@ export function Chat({ projectPath, initialPrompt }: ChatProps) {
     let cancelled = false;
     (async () => {
       try {
-        const { conversations } = await fetchConversations(projectPath);
-        const latest = conversations[0];
-        if (latest && !cancelled) {
-          conversationIdRef.current = latest.id;
-          const active = await fetchActiveRun(latest.id).catch(() => ({ active: false }) as const);
+        let targetId = conversationId ?? null;
+        if (!targetId) {
+          const { conversations } = await fetchConversations(projectPath);
+          targetId = conversations[0]?.id ?? null;
+        }
+        if (targetId && !cancelled) {
+          conversationIdRef.current = targetId;
+          const active = await fetchActiveRun(targetId).catch(() => ({ active: false }) as const);
           if (!cancelled && active.active) {
             runIdRef.current = active.runId;
             setRunning(true);

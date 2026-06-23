@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Plus, Play, Pencil, Upload, MoreVertical, Gamepad2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Plus, Play, Pencil, Upload, MoreVertical, Gamepad2, FolderOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { AppShell } from '@/components/AppShell';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import {
 import { RenameDialog } from '@/components/RenameDialog';
 import { DeleteConfirm } from '@/components/DeleteConfirm';
 import { SettingsButton } from '@/components/SettingsDialog';
+import { OpenProjectDialog } from '@/components/OpenProjectDialog';
 import { fetchProjects, projectId, type Project } from '@/lib/api';
 
 function timeAgo(ts?: number) {
@@ -31,6 +32,8 @@ export function Dashboard() {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [renameFor, setRenameFor] = useState<Project | null>(null);
   const [deleteFor, setDeleteFor] = useState<Project | null>(null);
+  const [openImport, setOpenImport] = useState(false);
+  const navigate = useNavigate();
 
   const reload = () =>
     fetchProjects()
@@ -46,6 +49,10 @@ export function Dashboard() {
       right={
         <>
           <SettingsButton />
+          <Button variant="outline" size="sm" onClick={() => setOpenImport(true)}>
+            <FolderOpen />
+            Open
+          </Button>
           <Button asChild size="sm">
             <Link to="/new">
               <Plus />
@@ -145,6 +152,14 @@ export function Dashboard() {
         )}
       </div>
 
+      <OpenProjectDialog
+        open={openImport}
+        onOpenChange={setOpenImport}
+        onOpened={(p) => {
+          setOpenImport(false);
+          navigate(`/build/${projectId(p)}`);
+        }}
+      />
       <RenameDialog
         open={!!renameFor}
         onOpenChange={(o) => !o && setRenameFor(null)}
