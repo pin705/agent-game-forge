@@ -18,7 +18,7 @@ function drawLoading(ctx) {
   ctx.fillRect(0, 0, VIEW.w, VIEW.h);
   ctx.fillStyle = COLORS.text;
   ctx.font = "24px monospace";
-  ctx.fillText("Loading Ash Banner Road...", 420, 360);
+  ctx.fillText(t("loading"), 420, 360);
 }
 
 function drawTitle(ctx) {
@@ -28,12 +28,12 @@ function drawTitle(ctx) {
   ctx.fillStyle = COLORS.gold;
   ctx.font = "56px monospace";
   ctx.textAlign = "center";
-  ctx.fillText(GAME.title.toUpperCase(), VIEW.w / 2, 255);
+  ctx.fillText(t("title"), VIEW.w / 2, 255);
   ctx.fillStyle = COLORS.text;
   ctx.font = "22px monospace";
-  ctx.fillText("A Sengoku side-scroll action road", VIEW.w / 2, 304);
+  ctx.fillText(t("tagline"), VIEW.w / 2, 304);
   if (Math.floor(state.titleBlink * 2) % 2 === 0) {
-    ctx.fillText("Press Enter / Start", VIEW.w / 2, 392);
+    ctx.fillText(t("start"), VIEW.w / 2, 392);
   }
   ctx.textAlign = "left";
 }

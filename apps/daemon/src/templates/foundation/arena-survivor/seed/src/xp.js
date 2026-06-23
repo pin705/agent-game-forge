@@ -28,9 +28,9 @@ function triggerLevelUp() {
   state.player.xp = 0;
   state.mode = "levelup";
   state.upgradeCards = [
-    { id: "speed",  name: "Swift Feet", desc: "+30 speed" },
-    { id: "maxhp",  name: "Vitality",   desc: "+5 max HP" },
-    { id: "damage", name: "Power",      desc: "+2 damage" }
+    { id: "speed",  nameKey: "up_speed_name", descKey: "up_speed_desc" },
+    { id: "maxhp",  nameKey: "up_hp_name",    descKey: "up_hp_desc" },
+    { id: "damage", nameKey: "up_dmg_name",   descKey: "up_dmg_desc" }
   ];
   tween(state, {}, 0.1, "outBack");
 }

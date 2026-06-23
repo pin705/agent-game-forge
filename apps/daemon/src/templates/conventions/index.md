@@ -14,6 +14,9 @@ This is the contract between Codex and the OGF editor. The editor renders + edit
   juice.md               ← REQUIRED. Game-feel layer (screen shake, hit-stop,
                            floating text, tweens, trails, combo). Mandatory —
                            the difference between a prototype and a real game.
+  i18n-and-mobile.md     ← REQUIRED. Localize to the player's language (EN/VI+,
+                           default from navigator.language), mobile-first touch
+                           controls, asset fallback. Acceptance criteria, not polish.
   wrap-existing-project.md ← Read ONLY if wrapping/converting an existing
                              non-OGF project (sidecar or migrate mode).
                              NOT for fresh OGF scaffolds.
@@ -37,13 +40,14 @@ This is the contract between Codex and the OGF editor. The editor renders + edit
 1. `.ogf/conventions/common.md` — always
 2. `.ogf/conventions/runtime-patterns.md` — always (these are universal)
 3. `.ogf/conventions/juice.md` — always (game-feel is mandatory, not an afterthought)
-4. `.ogf/conventions/genres/<your-genre>.md` — based on spec.md §1 genre
-5. `.ogf/conventions/wrap-existing-project.md` — ONLY if the user asked
+4. `.ogf/conventions/i18n-and-mobile.md` — always (localize to player's language + mobile touch + asset fallback)
+5. `.ogf/conventions/genres/<your-genre>.md` — based on spec.md §1 genre
+6. `.ogf/conventions/wrap-existing-project.md` — ONLY if the user asked
    you to "wrap / convert / OGF-fy / sidecar" an existing non-OGF
    project. Skip for fresh scaffolds.
-6. `.agents/skills/generate2dmap/agents/openai.yaml` — distilled invocation defaults
-7. `.agents/skills/generate2dsprite/agents/openai.yaml` — same
-8. The relevant `SKILL.md` and `references/*.md` if a deeper question
+7. `.agents/skills/generate2dmap/agents/openai.yaml` — distilled invocation defaults
+8. `.agents/skills/generate2dsprite/agents/openai.yaml` — same
+9. The relevant `SKILL.md` and `references/*.md` if a deeper question
 
 ## Philosophy
 

@@ -37,12 +37,17 @@ function initInput() {
 function updateInput() {
   input.prev = input.actions;
   const gp = getGamepadState();
+  if (typeof updateMobileAxis === "function") updateMobileAxis();
+  const tc = (typeof TOUCH !== "undefined") ? TOUCH : null;
+  // A right-half tap is the universal "action": confirm a menu AND act in-game.
+  const tapActs = { start: true, interact: true, jump: true, attack: true };
   const next = {};
   for (const name of Object.keys(KEY_BINDINGS)) {
-    next[name] = KEY_BINDINGS[name].some((key) => input.keys.has(key)) || Boolean(gp[name]);
+    next[name] = KEY_BINDINGS[name].some((key) => input.keys.has(key)) || Boolean(gp[name])
+      || (tc && Boolean(tc[name])) || (tc && tc.start && tapActs[name]);
   }
   const axis = (next.right ? 1 : 0) - (next.left ? 1 : 0);
-  next.x = gp.x !== 0 ? gp.x : axis;
+  next.x = gp.x !== 0 ? gp.x : (tc && tc.x ? tc.x : axis);
   input.actions = next;
 }
 

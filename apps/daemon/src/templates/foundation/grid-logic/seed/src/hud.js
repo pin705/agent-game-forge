@@ -6,7 +6,7 @@ function drawHud(ctx) {
     shadowBlur: 14, highlight: false, stroke: "rgba(120,140,210,0.18)", lineWidth: 1
   });
   // HP pips: small rounded glowing capsules.
-  crispText(ctx, "HP", 30, 38, "bold 12px system-ui, sans-serif", COLORS.muted, "left");
+  crispText(ctx, t("hp"), 30, 38, "bold 12px system-ui, sans-serif", COLORS.muted, "left");
   var maxHp = p ? p.maxHp : 5;
   for (var i = 0; i < maxHp; i++) {
     var px = 56 + i * 16, py = 27;
@@ -17,8 +17,8 @@ function drawHud(ctx) {
       fillRoundRect(ctx, px, py, 11, 11, 4, COLORS.hpBack);
     }
   }
-  crispText(ctx, "Move " + state.moves + "   Turn " + state.turn + "   Score " + state.score, 30, 64, "bold 14px system-ui, sans-serif", COLORS.text, "left");
-  crispText(ctx, "Arrows: move    Z: undo", 30, 86, "12px system-ui, sans-serif", COLORS.muted, "left");
+  crispText(ctx, t("stats", { m: state.moves, t: state.turn, s: state.score }), 30, 64, "bold 14px system-ui, sans-serif", COLORS.text, "left");
+  crispText(ctx, t("hint"), 30, 86, "12px system-ui, sans-serif", COLORS.muted, "left");
 
   // Top-right level-name chip.
   if (state.level) {

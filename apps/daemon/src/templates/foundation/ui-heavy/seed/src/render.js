@@ -18,7 +18,7 @@ function verticalBackdrop(ctx, top, bottom) {
 
 function drawLoading(ctx) {
   verticalBackdrop(ctx, "#141d30", "#070a12");
-  crispText(ctx, "Loading...", VIEW.w / 2, VIEW.h / 2, "24px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("loading"), VIEW.w / 2, VIEW.h / 2, "24px system-ui, sans-serif", COLORS.text, "center");
 }
 
 function drawTitle(ctx) {
@@ -28,13 +28,13 @@ function drawTitle(ctx) {
   ctx.save();
   ctx.translate(VIEW.w / 2, 240);
   ctx.scale(pulse, pulse);
-  crispText(ctx, GAME.title.toUpperCase(), 0, 0, "bold 58px system-ui, sans-serif", COLORS.gold, "center");
+  crispText(ctx, t("title"), 0, 0, "bold 58px system-ui, sans-serif", COLORS.gold, "center");
   ctx.restore();
-  crispText(ctx, "A card-battler dungeon", VIEW.w / 2, 296, "20px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("tagline"), VIEW.w / 2, 296, "20px system-ui, sans-serif", COLORS.text, "center");
   if (Math.floor(state.titleBlink * 2) % 2 === 0) {
-    crispText(ctx, "Press Enter / Click to Start", VIEW.w / 2, 384, "18px system-ui, sans-serif", COLORS.text, "center");
+    crispText(ctx, t("start"), VIEW.w / 2, 384, "18px system-ui, sans-serif", COLORS.text, "center");
   }
-  crispText(ctx, "Floor " + state.floor + "   Score " + state.runScore, VIEW.w / 2, 460, "14px system-ui, sans-serif", COLORS.muted, "center");
+  crispText(ctx, t("titleStats", { floor: state.floor, score: state.runScore }), VIEW.w / 2, 460, "14px system-ui, sans-serif", COLORS.muted, "center");
   // Register start region
   clearClickRegions();
   registerClickRegion("start", 0, 0, VIEW.w, VIEW.h, startGame);
@@ -52,7 +52,7 @@ function drawBattleScreen(ctx) {
   vignette(ctx, VIEW.w, VIEW.h, "rgba(90,120,200,0.05)", "rgba(0,0,0,0.6)");
 
   // Floor indicator
-  crispText(ctx, "Floor " + state.floor, VIEW.w / 2, 30, "14px system-ui, sans-serif", COLORS.muted, "center");
+  crispText(ctx, t("floor", { floor: state.floor }), VIEW.w / 2, 30, "14px system-ui, sans-serif", COLORS.muted, "center");
 
   // Enemy (right side) — rect 760,160,180x220 unchanged
   const e = state.enemy;
@@ -68,10 +68,10 @@ function drawBattleScreen(ctx) {
     ctx.fillRect(878, 232, 12, 12);
     // HP bar (same footprint: 760,155,180x10)
     gradientBar(ctx, 760, 155, 180, 10, Math.max(0, e.hp / e.maxHp), "#ff5d5d", "#ffd23f", COLORS.hpBack);
-    crispText(ctx, (e.name || "Enemy") + " " + e.hp + "/" + e.maxHp, 760, 150, "bold 14px system-ui, sans-serif", COLORS.text, "left");
-    if (e.block > 0) crispText(ctx, "Blk:" + e.block, 920, 150, "bold 14px system-ui, sans-serif", COLORS.block, "left");
+    crispText(ctx, t("enemyName", { name: (e.name || "Enemy"), hp: e.hp, max: e.maxHp }), 760, 150, "bold 14px system-ui, sans-serif", COLORS.text, "left");
+    if (e.block > 0) crispText(ctx, t("enemyBlock", { block: e.block }), 920, 150, "bold 14px system-ui, sans-serif", COLORS.block, "left");
     // Intent label
-    crispText(ctx, "Intent: atk " + (e.intent ? e.intent.value : "?"), 760, 400, "12px system-ui, sans-serif", COLORS.muted, "left");
+    crispText(ctx, t("intent", { value: (e.intent ? e.intent.value : t("intentUnknown")) }), 760, 400, "12px system-ui, sans-serif", COLORS.muted, "left");
   }
 
   // Player (left side) — rect 340,160,120x160 unchanged
@@ -105,7 +105,7 @@ function drawBattleScreen(ctx) {
     glow: active ? "rgba(229,200,74,0.45)" : null, glowBlur: 16,
     stroke: "rgba(0,0,0,0.35)", lineWidth: 1, highlight: false
   });
-  crispText(ctx, "End Turn", etX + 80, etY + 32, "bold 16px system-ui, sans-serif", COLORS.ink, "center");
+  crispText(ctx, t("endTurn"), etX + 80, etY + 32, "bold 16px system-ui, sans-serif", COLORS.ink, "center");
   registerClickRegion("endTurn", etX, etY, 160, 50, function() { if (state.turn === "player") endPlayerTurn(); });
 }
 
@@ -139,7 +139,7 @@ function drawCard(ctx, card, index, total, hovered) {
   // Art area placeholder — faint tinted panel
   fillRoundRect(ctx, r.x + 8, y + 44, r.w - 16, 84, 8, accent + "26");
   // Type icon (text-only)
-  const typeLabel = card.type === "attack" ? "ATK" : card.type === "block" ? "DEF" : "HEL";
+  const typeLabel = card.type === "attack" ? t("typeAttack") : card.type === "block" ? t("typeBlock") : t("typeHeal");
   crispText(ctx, typeLabel, r.x + r.w / 2, y + 92, "bold 14px system-ui, sans-serif", accent, "center");
   // Value
   crispText(ctx, String(card.value), r.x + r.w / 2, y + 152, "bold 20px system-ui, sans-serif", COLORS.text, "center");
@@ -167,11 +167,11 @@ function drawGameOver(ctx) {
   ctx.save();
   ctx.translate(VIEW.w / 2, 280);
   ctx.scale(pulse, pulse);
-  crispText(ctx, "DEFEAT", 0, 0, "bold 52px system-ui, sans-serif", COLORS.hp, "center");
+  crispText(ctx, t("defeat"), 0, 0, "bold 52px system-ui, sans-serif", COLORS.hp, "center");
   ctx.restore();
-  crispText(ctx, "Score: " + state.runScore, VIEW.w / 2, 340, "22px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("score", { score: state.runScore }), VIEW.w / 2, 340, "22px system-ui, sans-serif", COLORS.text, "center");
   if (Math.floor(state.titleBlink * 2) % 2 === 0)
-    crispText(ctx, "Press Enter to Retry", VIEW.w / 2, 420, "18px system-ui, sans-serif", COLORS.muted, "center");
+    crispText(ctx, t("retry"), VIEW.w / 2, 420, "18px system-ui, sans-serif", COLORS.muted, "center");
   clearClickRegions();
   registerClickRegion("retry", 0, 0, VIEW.w, VIEW.h, startGame);
 }
@@ -183,11 +183,11 @@ function drawResult(ctx) {
   ctx.save();
   ctx.translate(VIEW.w / 2, 260);
   ctx.scale(pulse, pulse);
-  crispText(ctx, "VICTORY!", 0, 0, "bold 48px system-ui, sans-serif", COLORS.gold, "center");
+  crispText(ctx, t("victory"), 0, 0, "bold 48px system-ui, sans-serif", COLORS.gold, "center");
   ctx.restore();
-  crispText(ctx, "Score: " + Math.round(state.runScore), VIEW.w / 2, 330, "22px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("score", { score: Math.round(state.runScore) }), VIEW.w / 2, 330, "22px system-ui, sans-serif", COLORS.text, "center");
   if (Math.floor(state.titleBlink * 2) % 2 === 0)
-    crispText(ctx, "Press Enter for Next Battle", VIEW.w / 2, 410, "18px system-ui, sans-serif", COLORS.muted, "center");
+    crispText(ctx, t("nextBattle"), VIEW.w / 2, 410, "18px system-ui, sans-serif", COLORS.muted, "center");
   clearClickRegions();
   registerClickRegion("next", 0, 0, VIEW.w, VIEW.h, startNextBattle);
 }

@@ -99,9 +99,11 @@ async function loadLevel(id) {
 async function boot() {
   initDom();
   initInput();
+  initMobile();
   initPools();
   window.addEventListener("error", function(e) { drawErrorOverlay(e.error || e.message, "Error"); });
   window.addEventListener("unhandledrejection", function(e) { drawErrorOverlay(e.reason, "Async error"); });
+  await loadStrings();
   await loadLevel("arena");
   state.mode = GAME.startMode;
   requestAnimationFrame(frame);
@@ -123,6 +125,7 @@ function frame(nowMs) {
     updateJuice(dt);
     renderFrame();
     drawJuice(dom.ctx);
+    drawMobileControls(dom.ctx);
     requestAnimationFrame(frame);
   } catch (err) {
     console.error(err);

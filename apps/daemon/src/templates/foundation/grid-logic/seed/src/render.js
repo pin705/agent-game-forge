@@ -24,7 +24,7 @@ function renderFrame() {
   drawHud(ctx);
   if (state.mode === "paused") {
     ctx.fillStyle = "rgba(8,8,15,0.62)"; ctx.fillRect(0, 0, VIEW.w, VIEW.h);
-    crispText(ctx, "PAUSED", VIEW.w / 2, VIEW.h / 2, "bold 40px system-ui, sans-serif", COLORS.text, "center");
+    crispText(ctx, t("paused"), VIEW.w / 2, VIEW.h / 2, "bold 40px system-ui, sans-serif", COLORS.text, "center");
   }
 }
 
@@ -36,7 +36,7 @@ function verticalBackdrop(ctx, top, bottom) {
 
 function drawLoading(ctx) {
   ctx.fillStyle = COLORS.ink; ctx.fillRect(0, 0, VIEW.w, VIEW.h);
-  crispText(ctx, "Loading...", VIEW.w / 2, VIEW.h / 2, "24px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("loading"), VIEW.w / 2, VIEW.h / 2, "24px system-ui, sans-serif", COLORS.text, "center");
 }
 
 function drawTitle(ctx) {
@@ -46,21 +46,21 @@ function drawTitle(ctx) {
   ctx.save();
   ctx.translate(VIEW.w / 2, 230);
   ctx.scale(pulse, pulse);
-  crispText(ctx, GAME.title.toUpperCase(), 0, 0, "bold 58px system-ui, sans-serif", COLORS.gold, "center");
+  crispText(ctx, t("title"), 0, 0, "bold 58px system-ui, sans-serif", COLORS.gold, "center");
   ctx.restore();
-  crispText(ctx, "Reach the green exit, avoid the dark", VIEW.w / 2, 290, "20px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("tagline"), VIEW.w / 2, 290, "20px system-ui, sans-serif", COLORS.text, "center");
   if (Math.floor(state.titleBlink * 2) % 2 === 0)
-    crispText(ctx, "Press Enter to Start", VIEW.w / 2, 380, "18px system-ui, sans-serif", COLORS.muted, "center");
-  crispText(ctx, "Arrows: move   ·   Z: undo", VIEW.w / 2, 422, "15px system-ui, sans-serif", COLORS.muted, "center");
+    crispText(ctx, t("start"), VIEW.w / 2, 380, "18px system-ui, sans-serif", COLORS.muted, "center");
+  crispText(ctx, t("hint"), VIEW.w / 2, 422, "15px system-ui, sans-serif", COLORS.muted, "center");
 }
 
 function drawGameOver(ctx) {
   verticalBackdrop(ctx, "#2a0f12", "#080507");
   vignette(ctx, VIEW.w, VIEW.h, "rgba(217,54,43,0.06)", "rgba(0,0,0,0.72)");
-  crispText(ctx, "DEFEATED", VIEW.w / 2, 280, "bold 56px system-ui, sans-serif", COLORS.hp, "center");
-  crispText(ctx, "Survived " + state.turn + " turns   ·   Score " + state.score, VIEW.w / 2, 342, "22px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("defeated"), VIEW.w / 2, 280, "bold 56px system-ui, sans-serif", COLORS.hp, "center");
+  crispText(ctx, t("defeatedResult", { t: state.turn, s: state.score }), VIEW.w / 2, 342, "22px system-ui, sans-serif", COLORS.text, "center");
   if (Math.floor(state.titleBlink * 2) % 2 === 0)
-    crispText(ctx, "Press Enter to Retry", VIEW.w / 2, 404, "18px system-ui, sans-serif", COLORS.muted, "center");
+    crispText(ctx, t("retry"), VIEW.w / 2, 404, "18px system-ui, sans-serif", COLORS.muted, "center");
 }
 
 function drawWinScreen(ctx) {
@@ -70,11 +70,11 @@ function drawWinScreen(ctx) {
   ctx.save();
   ctx.translate(VIEW.w / 2, 280);
   ctx.scale(pulse, pulse);
-  crispText(ctx, "ESCAPED!", 0, 0, "bold 56px system-ui, sans-serif", COLORS.goal, "center");
+  crispText(ctx, t("escaped"), 0, 0, "bold 56px system-ui, sans-serif", COLORS.goal, "center");
   ctx.restore();
-  crispText(ctx, "In " + state.moves + " moves   ·   Score " + state.score, VIEW.w / 2, 342, "22px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("escapedResult", { m: state.moves, s: state.score }), VIEW.w / 2, 342, "22px system-ui, sans-serif", COLORS.text, "center");
   if (Math.floor(state.titleBlink * 2) % 2 === 0)
-    crispText(ctx, "Press Enter to Retry", VIEW.w / 2, 404, "18px system-ui, sans-serif", COLORS.muted, "center");
+    crispText(ctx, t("retry"), VIEW.w / 2, 404, "18px system-ui, sans-serif", COLORS.muted, "center");
 }
 
 function drawGridCells(ctx) {

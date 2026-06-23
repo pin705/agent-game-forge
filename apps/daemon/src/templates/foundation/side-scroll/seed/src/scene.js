@@ -75,7 +75,7 @@ function buildSceneRuntime(level, options) {
 async function startNewRun() {
   resetRunState();
   await switchScene(GAME.startScene, { newPlayer: true });
-  triggerStory("intro", "Smoke hides the pass. Reach the allied gate before the rebel banner rises.");
+  triggerStory("intro", t("storyIntro"));
   ensureAudio();
 }
 
@@ -153,7 +153,7 @@ function updateStoryZones() {
       state.checkpoint = { x: checkpoint.x, y: checkpoint.y - state.player.h };
       if (state.lastCheckpointId !== checkpoint.id) {
         state.lastCheckpointId = checkpoint.id;
-        triggerStory("checkpoint_" + checkpoint.id, "The checkpoint banner is yours.");
+        triggerStory("checkpoint_" + checkpoint.id, t("storyCheckpoint"));
       }
     }
   }
@@ -164,12 +164,12 @@ function updateExits() {
   for (const exit of state.level.exits || []) {
     if (!pointInRect(center, exit)) continue;
     if (exit.requiresBossDefeated && !state.flags.bossDefeated) {
-      triggerStory("gate_locked", "The gate captain still holds the pass.");
+      triggerStory("gate_locked", t("storyGateLocked"));
       return;
     }
     if (exit.target === "win") {
       state.mode = "win";
-      state.endingText = "The ash road opens. The allied banner survives.";
+      state.endingText = t("endingWin");
       playSfx("victory");
       return;
     }
@@ -177,7 +177,7 @@ function updateExits() {
     switchScene(exit.target, { newPlayer: false, spawn: exit.spawn || null }).then(() => {
       state.mode = "playing";
       if (exit.target === GAME.bossScene) {
-        showMessage("Gate Captain Masamune: No ronin passes my banner.", 4);
+        showMessage(t("bossTaunt"), 4);
         playSfx("boss");
       }
     }).catch((err) => {

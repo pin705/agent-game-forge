@@ -29,8 +29,10 @@ function drawErrorOverlay(err, label) {
 async function boot() {
   initDom();
   initInput();
+  initMobile();
   window.addEventListener("error", (e) => drawErrorOverlay(e.error || e.message, "Error"));
   window.addEventListener("unhandledrejection", (e) => drawErrorOverlay(e.reason, "Async error"));
+  await loadStrings();
   await loadConfigs();
   await loadCatalogs();
   await loadGameData();
@@ -59,6 +61,7 @@ function frame(nowMs) {
     tickMusic(dt);
     renderFrame();
     drawJuice(dom.ctx);
+    drawMobileControls(dom.ctx);
     requestAnimationFrame(frame);
   } catch (err) {
     // Don't silently freeze: show the error on-canvas (loop stops, overlay stays).

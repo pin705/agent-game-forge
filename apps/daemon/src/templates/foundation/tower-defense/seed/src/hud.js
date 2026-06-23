@@ -7,16 +7,16 @@ function drawHud(ctx) {
   softShape(ctx, 12, 12, 196, 92, 12, "rgba(10,16,12,0.74)", {
     shadowBlur: 14, highlight: false, stroke: "rgba(229,184,74,0.18)", lineWidth: 1
   });
-  crispText(ctx, "Gold: " + state.gold, 24, 36, "bold 18px system-ui, sans-serif", COLORS.gold, "left");
-  crispText(ctx, "Lives: " + state.lives, 24, 60, "bold 18px system-ui, sans-serif", COLORS.hp, "left");
+  crispText(ctx, t("gold", { n: state.gold }), 24, 36, "bold 18px system-ui, sans-serif", COLORS.gold, "left");
+  crispText(ctx, t("lives", { n: state.lives }), 24, 60, "bold 18px system-ui, sans-serif", COLORS.hp, "left");
   var waveTotal = (state.level && state.level.waves) ? state.level.waves.length : 0;
-  crispText(ctx, "Wave: " + state.wave + "/" + waveTotal, 24, 84, "bold 16px system-ui, sans-serif", COLORS.text, "left");
+  crispText(ctx, t("wave", { n: state.wave, total: waveTotal }), 24, 84, "bold 16px system-ui, sans-serif", COLORS.text, "left");
 
   // Wave countdown
   if (!state.waveActive && state.wave < waveTotal) {
-    crispText(ctx, "Next in " + Math.ceil(state.waveTimer) + "s", 24, 100, "13px system-ui, sans-serif", COLORS.muted, "left");
+    crispText(ctx, t("nextWave", { n: Math.ceil(state.waveTimer) }), 24, 100, "13px system-ui, sans-serif", COLORS.muted, "left");
   } else if (!state.waveActive && state.wave >= waveTotal && state.mode === "playing") {
-    crispText(ctx, "All waves done!", 24, 100, "13px system-ui, sans-serif", COLORS.xp || "#3ac47a", "left");
+    crispText(ctx, t("allWavesDone"), 24, 100, "13px system-ui, sans-serif", COLORS.xp || "#3ac47a", "left");
   }
 
   // Right panel: tower palette
@@ -25,7 +25,7 @@ function drawHud(ctx) {
   softShape(ctx, panelX - 8, 0, 188, types.length * 68 + 16, 12, "rgba(10,16,12,0.74)", {
     shadowBlur: 14, highlight: false, stroke: "rgba(229,184,74,0.14)", lineWidth: 1
   });
-  crispText(ctx, "TOWERS", panelX, 18, "bold 13px system-ui, sans-serif", COLORS.text, "left");
+  crispText(ctx, t("towers"), panelX, 18, "bold 13px system-ui, sans-serif", COLORS.text, "left");
 
   for (var i = 0; i < types.length; i++) {
     var type = types[i];
@@ -50,8 +50,8 @@ function drawHud(ctx) {
       gradTop: lightenHex(def.color, 55), gradBottom: def.color,
       shadowBlur: 6, stroke: "rgba(235,245,255,0.35)", lineWidth: 1, highlight: false
     });
-    crispText(ctx, type.charAt(0).toUpperCase() + type.slice(1), panelX + 42, by + 26, "bold 13px system-ui, sans-serif", canAfford ? COLORS.text : COLORS.muted, "left");
-    crispText(ctx, "$" + def.cost + "  rng " + def.range, panelX + 42, by + 44, "12px system-ui, sans-serif", canAfford ? COLORS.gold : COLORS.hp, "left");
+    crispText(ctx, t("tower_" + type), panelX + 42, by + 26, "bold 13px system-ui, sans-serif", canAfford ? COLORS.text : COLORS.muted, "left");
+    crispText(ctx, t("towerCost", { cost: def.cost, range: def.range }), panelX + 42, by + 44, "12px system-ui, sans-serif", canAfford ? COLORS.gold : COLORS.hp, "left");
 
     _towerButtons.push({ type: type, x: panelX - 4, y: by, w: 176, h: 60 });
   }

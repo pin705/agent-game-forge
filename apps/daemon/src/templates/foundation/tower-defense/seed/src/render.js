@@ -27,7 +27,7 @@ function renderFrame() {
   drawBuildCursor(ctx);
   if (state.mode === "paused") {
     ctx.fillStyle = "rgba(7,12,8,0.6)"; ctx.fillRect(0, 0, VIEW.w, VIEW.h);
-    crispText(ctx, "PAUSED", VIEW.w / 2, VIEW.h / 2, "bold 40px system-ui, sans-serif", COLORS.text, "center");
+    crispText(ctx, t("paused"), VIEW.w / 2, VIEW.h / 2, "bold 40px system-ui, sans-serif", COLORS.text, "center");
   }
 }
 
@@ -39,7 +39,7 @@ function verticalBackdrop(ctx, top, bottom) {
 
 function drawLoading(ctx) {
   verticalBackdrop(ctx, "#1a2616", "#0a0e08");
-  crispText(ctx, "Loading...", VIEW.w / 2, VIEW.h / 2, "24px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("loading"), VIEW.w / 2, VIEW.h / 2, "24px system-ui, sans-serif", COLORS.text, "center");
 }
 
 function drawTitle(ctx) {
@@ -49,29 +49,29 @@ function drawTitle(ctx) {
   ctx.save();
   ctx.translate(VIEW.w / 2, 240);
   ctx.scale(pulse, pulse);
-  crispText(ctx, GAME.title.toUpperCase(), 0, 0, "bold 64px system-ui, sans-serif", COLORS.gold, "center");
+  crispText(ctx, t("title"), 0, 0, "bold 64px system-ui, sans-serif", COLORS.gold, "center");
   ctx.restore();
-  crispText(ctx, "Place towers. Defend the pass.", VIEW.w / 2, 300, "22px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("tagline"), VIEW.w / 2, 300, "22px system-ui, sans-serif", COLORS.text, "center");
   if (Math.floor(state.titleBlink * 2) % 2 === 0)
-    crispText(ctx, "Press Enter to Start", VIEW.w / 2, 384, "18px system-ui, sans-serif", COLORS.muted, "center");
+    crispText(ctx, t("start"), VIEW.w / 2, 384, "18px system-ui, sans-serif", COLORS.muted, "center");
 }
 
 function drawGameOver(ctx) {
   verticalBackdrop(ctx, "#2a0f12", "#080507");
   vignette(ctx, VIEW.w, VIEW.h, "rgba(217,54,43,0.07)", "rgba(0,0,0,0.72)");
-  crispText(ctx, "FORTRESS FALLEN", VIEW.w / 2, 280, "bold 56px system-ui, sans-serif", COLORS.hp, "center");
-  crispText(ctx, "Wave " + state.wave + " cleared", VIEW.w / 2, 340, "22px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("gameOver"), VIEW.w / 2, 280, "bold 56px system-ui, sans-serif", COLORS.hp, "center");
+  crispText(ctx, t("gameOverSub", { n: state.wave }), VIEW.w / 2, 340, "22px system-ui, sans-serif", COLORS.text, "center");
   if (Math.floor(state.titleBlink * 2) % 2 === 0)
-    crispText(ctx, "Press Enter to Retry", VIEW.w / 2, 400, "18px system-ui, sans-serif", COLORS.muted, "center");
+    crispText(ctx, t("retry"), VIEW.w / 2, 400, "18px system-ui, sans-serif", COLORS.muted, "center");
 }
 
 function drawWin(ctx) {
   verticalBackdrop(ctx, "#11321f", "#06120b");
   vignette(ctx, VIEW.w, VIEW.h, "rgba(58,196,122,0.08)", "rgba(0,0,0,0.7)");
-  crispText(ctx, "PASS HELD!", VIEW.w / 2, 280, "bold 56px system-ui, sans-serif", "#3ac47a", "center");
-  crispText(ctx, "All " + ((state.level && state.level.waves) ? state.level.waves.length : 0) + " waves defeated!", VIEW.w / 2, 340, "22px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("win"), VIEW.w / 2, 280, "bold 56px system-ui, sans-serif", "#3ac47a", "center");
+  crispText(ctx, t("winSub", { n: (state.level && state.level.waves) ? state.level.waves.length : 0 }), VIEW.w / 2, 340, "22px system-ui, sans-serif", COLORS.text, "center");
   if (Math.floor(state.titleBlink * 2) % 2 === 0)
-    crispText(ctx, "Press Enter to Replay", VIEW.w / 2, 400, "18px system-ui, sans-serif", COLORS.muted, "center");
+    crispText(ctx, t("replay"), VIEW.w / 2, 400, "18px system-ui, sans-serif", COLORS.muted, "center");
 }
 
 function tracePath(ctx, path) {
@@ -126,10 +126,10 @@ function drawMap(ctx) {
 
     // Entry/exit markers
     glowDot(ctx, path.points[0].x, path.points[0].y, 9, "rgba(58,196,122,0.9)", 14);
-    crispText(ctx, "ENTRY", path.points[0].x + 14, path.points[0].y - 12, "bold 15px system-ui, sans-serif", "#7fe6a8", "left");
+    crispText(ctx, t("entry"), path.points[0].x + 14, path.points[0].y - 12, "bold 15px system-ui, sans-serif", "#7fe6a8", "left");
     var last = path.points[path.points.length - 1];
     glowDot(ctx, last.x, last.y, 9, "rgba(217,54,43,0.9)", 14);
-    crispText(ctx, "EXIT", last.x - 14, last.y - 12, "bold 15px system-ui, sans-serif", "#ff7a6e", "right");
+    crispText(ctx, t("exit"), last.x - 14, last.y - 12, "bold 15px system-ui, sans-serif", "#ff7a6e", "right");
   }
 
   // Build spots: soft dashed rounded rects, faint glow when empty

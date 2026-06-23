@@ -7,13 +7,13 @@ function drawHud(ctx) {
     shadowBlur: 14, highlight: false, stroke: "rgba(120,160,220,0.18)", lineWidth: 1
   });
   // HP label + bar (bar at 30, VIEW.h-CARD_H-90, 220x16)
-  crispText(ctx, "HP: " + p.hp + " / " + p.maxHp, 30, VIEW.h - CARD_H - 100, "bold 14px system-ui, sans-serif", COLORS.text, "left");
+  crispText(ctx, t("hp", { hp: p.hp, max: p.maxHp }), 30, VIEW.h - CARD_H - 100, "bold 14px system-ui, sans-serif", COLORS.text, "left");
   if (p.block > 0) {
-    crispText(ctx, "Shield: " + p.block, 160, VIEW.h - CARD_H - 100, "bold 14px system-ui, sans-serif", COLORS.block, "left");
+    crispText(ctx, t("shield", { block: p.block }), 160, VIEW.h - CARD_H - 100, "bold 14px system-ui, sans-serif", COLORS.block, "left");
   }
   gradientBar(ctx, 30, VIEW.h - CARD_H - 90, 220, 16, Math.max(0, p.hp / p.maxHp), "#ff5d5d", "#ff9a3f", COLORS.hpBack);
   // Energy
-  crispText(ctx, "E: " + state.energy + "/" + state.maxEnergy, 30, VIEW.h - CARD_H - 60, "bold 20px system-ui, sans-serif", COLORS.energyColor, "left");
+  crispText(ctx, t("energy", { energy: state.energy, max: state.maxEnergy }), 30, VIEW.h - CARD_H - 60, "bold 20px system-ui, sans-serif", COLORS.energyColor, "left");
   // Deck/discard counts
-  crispText(ctx, "Deck: " + state.deck.length + "  Discard: " + state.discard.length, 30, VIEW.h - CARD_H - 40, "13px system-ui, sans-serif", COLORS.muted, "left");
+  crispText(ctx, t("deck", { deck: state.deck.length, discard: state.discard.length }), 30, VIEW.h - CARD_H - 40, "13px system-ui, sans-serif", COLORS.muted, "left");
 }

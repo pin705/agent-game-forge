@@ -17,7 +17,7 @@ function renderFrame() {
 
 function drawLoading(ctx) {
   ctx.fillStyle = COLORS.ink; ctx.fillRect(0, 0, VIEW.w, VIEW.h);
-  crispText(ctx, "Loading...", VIEW.w / 2, VIEW.h / 2, "24px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("loading"), VIEW.w / 2, VIEW.h / 2, "24px system-ui, sans-serif", COLORS.text, "center");
 }
 
 function drawTitle(ctx) {
@@ -27,25 +27,25 @@ function drawTitle(ctx) {
   ctx.save();
   ctx.translate(VIEW.w / 2, 232);
   ctx.scale(pulse, pulse);
-  crispText(ctx, GAME.title.toUpperCase(), 0, 0, "bold 58px system-ui, sans-serif", COLORS.gold, "center");
+  crispText(ctx, t("title"), 0, 0, "bold 58px system-ui, sans-serif", COLORS.gold, "center");
   ctx.restore();
-  crispText(ctx, "Survive the endless horde", VIEW.w / 2, 292, "20px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("tagline"), VIEW.w / 2, 292, "20px system-ui, sans-serif", COLORS.text, "center");
   if (Math.floor(state.titleBlink * 2) % 2 === 0)
-    crispText(ctx, "Press Enter to Start", VIEW.w / 2, 384, "18px system-ui, sans-serif", COLORS.muted, "center");
+    crispText(ctx, t("start"), VIEW.w / 2, 384, "18px system-ui, sans-serif", COLORS.muted, "center");
 }
 
 function drawGameOver(ctx) {
   verticalBackdrop(ctx, "#2a0f12", "#080507");
   vignette(ctx, VIEW.w, VIEW.h, "rgba(217,54,43,0.06)", "rgba(0,0,0,0.7)");
-  crispText(ctx, "GAME OVER", VIEW.w / 2, 270, "bold 56px system-ui, sans-serif", COLORS.hp, "center");
-  crispText(ctx, "Kills " + state.killCount + "   ·   Score " + state.score, VIEW.w / 2, 332, "22px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("gameOver"), VIEW.w / 2, 270, "bold 56px system-ui, sans-serif", COLORS.hp, "center");
+  crispText(ctx, t("result", { k: state.killCount, s: state.score }), VIEW.w / 2, 332, "22px system-ui, sans-serif", COLORS.text, "center");
   if (Math.floor(state.titleBlink * 2) % 2 === 0)
-    crispText(ctx, "Press Enter to Retry", VIEW.w / 2, 404, "18px system-ui, sans-serif", COLORS.muted, "center");
+    crispText(ctx, t("retry"), VIEW.w / 2, 404, "18px system-ui, sans-serif", COLORS.muted, "center");
 }
 
 function drawPauseOverlay(ctx) {
   ctx.fillStyle = "rgba(7,10,18,0.62)"; ctx.fillRect(0, 0, VIEW.w, VIEW.h);
-  crispText(ctx, "PAUSED", VIEW.w / 2, VIEW.h / 2, "bold 40px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("paused"), VIEW.w / 2, VIEW.h / 2, "bold 40px system-ui, sans-serif", COLORS.text, "center");
 }
 
 function verticalBackdrop(ctx, top, bottom) {

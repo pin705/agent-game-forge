@@ -5,13 +5,13 @@ function drawHud(ctx) {
   ctx.save();
   // stat panel — rounded translucent card with a soft edge
   softShape(ctx, 22, 18, 292, 80, 12, "rgba(18,13,11,0.78)", { shadowBlur: 14, highlight: false, stroke: COLORS.panelEdge, lineWidth: 1 });
-  crispText(ctx, "RONIN", 40, 48, "bold 18px system-ui, sans-serif", COLORS.text, "left");
+  crispText(ctx, t("hudRonin"), 40, 48, "bold 18px system-ui, sans-serif", COLORS.text, "left");
   gradientBar(ctx, 112, 32, hud.hpBarWidth, 16, p.hp / p.maxHp, "#ff5d5d", "#ff9a3f", "rgba(0,0,0,0.5)");
-  crispText(ctx, "Lives " + p.lives, 40, 84, "15px system-ui, sans-serif", COLORS.gold, "left");
-  crispText(ctx, "Score " + state.score, 162, 84, "15px system-ui, sans-serif", COLORS.gold, "left");
-  if (state.mode === "paused") drawCenteredPanel(ctx, "PAUSED", "Press P or Esc to resume");
-  if (state.mode === "gameover") drawCenteredPanel(ctx, "GAME OVER", "Press Enter to restart");
-  if (state.mode === "win") drawCenteredPanel(ctx, "GATE SECURED", state.endingText || "Press Enter to restart");
+  crispText(ctx, t("hudLives", { n: p.lives }), 40, 84, "15px system-ui, sans-serif", COLORS.gold, "left");
+  crispText(ctx, t("hudScore", { n: state.score }), 162, 84, "15px system-ui, sans-serif", COLORS.gold, "left");
+  if (state.mode === "paused") drawCenteredPanel(ctx, t("paused"), t("pausedHint"));
+  if (state.mode === "gameover") drawCenteredPanel(ctx, t("gameOver"), t("gameOverHint"));
+  if (state.mode === "win") drawCenteredPanel(ctx, t("win"), state.endingText || t("winHint"));
   drawMessage(ctx);
   ctx.restore();
 }

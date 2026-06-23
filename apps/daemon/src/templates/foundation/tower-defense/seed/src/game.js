@@ -83,6 +83,7 @@ async function boot() {
   wireMouseInput();
   window.addEventListener("error", function(e) { drawErrorOverlay(e.error || e.message, "Error"); });
   window.addEventListener("unhandledrejection", function(e) { drawErrorOverlay(e.reason, "Async error"); });
+  await loadStrings();
   await loadLevel("guandu_pass");
   state.mode = GAME.startMode;
   requestAnimationFrame(frame);

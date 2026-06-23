@@ -1,0 +1,43 @@
+{
+  "_doc": "UI string table. Default locale follows the player's browser language (vi → Vietnamese, else English). Add a locale by adding a key with the same string ids. t('id', {vars}) does {placeholder} interpolation. Keep ids stable; translate values.",
+  "en": {
+    "loading": "Loading Ash Banner Road...",
+    "title": "ASH BANNER ROAD",
+    "tagline": "A Sengoku side-scroll action road",
+    "start": "Press Enter / Start",
+    "hudRonin": "RONIN",
+    "hudLives": "Lives {n}",
+    "hudScore": "Score {n}",
+    "paused": "PAUSED",
+    "pausedHint": "Press P or Esc to resume",
+    "gameOver": "GAME OVER",
+    "gameOverHint": "Press Enter to restart",
+    "win": "GATE SECURED",
+    "winHint": "Press Enter to restart",
+    "storyIntro": "Smoke hides the pass. Reach the allied gate before the rebel banner rises.",
+    "storyCheckpoint": "The checkpoint banner is yours.",
+    "storyGateLocked": "The gate captain still holds the pass.",
+    "endingWin": "The ash road opens. The allied banner survives.",
+    "bossTaunt": "Gate Captain Masamune: No ronin passes my banner."
+  },
+  "vi": {
+    "loading": "Đang tải Con Đường Cờ Tro...",
+    "title": "CON ĐƯỜNG CỜ TRO",
+    "tagline": "Đường hành động cuộn ngang thời Chiến Quốc",
+    "start": "Nhấn Enter / Bắt đầu",
+    "hudRonin": "RONIN",
+    "hudLives": "Mạng {n}",
+    "hudScore": "Điểm {n}",
+    "paused": "TẠM DỪNG",
+    "pausedHint": "Nhấn P hoặc Esc để tiếp tục",
+    "gameOver": "KẾT THÚC",
+    "gameOverHint": "Nhấn Enter để chơi lại",
+    "win": "CỬA ẢI ĐÃ CHIẾM",
+    "winHint": "Nhấn Enter để chơi lại",
+    "storyIntro": "Khói che kín đèo. Hãy đến cổng đồng minh trước khi cờ phản loạn dựng lên.",
+    "storyCheckpoint": "Cờ trạm gác giờ là của ngươi.",
+    "storyGateLocked": "Tướng giữ cổng vẫn trấn giữ đèo.",
+    "endingWin": "Con đường tro mở ra. Cờ đồng minh sống sót.",
+    "bossTaunt": "Tướng Giữ Cổng Masamune: Không ronin nào qua được cờ của ta."
+  }
+}

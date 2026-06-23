@@ -29,13 +29,13 @@ function renderFrame() {
   drawHud(ctx);
   if (state.mode === "paused") {
     ctx.fillStyle = "rgba(5,7,15,0.62)"; ctx.fillRect(0,0,VIEW.w,VIEW.h);
-    crispText(ctx, "PAUSED", VIEW.w/2, VIEW.h/2, "bold 40px system-ui, sans-serif", COLORS.text, "center");
+    crispText(ctx, t("paused"), VIEW.w/2, VIEW.h/2, "bold 40px system-ui, sans-serif", COLORS.text, "center");
   }
 }
 
 function drawLoading(ctx) {
   ctx.fillStyle = COLORS.ink; ctx.fillRect(0,0,VIEW.w,VIEW.h);
-  crispText(ctx, "Loading...", VIEW.w/2, VIEW.h/2, "24px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("loading"), VIEW.w/2, VIEW.h/2, "24px system-ui, sans-serif", COLORS.text, "center");
 }
 
 function _verticalBackdrop(ctx, top, bottom) {
@@ -51,20 +51,20 @@ function drawTitle(ctx) {
   ctx.save();
   ctx.translate(VIEW.w / 2, 240);
   ctx.scale(pulse, pulse);
-  crispText(ctx, GAME.title.toUpperCase(), 0, 0, "bold 58px system-ui, sans-serif", COLORS.gold, "center");
+  crispText(ctx, t("title"), 0, 0, "bold 58px system-ui, sans-serif", COLORS.gold, "center");
   ctx.restore();
-  crispText(ctx, "Shoot everything, survive the waves", VIEW.w/2, 300, "20px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("tagline"), VIEW.w/2, 300, "20px system-ui, sans-serif", COLORS.text, "center");
   if (Math.floor(state.titleBlink * 2) % 2 === 0)
-    crispText(ctx, "Press Enter to Start", VIEW.w/2, 388, "18px system-ui, sans-serif", COLORS.muted, "center");
+    crispText(ctx, t("start"), VIEW.w/2, 388, "18px system-ui, sans-serif", COLORS.muted, "center");
 }
 
 function drawGameOver(ctx) {
   _verticalBackdrop(ctx, "#2a0f12", "#080507");
   vignette(ctx, VIEW.w, VIEW.h, "rgba(217,54,43,0.06)", "rgba(0,0,0,0.7)");
-  crispText(ctx, "GAME OVER", VIEW.w/2, 278, "bold 56px system-ui, sans-serif", COLORS.hp, "center");
-  crispText(ctx, "Score: " + state.score, VIEW.w/2, 340, "22px system-ui, sans-serif", COLORS.text, "center");
+  crispText(ctx, t("gameOver"), VIEW.w/2, 278, "bold 56px system-ui, sans-serif", COLORS.hp, "center");
+  crispText(ctx, t("result", { s: state.score }), VIEW.w/2, 340, "22px system-ui, sans-serif", COLORS.text, "center");
   if (Math.floor(state.titleBlink * 2) % 2 === 0)
-    crispText(ctx, "Press Enter to Retry", VIEW.w/2, 402, "18px system-ui, sans-serif", COLORS.muted, "center");
+    crispText(ctx, t("retry"), VIEW.w/2, 402, "18px system-ui, sans-serif", COLORS.muted, "center");
 }
 
 function drawBackground(ctx) {

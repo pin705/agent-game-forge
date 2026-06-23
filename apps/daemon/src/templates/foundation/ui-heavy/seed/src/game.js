@@ -66,6 +66,7 @@ async function boot() {
   wireMouseInput();
   window.addEventListener("error", function(e) { drawErrorOverlay(e.error || e.message, "Error"); });
   window.addEventListener("unhandledrejection", function(e) { drawErrorOverlay(e.reason, "Async error"); });
+  await loadStrings();
   await loadCatalogs();
   state.mode = GAME.startMode;
   state.screen = "title";

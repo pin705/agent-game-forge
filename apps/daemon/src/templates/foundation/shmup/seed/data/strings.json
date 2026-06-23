@@ -1,0 +1,29 @@
+{
+  "_doc": "UI string table. Default locale follows the player's browser language (vi → Vietnamese, else English). Add a locale by adding a key with the same string ids. t('id', {vars}) does {placeholder} interpolation. Keep ids stable; translate values.",
+  "en": {
+    "loading": "Loading...",
+    "title": "THUNDER WING",
+    "tagline": "Shoot everything, survive the waves",
+    "start": "Press Enter / Tap to Start",
+    "gameOver": "GAME OVER",
+    "result": "Score: {s}",
+    "retry": "Press Enter / Tap to Retry",
+    "paused": "PAUSED",
+    "hp": "HP {hp}/{max}",
+    "lives": "Lives {n}",
+    "score": "Score {s}"
+  },
+  "vi": {
+    "loading": "Đang tải...",
+    "title": "THUNDER WING",
+    "tagline": "Bắn hạ tất cả, sống sót qua các đợt",
+    "start": "Nhấn Enter / Chạm để chơi",
+    "gameOver": "KẾT THÚC",
+    "result": "Điểm: {s}",
+    "retry": "Nhấn Enter / Chạm để chơi lại",
+    "paused": "TẠM DỪNG",
+    "hp": "Máu {hp}/{max}",
+    "lives": "Mạng {n}",
+    "score": "Điểm {s}"
+  }
+}

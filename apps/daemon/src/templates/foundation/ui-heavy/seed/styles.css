@@ -13,12 +13,14 @@ body {
   display: grid;
   place-items: center;
   min-height: 100vh;
+  min-height: 100dvh;
   overflow: hidden;
   font-family: system-ui, sans-serif;
 }
 
 main {
   width: min(100vw, 1280px);
+  max-height: 100dvh;
   aspect-ratio: 16 / 9;
   background: #120d0b;
 }
@@ -29,4 +31,7 @@ canvas {
   height: 100%;
   background: #120d0b;
   image-rendering: pixelated;
+  touch-action: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
