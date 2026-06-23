@@ -127,7 +127,9 @@ Before writing spec.md, emit a `<question-form>` block. The form's `fields` arra
         { "value": "top-down-rpg",  "label": "Top-down RPG",                "detail": "Pokemon-style overworld, Stardew" },
         { "value": "tower-defense", "label": "Tower defense",               "detail": "Kingdom Rush, Bloons" },
         { "value": "arena-survivor","label": "Arena survivor",              "detail": "Vampire Survivors, Brotato" },
-        { "value": "shmup",         "label": "Shoot-em-up",                 "detail": "Vertical or horizontal scroll shooter" }
+        { "value": "shmup",         "label": "Shoot-em-up",                 "detail": "Vertical or horizontal scroll shooter" },
+        { "value": "grid-logic",    "label": "Grid / puzzle / tactics",     "detail": "Sokoban, match-3, chess, Fire Emblem, roguelike" },
+        { "value": "ui-heavy",      "label": "Card / visual novel / idle",  "detail": "Slay the Spire, visual novels, clicker/idle" }
       ]
     },
     {
@@ -165,6 +167,8 @@ After form submission, write **Visual decisions** into spec.md §1 Identity:
 ```
 
 Then read `.ogf/conventions/genres/<chosen-genre>.md` for the genre-specific patterns the spec + later phases must follow.
+
+If the user's concept is vague or could fit several genres, read `.ogf/conventions/archetype-classifier.md` FIRST and classify by physics (gravity / perspective / movement) before defaulting the form. It covers grid/puzzle and card/UI games too, and prevents genre-name traps (e.g. Terraria is a platformer, not top-down).
 
 ## How to invoke the skills (READ THIS — common misconception)
 

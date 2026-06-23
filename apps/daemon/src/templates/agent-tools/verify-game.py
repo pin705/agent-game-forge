@@ -20,10 +20,21 @@ Checks:
                        entries carry `id` (warns; loader auto-injects)
   4. Asset paths     — every assets/... path referenced in data/ exists on disk
   5. index.html refs — every <script src> / <link href> local file exists
+
+Debug protocol (OpenGame's self-improving fix-loop, browser-free):
+  matched errors print a KNOWN FIX from a seed knowledge base; the seed is
+  written to .ogf/debug-protocol.json so the agent can append learnings
+  (`record`) and consult runtime gotchas the static pass can't see (`gotchas`).
+
+Usage:
+  python verify-game.py            # verify (default)
+  python verify-game.py gotchas    # print runtime gotchas + known fixes
+  python verify-game.py record --signature "<err substring>" --fix "<fix>" [--cause "..."]
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import shutil
@@ -156,22 +167,138 @@ def check_index():
         ok(f"index.html: {len(refs)} local ref(s) resolve")
 
 
-def main():
+# ── Debug protocol (OpenGame's Protocol P, browser-free) ────────────────────
+# Seed knowledge base: error signature → root cause → verified fix. Static
+# entries are matched against this run's errors and printed as "known fixes".
+# Runtime entries are gotchas the static pass can't detect — the agent consults
+# them (`gotchas`) when the USER reports a misbehaving-but-running game. The
+# seed is written to .ogf/debug-protocol.json so the agent can `record` more.
+PROTOCOL_FILE = ROOT / ".ogf" / "debug-protocol.json"
+SEED_PROTOCOL = [
+    {"id": "asset_missing", "kind": "static", "match": "asset referenced but missing",
+     "cause": "data/*.json points at an assets/ path not on disk (typo, or never fetched/generated).",
+     "fix": "Fetch it free: python .agents/tools/fetch-asset.py fetch \"<desc>\" <that exact path> --kind <kind>; or gen-image.py. The data path must match the file byte-for-byte."},
+    {"id": "no_renderable", "kind": "static", "match": "no renderable field",
+     "cause": "A level JSON has mapSize but nothing to draw — Play/Scene editor is empty.",
+     "fix": "Add one of background | layers[] | props[] | platforms[]. Scrolling camera → layers[]."},
+    {"id": "mapsize", "kind": "static", "match": "mapSize must have numeric",
+     "cause": "Level missing numeric mapSize.width/height; Scene editor can't open it.",
+     "fix": "Add \"mapSize\": { \"width\": <n>, \"height\": <n> } at top level."},
+    {"id": "missing_id", "kind": "static", "match": "missing 'id'",
+     "cause": "Scene editor addresses every array entry by id; without it, drag-edit save fails.",
+     "fix": "Give every array entry a unique \"id\" string (e.g. coin_1, plat_2)."},
+    {"id": "index_ref", "kind": "static", "match": "index.html references missing",
+     "cause": "A <script src>/<link href> points at a file that doesn't exist.",
+     "fix": "Create the file or fix the path. Script-tag mode load order: constants → state → subsystems → game.js last."},
+    {"id": "bad_json", "kind": "static", "match": "invalid JSON",
+     "cause": "A data file doesn't parse — usually a trailing comma, single quotes, or an unquoted key.",
+     "fix": "JSON needs double-quoted keys/strings and no trailing commas. Validate the file."},
+    {"id": "js_syntax", "kind": "static", "match": "JS syntax error",
+     "cause": "A src/*.js file has a syntax error.",
+     "fix": "node --check it. In script-tag (non-module) mode do NOT use import/export — declare globals."},
+    {"id": "not_defined", "kind": "runtime", "match": "is not defined",
+     "cause": "A global used before its <script> ran — wrong load order in index.html.",
+     "fix": "Order scripts constants → state → config → subsystems → game.js. Don't use a module's globals before its tag loads."},
+    {"id": "undef_prop", "kind": "runtime", "match": "Cannot read properties of undefined",
+     "cause": "Reading a field off an object not loaded yet (asset/data not awaited) or a missing catalog id.",
+     "fix": "await loadJSON/loadImage before use; guard catalog lookups; confirm the id exists in data/*.json."},
+    {"id": "fetch_404", "kind": "runtime", "match": "404",
+     "cause": "Opened via file://, or a data/asset path is wrong — fetch() can't load it.",
+     "fix": "Serve over http (the Play tab does). Use paths relative to index.html."},
+    {"id": "blank_canvas", "kind": "runtime", "match": "blank",
+     "cause": "Runs but nothing draws: asset not wired into data, render not called, or draw before image loaded.",
+     "fix": "Confirm the asset is referenced in data/*.json, renderFrame() runs each frame, images loaded before draw."},
+]
+
+
+def load_protocol() -> list:
+    entries = list(SEED_PROTOCOL)
+    if PROTOCOL_FILE.is_file():
+        try:
+            extra = json.loads(PROTOCOL_FILE.read_text(encoding="utf-8"))
+            if isinstance(extra, list):
+                seen = {e.get("id") for e in entries}
+                entries += [e for e in extra if e.get("id") not in seen]
+        except (json.JSONDecodeError, OSError):
+            pass
+    return entries
+
+
+def ensure_protocol_seed() -> None:
+    if not PROTOCOL_FILE.is_file():
+        try:
+            PROTOCOL_FILE.parent.mkdir(parents=True, exist_ok=True)
+            PROTOCOL_FILE.write_text(json.dumps(SEED_PROTOCOL, indent=2) + "\n", encoding="utf-8")
+        except OSError:
+            pass
+
+
+def verify() -> None:
     check_js()
     check_json_and_assets()
     check_index()
-
     for m in OKS:
         print(f"  ✓ {m}")
     for m in WARNINGS:
         print(f"  ! {m}")
     for m in ERRORS:
         print(f"  ✗ {m}")
+    entries = load_protocol()
+    hits = []
+    for e in ERRORS:
+        for p in entries:
+            if p.get("kind") == "static" and p["match"].lower() in e.lower():
+                hits.append(p)
+                break
+    if hits:
+        print("\nknown fixes (debug protocol):")
+        for p in hits:
+            print(f"  → [{p['id']}] {p['fix']}")
+    ensure_protocol_seed()
     print()
     if ERRORS:
         print(f"FAIL — {len(ERRORS)} error(s), {len(WARNINGS)} warning(s). Fix errors before the Play tab will work.")
         sys.exit(1)
     print(f"OK — 0 errors, {len(WARNINGS)} warning(s).")
+
+
+def cmd_gotchas() -> None:
+    print("Runtime gotchas (game runs but misbehaves — not statically checkable):")
+    for p in load_protocol():
+        if p.get("kind") == "runtime":
+            print(f"  • {p['id']}: {p['cause']}\n      fix: {p['fix']}")
+
+
+def cmd_record(signature: str, cause: str, fix: str) -> None:
+    ensure_protocol_seed()
+    entries = []
+    if PROTOCOL_FILE.is_file():
+        try:
+            entries = json.loads(PROTOCOL_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            entries = []
+    entries.append({"id": f"learned_{len(entries)}", "kind": "runtime",
+                    "match": signature, "cause": cause, "fix": fix})
+    PROTOCOL_FILE.write_text(json.dumps(entries, indent=2) + "\n", encoding="utf-8")
+    print(f"recorded → {PROTOCOL_FILE}")
+
+
+def main():
+    ap = argparse.ArgumentParser(description="OGF static verifier + debug protocol.")
+    sub = ap.add_subparsers(dest="cmd")
+    sub.add_parser("verify")
+    sub.add_parser("gotchas")
+    rp = sub.add_parser("record")
+    rp.add_argument("--signature", required=True)
+    rp.add_argument("--cause", default="")
+    rp.add_argument("--fix", required=True)
+    args = ap.parse_args()
+    if args.cmd == "gotchas":
+        cmd_gotchas()
+    elif args.cmd == "record":
+        cmd_record(args.signature, args.cause, args.fix)
+    else:
+        verify()
 
 
 if __name__ == "__main__":
