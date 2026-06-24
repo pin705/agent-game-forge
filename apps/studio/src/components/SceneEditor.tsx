@@ -6,19 +6,40 @@
 //            background / parallax layers / props on a <canvas>, camera
 //            pan + wheel-zoom-toward-cursor, drag-move a prop with
 //            save-on-drop (move-prop op → applySceneOps).
+//   EDITING: properties panel (live x/y edit), add / duplicate / delete
+//            object tools, and snapshot-based undo/redo (Ctrl/Cmd+Z,
+//            Ctrl/Cmd+Shift+Z). All mutations persist through the SAME
+//            applySceneOps path: a move emits move-prop, while add/delete
+//            emit add-prop / remove-prop (the daemon route already accepts
+//            both — only lib/scene.ts's SceneOp type is narrower, so the
+//            extra op shapes are declared locally here). Limited to the
+//            JSON-backed `props` array — gameplay arrays (platforms/hazards)
+//            and Godot .tscn nodes stay move-only.
 //   READ-ONLY EXTRAS: colliders + zones drawn as dim outlines for context.
 //   TRIMMED (vs the original — see TODOs): prop scaling/resize handles,
-//            collider/zone/path editing, add/remove tools, multi-select,
-//            undo/redo, comments, minimap, properties panel, live
-//            scene-context push. Re-introduce by widening lib/scene.ts's
-//            SceneOp union and adding the matching tools here.
+//            collider/zone/path editing, multi-select, comments, minimap,
+//            live scene-context push.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Layers, Minus, Plus, Scan, Loader2, ChevronDown, AlertCircle } from 'lucide-react';
+import {
+  Layers,
+  Minus,
+  Plus,
+  Scan,
+  Loader2,
+  ChevronDown,
+  AlertCircle,
+  Copy,
+  Trash2,
+  Undo2,
+  Redo2,
+  PlusSquare,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +52,7 @@ import {
   applySceneOps,
   fetchScene,
   listLevels,
+  type ColliderRef,
   type LevelFile,
   type SceneModel,
   type SceneProp,
@@ -47,9 +69,115 @@ type DragState =
 
 const MIN_SCALE = 0.02;
 const MAX_SCALE = 8;
+const MAX_UNDO = 100;
+/** Default size (px) for a freshly added object. */
+const DEFAULT_PROP_SIZE = 64;
+/** Placeholder texture path for newly-added objects. Deliberately a path that
+ *  may not exist on disk: the web-level loader requires props[] entries to
+ *  carry a non-empty `image` (it skips blank ones on reload), while both the
+ *  studio canvas and the game runtimes fall back gracefully when the file is
+ *  absent — so the object round-trips without ever showing a broken image. */
+const PLACEHOLDER_TEXTURE = 'assets/placeholder.png';
+
+// ---- Edit ops not yet surfaced in lib/scene.ts's narrow SceneOp union ----
+//
+// lib/scene.ts intentionally types `SceneOp = MovePropOp` (the only op the
+// original port emitted). The daemon's /api/scenes/save route, however, has
+// always accepted add-prop / remove-prop for JSON-backed levels
+// (apps/daemon/src/scenes.ts). Since this file may only edit SceneEditor.tsx,
+// the extra op shapes are declared locally and routed through the SAME
+// applySceneOps() helper (so its in-flight-write serialization still guards
+// against save/reload races); the array is cast to the lib type at the call
+// site. These mirror @ogf/contracts AddPropOp / RemovePropOp exactly.
+interface AddPropOpLocal {
+  kind: 'add-prop';
+  relPath: string;
+  section?: string;
+  entry: { id: string; image: string; x: number; y: number; w: number; h: number; sortY?: number };
+}
+interface RemovePropOpLocal {
+  kind: 'remove-prop';
+  relPath: string;
+  section?: string;
+  id: string;
+}
+interface MovePropOpLocal {
+  kind: 'move-prop';
+  nodePath: string;
+  position: Vec2;
+  ref?: ColliderRef;
+}
+type EditOp = AddPropOpLocal | RemovePropOpLocal | MovePropOpLocal;
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
+}
+
+/** Reconstruct the on-disk JSON entry for a prop so it can be re-added.
+ *  Mirrors apps/web's deleteSelection entry shape (image + x/y/w/h + sortY). */
+function propToEntry(p: SceneProp): AddPropOpLocal['entry'] {
+  const sortY = p.metadata.sortY ? Number(p.metadata.sortY) : undefined;
+  return {
+    id: refId(p),
+    image: p.texture ?? '',
+    x: p.position.x,
+    y: p.position.y,
+    w: p.displaySize?.x ?? 0,
+    h: p.displaySize?.y ?? 0,
+    ...(sortY !== undefined && Number.isFinite(sortY) ? { sortY } : {}),
+  };
+}
+
+type JsonProp = SceneProp & { ref: Extract<ColliderRef, { backend: 'json' }> };
+
+/** A JSON-backed prop's id from its ref (only json props are persistable —
+ *  Godot .tscn write-back is out of scope). */
+function refId(p: SceneProp): string {
+  return p.ref?.backend === 'json' ? p.ref.id : p.nodePath;
+}
+function isJsonProp(p: SceneProp): p is JsonProp {
+  return p.ref?.backend === 'json';
+}
+/** Add / duplicate / delete are limited to the `props` array. propToEntry only
+ *  reproduces the image-rect shape `props[]` uses; reconstructing one for a
+ *  gameplay array (platforms carry `tile`/`renderMode`, hazards carry `type`)
+ *  would drop those fields and corrupt the entry, so those sections stay
+ *  move-only (drag still works). */
+function isEditableProp(p: SceneProp): p is JsonProp {
+  return isJsonProp(p) && p.ref.section === 'props';
+}
+
+/** Diff two prop snapshots (keyed by nodePath) into the add/remove/move ops
+ *  needed to turn `prev` (what's on disk) into `next`. Used by every mutating
+ *  action and by undo/redo so the JSON file always matches on-canvas state.
+ *  add/remove are restricted to `props`-section entries (see isEditableProp);
+ *  any json prop (incl. gameplay arrays) can still be moved. */
+function diffPropsToOps(prev: SceneProp[], next: SceneProp[]): EditOp[] {
+  const ops: EditOp[] = [];
+  const prevByPath = new Map(prev.map((p) => [p.nodePath, p]));
+  const nextByPath = new Map(next.map((p) => [p.nodePath, p]));
+
+  // Removed.
+  for (const p of prev) {
+    if (!nextByPath.has(p.nodePath) && isEditableProp(p)) {
+      ops.push({ kind: 'remove-prop', relPath: p.ref.relPath, section: p.ref.section, id: p.ref.id });
+    }
+  }
+  // Added or changed.
+  for (const p of next) {
+    if (!isJsonProp(p)) continue;
+    const before = prevByPath.get(p.nodePath);
+    if (!before) {
+      if (isEditableProp(p)) {
+        ops.push({ kind: 'add-prop', relPath: p.ref.relPath, section: p.ref.section, entry: propToEntry(p) });
+      }
+    } else if (before.position.x !== p.position.x || before.position.y !== p.position.y) {
+      // Only x/y are editable here; persist via the same move-prop path the
+      // drag-on-drop already uses.
+      ops.push({ kind: 'move-prop', nodePath: p.nodePath, position: p.position, ref: p.ref });
+    }
+  }
+  return ops;
 }
 
 /** Decode the base64 PNGs the daemon sent into an HTMLImageElement cache keyed
@@ -105,7 +233,24 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
   // chase stale React state. The dragged prop's live position is mirrored into
   // `scene` so the canvas redraws as it moves.
   const dragRef = useRef<DragState | null>(null);
+  // Props array as it was when a prop-drag began — pushed onto the undo stack
+  // on drop so a drag-move is undoable like every other mutation.
+  const dragSnapshotRef = useRef<SceneProp[] | null>(null);
   const savedTimer = useRef<number | undefined>(undefined);
+
+  // ---- Undo/redo: snapshots of `props`. We push the PRE-mutation props array
+  // before every mutating action; undo restores the previous snapshot (and
+  // mirrors the change back to disk via diffPropsToOps). The two counters are
+  // state-backed only to keep the toolbar button enabled/disabled in sync —
+  // the snapshots themselves live in refs so they don't trigger redraws. ----
+  const undoStackRef = useRef<SceneProp[][]>([]);
+  const redoStackRef = useRef<SceneProp[][]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const syncHistoryFlags = useCallback(() => {
+    setCanUndo(undoStackRef.current.length > 0);
+    setCanRedo(redoStackRef.current.length > 0);
+  }, []);
 
   // ---- Level discovery ----
   useEffect(() => {
@@ -145,6 +290,11 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
           setScene(res.scene);
           setImages(bank);
           setSelected(null);
+          // Fresh level → drop edit history so undo can't reach into a level
+          // that's no longer open.
+          undoStackRef.current = [];
+          redoStackRef.current = [];
+          syncHistoryFlags();
           if (cand !== relPath) setRelPath(cand); // settle on the one that worked
           setLoading(false);
           return;
@@ -396,6 +546,7 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
           startWorld: world,
           startPos: { ...hit.position },
         };
+        dragSnapshotRef.current = scene.props;
       } else {
         if (e.button === 0) setSelected(null);
         dragRef.current = {
@@ -447,10 +598,62 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
     savedTimer.current = window.setTimeout(() => setSaveState('idle'), 1500);
   }, []);
 
+  // ---- Persistence: run a batch of ops through the EXISTING applySceneOps
+  // helper (preserving its save/reload write-serialization), driving the same
+  // save-state badge the drag-on-drop path uses. A no-op batch (e.g. a prop
+  // with no json ref, or an edit that only touched non-persistable fields)
+  // still flashes "saved" so the UI stays honest. ----
+  const persistOps = useCallback(
+    (ops: EditOp[]) => {
+      if (!relPath) return;
+      if (ops.length === 0) {
+        flashSaved();
+        return;
+      }
+      setSaveState('saving');
+      setError(null);
+      applySceneOps({
+        projectPath,
+        relPath,
+        // applySceneOps types ops as the narrow lib SceneOp (= MovePropOp); the
+        // daemon route accepts add/remove-prop too (see EditOp note above).
+        ops: ops as unknown as Parameters<typeof applySceneOps>[0]['ops'],
+      })
+        .then(() => flashSaved())
+        .catch((err) => {
+          setSaveState('error');
+          setError(err instanceof Error ? err.message : String(err));
+        });
+    },
+    [projectPath, relPath, flashSaved],
+  );
+
+  // ---- The single funnel for every mutating action (add/duplicate/delete/
+  // property-edit, and the drag-on-drop commit). Snapshots the current props
+  // for undo, swaps in the next props, then persists only the diff. Reads
+  // `scene` from closure (not a setScene updater) so the undo-push + save side
+  // effects run exactly once, including under React StrictMode. ----
+  const commitProps = useCallback(
+    (nextProps: SceneProp[], nextSelected?: string | null) => {
+      if (!scene) return;
+      const prevProps = scene.props;
+      undoStackRef.current.push(prevProps);
+      if (undoStackRef.current.length > MAX_UNDO) undoStackRef.current.shift();
+      redoStackRef.current = [];
+      syncHistoryFlags();
+      setScene({ ...scene, props: nextProps });
+      if (nextSelected !== undefined) setSelected(nextSelected);
+      persistOps(diffPropsToOps(prevProps, nextProps));
+    },
+    [scene, persistOps, syncHistoryFlags],
+  );
+
   const onPointerUp = useCallback(
     (e: React.PointerEvent) => {
       const ds = dragRef.current;
       dragRef.current = null;
+      const snapshot = dragSnapshotRef.current;
+      dragSnapshotRef.current = null;
       (e.target as Element).releasePointerCapture?.(e.pointerId);
       if (!ds || ds.kind !== 'prop' || !scene || !relPath) return;
 
@@ -465,20 +668,17 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
         setError('This object has no JSON ref — saving its position needs the .tscn writer (not ported).');
         return;
       }
-      setSaveState('saving');
-      setError(null);
-      applySceneOps({
-        projectPath,
-        relPath,
-        ops: [{ kind: 'move-prop', nodePath: moved.nodePath, position: moved.position, ref: moved.ref }],
-      })
-        .then(() => flashSaved())
-        .catch((err) => {
-          setSaveState('error');
-          setError(err instanceof Error ? err.message : String(err));
-        });
+      // Record the pre-drag props for undo (the moved position is already
+      // mirrored into `scene`), then persist just the move.
+      if (snapshot) {
+        undoStackRef.current.push(snapshot);
+        if (undoStackRef.current.length > MAX_UNDO) undoStackRef.current.shift();
+        redoStackRef.current = [];
+        syncHistoryFlags();
+      }
+      persistOps([{ kind: 'move-prop', nodePath: moved.nodePath, position: moved.position, ref: moved.ref }]);
     },
-    [scene, relPath, projectPath, flashSaved],
+    [scene, relPath, persistOps, syncHistoryFlags],
   );
 
   const onWheel = useCallback(
@@ -518,6 +718,170 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
     () => levels.find((l) => l.relPath === relPath)?.name ?? relPath ?? '—',
     [levels, relPath],
   );
+
+  // The currently selected prop (for the properties panel + enabling the
+  // duplicate/delete buttons).
+  const selectedProp = useMemo(
+    () => scene?.props.find((p) => p.nodePath === selected) ?? null,
+    [scene, selected],
+  );
+
+  /** World-space center of the current viewport (where new objects land). */
+  const viewCenterWorld = useCallback((): Vec2 => {
+    const cont = containerRef.current;
+    if (!cont) return { x: 0, y: 0 };
+    const r = cont.getBoundingClientRect();
+    return {
+      x: Math.round(r.width / 2 / camera.scale + camera.panX),
+      y: Math.round(r.height / 2 / camera.scale + camera.panY),
+    };
+  }, [camera]);
+
+  /** Allocate a section-unique JSON id from a stem (e.g. "object" → object_a1b2c3). */
+  const uniquePropId = useCallback(
+    (stem: string): string => {
+      const used = new Set(scene?.props.map((p) => refId(p)) ?? []);
+      const clean = stem.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'object';
+      let id = '';
+      do {
+        id = `${clean}_${Math.random().toString(36).slice(2, 8)}`;
+      } while (used.has(id));
+      return id;
+    },
+    [scene],
+  );
+
+  // ---- Add a new object at the view center. JSON-backed (section 'props')
+  // with a sensible default size so it's draggable/selectable immediately.
+  //
+  // The new entry carries a placeholder `image` rather than an empty string:
+  // the web-level loader skips props[] entries with no image (`if (!image)
+  // continue`), so a blank-image add would persist but VANISH on the next
+  // reload. A non-empty path round-trips; the placeholder file is allowed to
+  // be missing — the studio draws the prop as an outlined rect (texture not in
+  // the bank) and the runtimes substitute a generated fallback sprite, so no
+  // broken image appears in-game. Re-texture via the asset workflow later. ----
+  const addObject = useCallback(() => {
+    if (!scene || !relPath) return;
+    const center = viewCenterWorld();
+    const id = uniquePropId('object');
+    const w = DEFAULT_PROP_SIZE;
+    const h = DEFAULT_PROP_SIZE;
+    const ref: ColliderRef = { backend: 'json', relPath, section: 'props', id };
+    const newProp: SceneProp = {
+      nodePath: `props/${id}`,
+      name: id,
+      // Web prop convention: (x, y) is the feet/anchor; visual center sits at
+      // anchor + spriteOffset. Place the anchor so the box centers on-screen.
+      position: { x: center.x, y: center.y + h / 2 },
+      spriteOffset: { x: 0, y: -h / 2 },
+      scale: { x: 1, y: 1 },
+      texture: PLACEHOLDER_TEXTURE,
+      metadata: { sortY: String(center.y + h / 2) },
+      displaySize: { x: w, y: h },
+      ref,
+    };
+    commitProps([...scene.props, newProp], newProp.nodePath);
+  }, [scene, relPath, viewCenterWorld, uniquePropId, commitProps]);
+
+  // ---- Duplicate the selected prop, offset slightly so it's visible. ----
+  const duplicateSelected = useCallback(() => {
+    if (!scene || !selectedProp) return;
+    if (!isEditableProp(selectedProp)) {
+      setError(
+        'Only props can be duplicated here — gameplay objects (platforms, hazards) and .tscn nodes need their own writer (not ported).',
+      );
+      return;
+    }
+    const id = uniquePropId(selectedProp.name || 'object');
+    const off = 24;
+    const clone: SceneProp = {
+      ...selectedProp,
+      nodePath: `${selectedProp.ref.section}/${id}`,
+      name: id,
+      position: { x: selectedProp.position.x + off, y: selectedProp.position.y + off },
+      metadata: { ...selectedProp.metadata },
+      ref: { ...selectedProp.ref, id },
+    };
+    commitProps([...scene.props, clone], clone.nodePath);
+  }, [scene, selectedProp, uniquePropId, commitProps]);
+
+  // ---- Delete the selected prop. ----
+  const deleteSelected = useCallback(() => {
+    if (!scene || !selectedProp) return;
+    if (!isEditableProp(selectedProp)) {
+      setError(
+        'Only props can be deleted here — gameplay objects (platforms, hazards) and .tscn nodes need their own writer (not ported).',
+      );
+      return;
+    }
+    commitProps(
+      scene.props.filter((p) => p.nodePath !== selectedProp.nodePath),
+      null,
+    );
+  }, [scene, selectedProp, commitProps]);
+
+  // ---- Edit a scalar field (x / y) of the selected prop from the panel.
+  // Persists via the same move-prop path as drag-on-drop, so it works for any
+  // json-backed prop (props + gameplay arrays). Non-json props can't be saved
+  // (matches the drag guard), so surface that instead of a misleading flash. ----
+  const updateSelectedPosition = useCallback(
+    (axis: 'x' | 'y', value: number) => {
+      if (!scene || !selectedProp || !Number.isFinite(value)) return;
+      if (!isJsonProp(selectedProp)) {
+        setError('This object has no JSON ref — editing its position needs the .tscn writer (not ported).');
+        return;
+      }
+      const next = scene.props.map((p) =>
+        p.nodePath === selectedProp.nodePath
+          ? { ...p, position: { ...p.position, [axis]: value } }
+          : p,
+      );
+      commitProps(next);
+    },
+    [scene, selectedProp, commitProps],
+  );
+
+  // ---- Undo / redo: swap the live props for a stored snapshot, mirroring the
+  // change back to disk (diff → ops) without recording it as new history.
+  // Reads `scene` from closure so the snapshot push + save run once. ----
+  const undo = useCallback(() => {
+    if (!scene) return;
+    const prev = undoStackRef.current.pop();
+    if (prev === undefined) return;
+    redoStackRef.current.push(scene.props);
+    syncHistoryFlags();
+    setScene({ ...scene, props: prev });
+    // Drop selection if it pointed at a prop that no longer exists.
+    setSelected((sel) => (prev.some((p) => p.nodePath === sel) ? sel : null));
+    persistOps(diffPropsToOps(scene.props, prev));
+  }, [scene, persistOps, syncHistoryFlags]);
+
+  const redo = useCallback(() => {
+    if (!scene) return;
+    const next = redoStackRef.current.pop();
+    if (next === undefined) return;
+    undoStackRef.current.push(scene.props);
+    syncHistoryFlags();
+    setScene({ ...scene, props: next });
+    setSelected((sel) => (next.some((p) => p.nodePath === sel) ? sel : null));
+    persistOps(diffPropsToOps(scene.props, next));
+  }, [scene, persistOps, syncHistoryFlags]);
+
+  // ---- Keyboard: Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z redo. Ignore while typing
+  // in the properties-panel inputs so editing a field doesn't trigger undo. ----
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo]);
 
   // ---- Empty state ----
   if (!loading && levels.length === 0) {
@@ -580,6 +944,65 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
         </Button>
         <Button variant="ghost" size="icon" className="size-8" onClick={fitToView} title={t('scene.fit')}>
           <Scan className="size-4" />
+        </Button>
+
+        <div className="mx-1 h-5 w-px bg-border" />
+
+        {/* Object tools */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 gap-1.5"
+          onClick={addObject}
+          disabled={!scene}
+          title={t('scene.add')}
+        >
+          <PlusSquare className="size-4" />
+          <span className="hidden sm:inline">{t('scene.add')}</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          onClick={duplicateSelected}
+          disabled={!selectedProp}
+          title={t('scene.duplicate')}
+        >
+          <Copy className="size-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          onClick={deleteSelected}
+          disabled={!selectedProp}
+          title={t('scene.delete')}
+        >
+          <Trash2 className="size-4" />
+        </Button>
+
+        <div className="mx-1 h-5 w-px bg-border" />
+
+        {/* History */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          onClick={undo}
+          disabled={!canUndo}
+          title={t('scene.undo')}
+        >
+          <Undo2 className="size-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          onClick={redo}
+          disabled={!canRedo}
+          title={t('scene.redo')}
+        >
+          <Redo2 className="size-4" />
         </Button>
 
         <div className="flex-1" />
@@ -646,7 +1069,75 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
             {t('scene.hint')}
           </div>
         ) : null}
+
+        {/* Properties panel — soft-elevated, borderless tone surface. */}
+        {scene && !loading ? (
+          <div className="absolute right-3 top-3 w-60 rounded-lg bg-card/95 p-3 text-foreground shadow-lg ring-1 ring-black/5 backdrop-blur-sm">
+            <PropertiesPanel
+              prop={selectedProp}
+              onChangePosition={updateSelectedPosition}
+              t={t}
+            />
+          </div>
+        ) : null}
       </div>
+    </div>
+  );
+}
+
+/** Right-side properties panel: edits the selected prop's scalar fields. x / y
+ *  are live number inputs (commit on change → updates canvas + saves); name and
+ *  id are read-only context. Empty selection shows the noSelection hint. */
+function PropertiesPanel({
+  prop,
+  onChangePosition,
+  t,
+}: {
+  prop: SceneProp | null;
+  onChangePosition: (axis: 'x' | 'y', value: number) => void;
+  t: ReturnType<typeof useT>;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {t('scene.properties')}
+      </div>
+
+      {!prop ? (
+        <p className="text-[13px] leading-snug text-muted-foreground">{t('scene.noSelection')}</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {/* Identity (read-only) */}
+          <div className="flex flex-col gap-1 rounded-md bg-muted/50 px-2.5 py-2">
+            <span className="truncate text-[13px] font-medium" title={prop.name}>
+              {prop.name}
+            </span>
+            <span className="truncate font-mono text-[11px] text-muted-foreground" title={prop.nodePath}>
+              {prop.nodePath}
+            </span>
+          </div>
+
+          {/* Position */}
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] text-muted-foreground">X</span>
+              <Input
+                type="number"
+                value={Math.round(prop.position.x)}
+                onChange={(e) => onChangePosition('x', Number(e.target.value))}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] text-muted-foreground">Y</span>
+              <Input
+                type="number"
+                value={Math.round(prop.position.y)}
+                onChange={(e) => onChangePosition('y', Number(e.target.value))}
+              />
+            </label>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

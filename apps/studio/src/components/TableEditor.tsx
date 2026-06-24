@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowUp, ArrowDown, Plus, Save, Trash2, Loader2 } from 'lucide-react';
+import {
+  ArrowUp,
+  ArrowDown,
+  ChevronUp,
+  ChevronDown,
+  Plus,
+  Save,
+  Search,
+  Trash2,
+  Loader2,
+} from 'lucide-react';
 import {
   Table,
   TableHeader,
@@ -157,6 +167,25 @@ function defaultValueForType(t: ColumnType): unknown {
   return '';
 }
 
+type SortDir = 'asc' | 'desc';
+interface SortState {
+  key: string;
+  dir: SortDir;
+}
+
+/** Stringify a cell value for case-insensitive search matching. */
+function cellToText(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
+/** Compare two cell values: numeric when both are numbers, else string. */
+function compareCells(a: unknown, b: unknown): number {
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return cellToText(a).localeCompare(cellToText(b), undefined, { numeric: true });
+}
+
 export function TableEditor({ projectPath, relPath }: TableEditorProps) {
   const t = useT();
   const [content, setContent] = useState<string | null>(null);
@@ -166,6 +195,9 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [activeIdx, setActiveIdx] = useState(0);
+  // View-only state — never affects the underlying data or what gets saved.
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<SortState | null>(null);
 
   // Load (and reload when the target file changes).
   useEffect(() => {
@@ -175,6 +207,8 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
     setDirty(false);
     setSaveError(null);
     setActiveIdx(0);
+    setQuery('');
+    setSort(null);
     fetchFileContent(projectPath, relPath)
       .then((r) => {
         if (cancelled) return;
@@ -261,6 +295,35 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
   const rows = active.rows;
   const columns = columnsOf(rows);
 
+  // Build the VIEW: filtered + sorted, but each entry keeps its underlying
+  // index so every mutation edits the true row regardless of display order.
+  const q = query.trim().toLowerCase();
+  const view = rows
+    .map((row, origIndex) => ({ row, origIndex }))
+    .filter(({ row }) =>
+      q === ''
+        ? true
+        : columns.some((c) => cellToText(row[c.key]).toLowerCase().includes(q)),
+    );
+  if (sort) {
+    const { key, dir } = sort;
+    view.sort((a, b) => {
+      const cmp = compareCells(a.row[key], b.row[key]);
+      return dir === 'asc' ? cmp : -cmp;
+    });
+  }
+  // Move only makes sense in natural order — disable it while a filter or
+  // sort is active so we never reorder against a misleading display index.
+  const reorderDisabled = q !== '' || sort !== null;
+
+  function cycleSort(key: string) {
+    setSort((prev) => {
+      if (!prev || prev.key !== key) return { key, dir: 'asc' };
+      if (prev.dir === 'asc') return { key, dir: 'desc' };
+      return null;
+    });
+  }
+
   function addRow() {
     commit((arr) => {
       const blank: CatalogRow = {};
@@ -296,10 +359,22 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
         canSave
         t={t}
         extra={
-          <Button size="sm" variant="outline" onClick={addRow}>
-            <Plus />
-            {t('table.addRow')}
-          </Button>
+          <>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('table.search')}
+                className="h-8 w-44 pl-8"
+              />
+            </div>
+            <Button size="sm" variant="outline" onClick={addRow}>
+              <Plus />
+              {t('table.addRow')}
+            </Button>
+          </>
         }
       />
 
@@ -309,7 +384,11 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
             <button
               key={b.label}
               type="button"
-              onClick={() => setActiveIdx(i)}
+              onClick={() => {
+                setActiveIdx(i);
+                setQuery('');
+                setSort(null);
+              }}
               className={cn(
                 'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
                 i === activeIdx
@@ -330,7 +409,9 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
           {active.path.length > 0 ? `.${active.path.join('.')}` : t('table.rootArray')}
         </span>
         <span>·</span>
-        <span>{rows.length} {t('table.rows')}</span>
+        <span>
+          {q !== '' ? `${view.length} / ${rows.length}` : rows.length} {t('table.rows')}
+        </span>
         <span>·</span>
         <span>{columns.length} {t('table.columns')}</span>
       </div>
@@ -342,32 +423,55 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
           <div className="p-6 text-sm text-muted-foreground">
             {t('table.noRows')}
           </div>
+        ) : view.length === 0 ? (
+          <div className="p-6 text-sm text-muted-foreground">
+            {t('table.noMatch')}
+          </div>
         ) : (
           <Table>
             <TableHeader className="sticky top-0 z-10 bg-background">
               <TableRow>
                 <TableHead className="w-[44px] text-right">#</TableHead>
-                {columns.map((c) => (
-                  <TableHead key={c.key} className="whitespace-nowrap">
-                    <span className="font-medium text-foreground">{c.key}</span>
-                    <span className="ml-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                      {c.type}
-                    </span>
-                  </TableHead>
-                ))}
+                {columns.map((c) => {
+                  const isSorted = sort?.key === c.key;
+                  return (
+                    <TableHead key={c.key} className="whitespace-nowrap p-0">
+                      <button
+                        type="button"
+                        onClick={() => cycleSort(c.key)}
+                        className="flex w-full items-center gap-1 px-4 py-2 text-left transition-colors hover:bg-muted/50"
+                        title={t('table.edit', { label: c.key })}
+                      >
+                        <span className="font-medium text-foreground">{c.key}</span>
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          {c.type}
+                        </span>
+                        {isSorted ? (
+                          sort?.dir === 'asc' ? (
+                            <ChevronUp className="size-3.5 text-foreground" />
+                          ) : (
+                            <ChevronDown className="size-3.5 text-foreground" />
+                          )
+                        ) : null}
+                      </button>
+                    </TableHead>
+                  );
+                })}
                 <TableHead className="w-[96px] text-right">{t('table.actions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row, i) => (
-                <TableRow key={i}>
-                  <TableCell className="text-right text-xs text-muted-foreground">{i}</TableCell>
+              {view.map(({ row, origIndex }) => (
+                <TableRow key={origIndex}>
+                  <TableCell className="text-right text-xs text-muted-foreground">
+                    {origIndex}
+                  </TableCell>
                   {columns.map((c) => (
                     <TableCell key={c.key} className="p-1.5 align-middle">
                       <CellEditor
                         type={c.type}
                         value={row[c.key]}
-                        onChange={(v) => updateCell(i, c.key, v)}
+                        onChange={(v) => updateCell(origIndex, c.key, v)}
                       />
                     </TableCell>
                   ))}
@@ -378,8 +482,8 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
                         variant="ghost"
                         className="size-7"
                         title={t('table.moveUp')}
-                        disabled={i === 0}
-                        onClick={() => moveRow(i, -1)}
+                        disabled={reorderDisabled || origIndex === 0}
+                        onClick={() => moveRow(origIndex, -1)}
                       >
                         <ArrowUp />
                       </Button>
@@ -388,8 +492,8 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
                         variant="ghost"
                         className="size-7"
                         title={t('table.moveDown')}
-                        disabled={i === rows.length - 1}
-                        onClick={() => moveRow(i, 1)}
+                        disabled={reorderDisabled || origIndex === rows.length - 1}
+                        onClick={() => moveRow(origIndex, 1)}
                       >
                         <ArrowDown />
                       </Button>
@@ -398,7 +502,7 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
                         variant="ghost"
                         className="size-7 text-destructive hover:text-destructive"
                         title={t('table.deleteRow')}
-                        onClick={() => deleteRow(i)}
+                        onClick={() => deleteRow(origIndex)}
                       >
                         <Trash2 />
                       </Button>

@@ -10,9 +10,11 @@ import {
   ImageIcon,
   RefreshCw,
   Save,
+  Search,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -60,6 +62,7 @@ function TreeNode({
   depth,
   selected,
   openFolders,
+  forceOpen,
   onToggle,
   onSelect,
 }: {
@@ -67,13 +70,15 @@ function TreeNode({
   depth: number;
   selected: string | null;
   openFolders: Set<string>;
+  /** Folders forced open by an active search filter (overrides openFolders). */
+  forceOpen: Set<string> | null;
   onToggle: (relPath: string) => void;
   onSelect: (file: OpenTab) => void;
 }) {
   const isRoot = depth < 0;
 
   if (node.kind === 'dir') {
-    const open = isRoot || openFolders.has(node.relPath);
+    const open = isRoot || (forceOpen ? forceOpen.has(node.relPath) : openFolders.has(node.relPath));
     const children = node.children ?? [];
     return (
       <>
@@ -103,6 +108,7 @@ function TreeNode({
               depth={isRoot ? 0 : depth + 1}
               selected={selected}
               openFolders={openFolders}
+              forceOpen={forceOpen}
               onToggle={onToggle}
               onSelect={onSelect}
             />
@@ -126,6 +132,68 @@ function TreeNode({
       {fileIcon(node)}
       <span className="truncate">{node.name}</span>
     </button>
+  );
+}
+
+/** Result of pruning the tree to a case-insensitive `relPath` query. */
+interface FilteredTree {
+  /** Pruned tree (dirs kept only if they contain a match), or null if no match. */
+  tree: FileNode | null;
+  /** relPaths of folders that contain a match — forced open so hits are visible. */
+  expand: Set<string>;
+}
+
+/**
+ * Prune `node` to entries whose `relPath` contains `query` (case-insensitive).
+ * A directory survives if any descendant matches; its relPath is added to
+ * `expand` so it renders open. The root node is always kept as the container.
+ */
+function filterTree(node: FileNode, query: string): FilteredTree {
+  const q = query.trim().toLowerCase();
+  const expand = new Set<string>();
+
+  function walk(n: FileNode, isRoot: boolean): FileNode | null {
+    if (n.kind === 'file') {
+      return n.relPath.toLowerCase().includes(q) ? n : null;
+    }
+    const kids = (n.children ?? [])
+      .map((c) => walk(c, false))
+      .filter((c): c is FileNode => c !== null);
+    const selfMatches = !isRoot && n.relPath.toLowerCase().includes(q);
+    // Keep a dir if it (or a descendant) matches; always keep the root container.
+    if (isRoot || kids.length > 0 || selfMatches) {
+      if (!isRoot && (kids.length > 0 || selfMatches)) expand.add(n.relPath);
+      return { ...n, children: kids };
+    }
+    return null;
+  }
+
+  return { tree: walk(node, true), expand };
+}
+
+// ─── Breadcrumbs ───────────────────────────────────────────────────────────
+
+/** Render a project-relative path as muted segments, last one emphasized. */
+function Breadcrumbs({ relPath }: { relPath: string }) {
+  const segments = relPath.split('/').filter(Boolean);
+  if (segments.length === 0) return null;
+  return (
+    <nav
+      aria-label={relPath}
+      className="flex shrink-0 items-center gap-1 overflow-x-auto px-4 py-1.5 text-xs"
+    >
+      {segments.map((seg, i) => {
+        const last = i === segments.length - 1;
+        return (
+          <span key={i} className="flex shrink-0 items-center gap-1">
+            {i > 0 ? <span className="text-muted-foreground/50">/</span> : null}
+            <span className={cn('font-mono', last ? 'text-foreground' : 'text-muted-foreground')}>
+              {seg}
+            </span>
+          </span>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -255,6 +323,7 @@ export function CodePanel({ projectPath }: CodePanelProps) {
   const [tree, setTree] = useState<FileNode | null>(null);
   const [treeError, setTreeError] = useState<string | null>(null);
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -311,6 +380,17 @@ export function CodePanel({ projectPath }: CodePanelProps) {
     [tabs, activePath],
   );
 
+  // Apply the file-search filter. When the query is empty, show the full tree
+  // (no forced expansion). Otherwise prune to matches and force-open their
+  // ancestor folders so every hit is visible.
+  const searching = search.trim().length > 0;
+  const filtered = useMemo(
+    () => (tree && searching ? filterTree(tree, search) : null),
+    [tree, search, searching],
+  );
+  const displayTree = searching ? filtered?.tree ?? null : tree;
+  const forceOpen = searching ? filtered?.expand ?? new Set<string>() : null;
+
   return (
     <div className="grid h-full min-h-0 grid-cols-[260px_1fr]">
       <div className="flex min-h-0 flex-col bg-muted/20">
@@ -327,21 +407,37 @@ export function CodePanel({ projectPath }: CodePanelProps) {
             <RefreshCw className="size-3.5" />
           </Button>
         </div>
+        <div className="shrink-0 px-2 pb-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t('code.searchFiles')}
+              aria-label={t('code.searchFiles')}
+              className="h-8 pl-8"
+            />
+          </div>
+        </div>
         <ScrollArea className="min-h-0 flex-1">
           <div className="p-1">
             {treeError ? (
               <div className="p-3 text-xs text-destructive">{treeError}</div>
             ) : !tree ? (
               <div className="p-3 text-xs text-muted-foreground">{t('common.loading')}</div>
-            ) : (
+            ) : displayTree ? (
               <TreeNode
-                node={tree}
+                node={displayTree}
                 depth={-1}
                 selected={activePath}
                 openFolders={openFolders}
+                forceOpen={forceOpen}
                 onToggle={toggle}
                 onSelect={openFile}
               />
+            ) : (
+              <div className="p-3 text-xs text-muted-foreground">{t('code.noMatch')}</div>
             )}
           </div>
         </ScrollArea>
@@ -390,6 +486,8 @@ export function CodePanel({ projectPath }: CodePanelProps) {
             })}
           </div>
         ) : null}
+
+        {activeTab ? <Breadcrumbs relPath={activeTab.relPath} /> : null}
 
         <div className="min-h-0 flex-1">
           {activeTab ? (

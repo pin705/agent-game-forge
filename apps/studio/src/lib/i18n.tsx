@@ -445,6 +445,28 @@ const en = {
   'slicer.saved': 'saved',
   'slicer.saveMetadata': 'Save metadata',
   'slicer.saveApply': 'Save + Apply via agent',
+
+  // ── Editor parity: file search, table/assets filters, scene tools, palette ──
+  'code.searchFiles': 'Search files…',
+  'code.noMatch': 'No matching files.',
+  'table.search': 'Search rows…',
+  'table.noMatch': 'No matching rows.',
+  'assets.search': 'Search assets…',
+  'assets.filterLicense': 'License',
+  'assets.filterType': 'Type',
+  'assets.all': 'All',
+  'assets.noMatch': 'No matching assets.',
+  'scene.add': 'Add object',
+  'scene.delete': 'Delete',
+  'scene.duplicate': 'Duplicate',
+  'scene.undo': 'Undo',
+  'scene.redo': 'Redo',
+  'scene.properties': 'Properties',
+  'scene.noSelection': 'Select an object to edit its properties.',
+  'palette.placeholder': 'Type a command or search…',
+  'palette.empty': 'No results.',
+  'palette.tabs': 'Go to tab',
+  'palette.actions': 'Actions',
 } as const;
 
 /** Key union derived from the English dictionary — the source of truth. */
@@ -860,6 +882,28 @@ const vi: Record<TKey, string> = {
   'slicer.saved': 'đã lưu',
   'slicer.saveMetadata': 'Lưu siêu dữ liệu',
   'slicer.saveApply': 'Lưu + Áp dụng qua tác nhân',
+
+  // ── Editor parity ──
+  'code.searchFiles': 'Tìm tệp…',
+  'code.noMatch': 'Không có tệp khớp.',
+  'table.search': 'Tìm hàng…',
+  'table.noMatch': 'Không có hàng khớp.',
+  'assets.search': 'Tìm tài nguyên…',
+  'assets.filterLicense': 'Giấy phép',
+  'assets.filterType': 'Loại',
+  'assets.all': 'Tất cả',
+  'assets.noMatch': 'Không có tài nguyên khớp.',
+  'scene.add': 'Thêm đối tượng',
+  'scene.delete': 'Xóa',
+  'scene.duplicate': 'Nhân bản',
+  'scene.undo': 'Hoàn tác',
+  'scene.redo': 'Làm lại',
+  'scene.properties': 'Thuộc tính',
+  'scene.noSelection': 'Chọn một đối tượng để sửa thuộc tính.',
+  'palette.placeholder': 'Nhập lệnh hoặc tìm…',
+  'palette.empty': 'Không có kết quả.',
+  'palette.tabs': 'Tới tab',
+  'palette.actions': 'Thao tác',
 };
 
 const dictionaries: Record<Locale, Record<TKey, string>> = { en, vi };
