@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Square, Loader2, Pencil, Terminal, Image as ImageIcon, Sparkles, Wrench, AlertTriangle, ChevronRight } from 'lucide-react';
+import { Send, Square, Loader2, Pencil, Terminal, Image as ImageIcon, Sparkles, Wrench, AlertTriangle, ChevronRight, Check, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import {
   cancelRun,
@@ -20,6 +26,7 @@ import {
 import { QuestionFormCard } from '@/components/QuestionFormCard';
 import { Markdown } from '@/components/Markdown';
 import { useSettings } from '@/lib/settings';
+import { REASONING_OPTIONS, shortModelLabel, useAgentModels } from '@/lib/models';
 import { useT, type TKey } from '@/lib/i18n';
 
 type TFn = (key: TKey, vars?: Record<string, string | number>) => string;
@@ -371,7 +378,7 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-2.5 border-b bg-muted/20 px-3 py-2">
+      <div className="flex shrink-0 items-center gap-2.5 bg-muted/20 px-3 py-2">
         <span className="text-xs font-medium text-muted-foreground">{t('chat.title')}</span>
         {running ? (
           <Badge variant="secondary" className="ml-auto gap-1">
@@ -409,8 +416,8 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
         </div>
       </ScrollArea>
 
-      <div className="shrink-0 border-t p-3">
-        <div className="flex items-end gap-2 rounded-xl border bg-background px-3 py-2 shadow-sm transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25">
+      <div className="shrink-0 p-3">
+        <div className="rounded-xl border bg-background px-3 py-2 shadow-sm transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25">
           <Textarea
             value={prompt}
             onChange={(e) => {
@@ -422,20 +429,107 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
             onKeyDown={onKey}
             rows={1}
             placeholder={t('chat.placeholder')}
-            className="max-h-40 min-h-[24px] flex-1 resize-none border-0 bg-transparent p-0 text-[13px] shadow-none focus-visible:ring-0"
+            className="max-h-40 min-h-[24px] w-full resize-none border-0 bg-transparent p-0 text-[13px] shadow-none focus-visible:ring-0"
           />
-          {running ? (
-            <Button size="icon" variant="ghost" className="size-7 shrink-0 text-muted-foreground hover:text-foreground" onClick={() => void stop()} title={t('chat.stop')}>
-              <Square className="size-3.5" />
-            </Button>
-          ) : (
-            <Button size="icon" className="size-7 shrink-0" onClick={() => void send()} disabled={!prompt.trim()} title={t('chat.send')}>
-              <Send className="size-3.5" />
-            </Button>
-          )}
+          <div className="mt-1.5 flex items-center gap-1">
+            <ComposerControls />
+            <span className="flex-1" />
+            {running ? (
+              <Button size="icon" variant="ghost" className="size-7 shrink-0 text-muted-foreground hover:text-foreground" onClick={() => void stop()} title={t('chat.stop')}>
+                <Square className="size-3.5" />
+              </Button>
+            ) : (
+              <Button size="icon" className="size-7 shrink-0" onClick={() => void send()} disabled={!prompt.trim()} title={t('chat.send')}>
+                <Send className="size-3.5" />
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/** Compact, quiet model + reasoning pickers for the composer action row.
+ *  Reads/writes the same `useSettings()` store the header dialog uses, so a
+ *  change here live-updates Settings (and vice versa). Reasoning is Codex-only,
+ *  mirroring the Settings dialog. */
+function ComposerControls() {
+  const t = useT();
+  const { agentId, model, setModel, reasoning, setReasoning } = useSettings();
+  const modelsByAgent = useAgentModels();
+  const models = modelsByAgent[agentId] ?? [];
+
+  // Prefer the option's label (drops the " · …" descriptor); fall back to the
+  // raw model id when the persisted value isn't in this agent's list.
+  const activeModel = models.find((m) => m.id === model);
+  const modelText = activeModel
+    ? shortModelLabel(activeModel.label)
+    : model
+      ? shortModelLabel(model)
+      : t('settings.model.placeholder');
+
+  const activeReasoning = REASONING_OPTIONS.find((r) => r.id === reasoning);
+  const reasoningText = shortModelLabel(activeReasoning?.label ?? reasoning ?? '');
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={t('settings.model')}
+            title={t('settings.model')}
+            className="h-7 max-w-[10rem] gap-1 px-1.5 text-xs font-normal text-muted-foreground hover:text-foreground"
+          >
+            <span className="truncate font-mono">{modelText}</span>
+            <ChevronDown className="size-3 shrink-0 opacity-60" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+          {models.map((m) => (
+            <DropdownMenuItem
+              key={m.id}
+              onSelect={() => setModel(m.id)}
+              className="gap-2 font-mono text-xs"
+            >
+              <Check className={cn('size-3.5', m.id === model ? 'opacity-100' : 'opacity-0')} />
+              <span className="truncate">{m.label}</span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {agentId === 'codex' ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={t('settings.reasoning')}
+              title={t('settings.reasoning')}
+              className="h-7 max-w-[8rem] gap-1 px-1.5 text-xs font-normal text-muted-foreground hover:text-foreground"
+            >
+              <span className="truncate">{reasoningText}</span>
+              <ChevronDown className="size-3 shrink-0 opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {REASONING_OPTIONS.map((r) => (
+              <DropdownMenuItem
+                key={r.id}
+                onSelect={() => setReasoning(r.id)}
+                className="gap-2 text-xs"
+              >
+                <Check className={cn('size-3.5', r.id === reasoning ? 'opacity-100' : 'opacity-0')} />
+                <span className="truncate">{r.label}</span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
+    </>
   );
 }
 

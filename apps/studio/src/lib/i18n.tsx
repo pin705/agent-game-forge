@@ -142,6 +142,13 @@ const en = {
   'conversations.loadFailed': 'Could not load chats: {error}',
   'conversations.newFailed': 'New chat failed: {error}',
   'conversations.deleteFailed': 'Delete failed: {error}',
+  'conversations.search': 'Search chats',
+  'conversations.noMatch': 'No matching chats.',
+  'conversations.today': 'Today',
+  'conversations.yesterday': 'Yesterday',
+  'conversations.previous7': 'Previous 7 days',
+  'conversations.previous30': 'Previous 30 days',
+  'conversations.older': 'Older',
 
   // ── Settings dialog ──
   'settings.title': 'Settings',
@@ -550,6 +557,13 @@ const vi: Record<TKey, string> = {
   'conversations.loadFailed': 'Không thể tải cuộc trò chuyện: {error}',
   'conversations.newFailed': 'Tạo cuộc trò chuyện mới thất bại: {error}',
   'conversations.deleteFailed': 'Xóa thất bại: {error}',
+  'conversations.search': 'Tìm cuộc trò chuyện',
+  'conversations.noMatch': 'Không có cuộc trò chuyện khớp.',
+  'conversations.today': 'Hôm nay',
+  'conversations.yesterday': 'Hôm qua',
+  'conversations.previous7': '7 ngày qua',
+  'conversations.previous30': '30 ngày qua',
+  'conversations.older': 'Cũ hơn',
 
   // ── Settings dialog ──
   'settings.title': 'Cài đặt',

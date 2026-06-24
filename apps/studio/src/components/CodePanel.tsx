@@ -10,6 +10,7 @@ import {
   ImageIcon,
   RefreshCw,
   Save,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -34,6 +35,11 @@ interface CodePanelProps {
 interface SelectedFile {
   relPath: string;
   fileKind?: FileKind;
+}
+
+/** An open editor tab. `name` is the basename shown on the tab. */
+interface OpenTab extends SelectedFile {
+  name: string;
 }
 
 // ─── File tree ───────────────────────────────────────────────────────────
@@ -62,7 +68,7 @@ function TreeNode({
   selected: string | null;
   openFolders: Set<string>;
   onToggle: (relPath: string) => void;
-  onSelect: (file: SelectedFile) => void;
+  onSelect: (file: OpenTab) => void;
 }) {
   const isRoot = depth < 0;
 
@@ -109,7 +115,7 @@ function TreeNode({
   return (
     <button
       type="button"
-      onClick={() => onSelect({ relPath: node.relPath, fileKind: node.fileKind })}
+      onClick={() => onSelect({ relPath: node.relPath, name: node.name, fileKind: node.fileKind })}
       className={cn(
         'flex w-full items-center gap-1.5 rounded-sm py-1 pr-2 text-left text-sm hover:bg-muted/60',
         isSelected ? 'bg-muted text-foreground' : 'text-muted-foreground',
@@ -249,7 +255,8 @@ export function CodePanel({ projectPath }: CodePanelProps) {
   const [tree, setTree] = useState<FileNode | null>(null);
   const [treeError, setTreeError] = useState<string | null>(null);
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
-  const [selected, setSelected] = useState<SelectedFile | null>(null);
+  const [tabs, setTabs] = useState<OpenTab[]>([]);
+  const [activePath, setActivePath] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -277,16 +284,31 @@ export function CodePanel({ projectPath }: CodePanelProps) {
     });
   }, []);
 
-  const viewer = useMemo(
-    () =>
-      selected ? (
-        <FileViewer key={selected.relPath} projectPath={projectPath} file={selected} />
-      ) : (
-        <div className="grid h-full place-items-center p-6 text-sm text-muted-foreground">
-          {t('code.selectFile')}
-        </div>
-      ),
-    [selected, projectPath, t],
+  // Open a file: push a tab if not already open, then activate it.
+  const openFile = useCallback((file: OpenTab) => {
+    setTabs((prev) => (prev.some((t) => t.relPath === file.relPath) ? prev : [...prev, file]));
+    setActivePath(file.relPath);
+  }, []);
+
+  // Close a tab; if it was active, activate its neighbor (prefer the next one).
+  const closeTab = useCallback((relPath: string) => {
+    setTabs((prev) => {
+      const idx = prev.findIndex((t) => t.relPath === relPath);
+      if (idx === -1) return prev;
+      const next = prev.filter((t) => t.relPath !== relPath);
+      setActivePath((cur) => {
+        if (cur !== relPath) return cur;
+        if (next.length === 0) return null;
+        const neighbor = next[idx] ?? next[idx - 1];
+        return neighbor.relPath;
+      });
+      return next;
+    });
+  }, []);
+
+  const activeTab = useMemo(
+    () => tabs.find((t) => t.relPath === activePath) ?? null,
+    [tabs, activePath],
   );
 
   return (
@@ -315,17 +337,70 @@ export function CodePanel({ projectPath }: CodePanelProps) {
               <TreeNode
                 node={tree}
                 depth={-1}
-                selected={selected?.relPath ?? null}
+                selected={activePath}
                 openFolders={openFolders}
                 onToggle={toggle}
-                onSelect={setSelected}
+                onSelect={openFile}
               />
             )}
           </div>
         </ScrollArea>
       </div>
 
-      <div className="min-h-0">{viewer}</div>
+      <div className="flex min-h-0 flex-col">
+        {tabs.length > 0 ? (
+          <div className="flex shrink-0 items-center gap-1 overflow-x-auto bg-muted/30 px-1.5 py-1">
+            {tabs.map((tab) => {
+              const isActive = tab.relPath === activePath;
+              return (
+                <div
+                  key={tab.relPath}
+                  className={cn(
+                    'group flex shrink-0 items-center gap-1 rounded-md py-1 pl-2.5 pr-1 text-xs transition-colors',
+                    isActive
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:bg-background/60 hover:text-foreground',
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setActivePath(tab.relPath)}
+                    className="max-w-[12rem] truncate font-mono"
+                    title={tab.relPath}
+                  >
+                    {tab.name}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeTab(tab.relPath);
+                    }}
+                    aria-label={t('common.close')}
+                    title={t('common.close')}
+                    className={cn(
+                      'grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground',
+                      !isActive && 'opacity-0 group-hover:opacity-100',
+                    )}
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+
+        <div className="min-h-0 flex-1">
+          {activeTab ? (
+            <FileViewer key={activeTab.relPath} projectPath={projectPath} file={activeTab} />
+          ) : (
+            <div className="grid h-full place-items-center p-6 text-sm text-muted-foreground">
+              {t('code.selectFile')}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

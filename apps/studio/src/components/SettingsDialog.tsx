@@ -28,49 +28,13 @@ import {
   useSettings,
   type AgentId,
   type GenImageSummary,
-  type ReasoningEffort,
   type SecretKey,
   type SecretProvider,
   type SecretStatus,
 } from '@/lib/settings';
+import { REASONING_OPTIONS, useAgentModels } from '@/lib/models';
 import { cn } from '@/lib/utils';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
-
-// ── Model + reasoning option tables ──
-// Fallbacks mirror apps/daemon/src/agents.ts `fallbackModels`. At mount we
-// fetch /api/agents for the live list (so a daemon update surfaces here
-// without a code change); the static lists below are the offline default.
-
-interface ModelOption {
-  id: string;
-  label: string;
-}
-
-const FALLBACK_MODELS: Record<AgentId, ModelOption[]> = {
-  codex: [
-    { id: 'default', label: 'Default · CLI default' },
-    { id: 'gpt-5.5', label: 'gpt-5.5 · frontier coding' },
-    { id: 'gpt-5.4', label: 'gpt-5.4 · everyday' },
-    { id: 'gpt-5.4-mini', label: 'gpt-5.4-mini · cheap & fast' },
-    { id: 'gpt-5.3-codex', label: 'gpt-5.3-codex · coding-tuned' },
-    { id: 'gpt-5.3-codex-spark', label: 'gpt-5.3-codex-spark · ultra fast' },
-    { id: 'gpt-5.2', label: 'gpt-5.2 · long-running agents' },
-  ],
-  'claude-code': [
-    { id: 'default', label: 'Default · CLI default' },
-    { id: 'claude-opus-4-7', label: 'Opus 4.7 · frontier' },
-    { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6 · everyday' },
-    { id: 'claude-haiku-4-5', label: 'Haiku 4.5 · cheap & fast' },
-  ],
-};
-
-const REASONING_OPTIONS: { id: ReasoningEffort; label: string }[] = [
-  { id: 'minimal', label: 'Minimal · fastest' },
-  { id: 'low', label: 'Low' },
-  { id: 'medium', label: 'Medium' },
-  { id: 'high', label: 'High' },
-  { id: 'xhigh', label: 'Extra high · most thorough' },
-];
 
 const AGENTS: { id: AgentId; name: string; hint: string }[] = [
   { id: 'codex', name: 'Codex', hint: 'OpenAI · built-in image generation' },
@@ -103,34 +67,6 @@ const PROVIDERS: {
     placeholder: 'sk-…',
   },
 ];
-
-/** Live model options for an agent — daemon list if loaded, else the static
- *  fallback. */
-function useAgentModels(): Record<AgentId, ModelOption[]> {
-  const [models, setModels] = useState<Record<AgentId, ModelOption[]>>(FALLBACK_MODELS);
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/agents')
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((data: { agents?: { id: AgentId; models?: ModelOption[] }[] }) => {
-        if (cancelled || !data?.agents) return;
-        const next = { ...FALLBACK_MODELS };
-        for (const a of data.agents) {
-          if ((a.id === 'codex' || a.id === 'claude-code') && a.models?.length) {
-            next[a.id] = a.models;
-          }
-        }
-        setModels(next);
-      })
-      .catch(() => {
-        /* offline / older daemon — keep fallbacks */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return models;
-}
 
 function SecretRow({
   spec,
