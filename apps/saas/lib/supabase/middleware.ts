@@ -9,7 +9,7 @@ type CookiesToSet = { name: string; value: string; options: CookieOptions }[];
  * route group. (Route-group folders like `(app)` do NOT appear in the URL,
  * so we match the real pathnames they render.)
  */
-const PROTECTED_PREFIXES = ["/dashboard", "/build"];
+const PROTECTED_PREFIXES = ["/dashboard", "/build", "/billing"];
 
 /**
  * Auth-only routes — an already-authenticated user hitting these is bounced to

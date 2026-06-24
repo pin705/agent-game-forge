@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronDown, LogOut } from "lucide-react";
+import { ChevronDown, Coins, LogOut, Plus } from "lucide-react";
 import { signOut } from "@/app/auth/actions";
 import {
   DropdownMenu,
@@ -25,11 +25,21 @@ export function TopNav({ email, credits }: { email: string; credits: number | nu
       </Link>
 
       <div className="flex items-center gap-3">
-        {credits !== null && (
-          <span className="hidden text-xs text-muted-foreground sm:inline-block tabular-nums">
-            {credits} credits
-          </span>
-        )}
+        {/* Credits chip → /billing top-up. Shows balance; doubles as the
+            "buy credits" entry point (§5). */}
+        <Link
+          href="/billing"
+          className="group flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          title="Nạp credits (Top up)"
+        >
+          <Coins className="size-3.5" />
+          {credits !== null ? (
+            <span className="tabular-nums">{credits} credits</span>
+          ) : (
+            <span>Credits</span>
+          )}
+          <Plus className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
+        </Link>
         <DropdownMenu>
           <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-accent">
             <span className="max-w-[180px] truncate">{email}</span>
