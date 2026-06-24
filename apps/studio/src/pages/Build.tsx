@@ -38,8 +38,8 @@ const CONV_MIN = 180;
 const CONV_MAX = 360;
 const CONV_DEFAULT = 210;
 const CHAT_MIN = 280;
-const CHAT_MAX = 560;
-const CHAT_DEFAULT = 360;
+const CHAT_MAX = 680;
+const CHAT_DEFAULT = 420;
 const COLLAPSED_CONV = 44;
 
 type ColWidths = { conv: number; chat: number };
