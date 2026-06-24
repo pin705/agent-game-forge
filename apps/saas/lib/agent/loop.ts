@@ -21,9 +21,12 @@ export type LoopResult = {
 export async function* runLoop(args: {
   sandbox: Sandbox;
   prompt: string;
+  /** A pre-built model instance (tests). Takes precedence over `modelId`. */
   model?: Model;
+  /** Selected model id (validated catalog id); used to build the model. */
+  modelId?: string;
 }): AsyncGenerator<RunEvent, LoopResult, void> {
-  const model = args.model ?? getModel(TOOL_SCHEMAS);
+  const model = args.model ?? getModel(TOOL_SCHEMAS, args.modelId);
 
   const messages: ChatMessage[] = [
     { role: "system", content: buildSystemPrompt() },

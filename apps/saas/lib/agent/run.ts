@@ -2,6 +2,7 @@ import { getSandbox, sandboxDriverName } from "@/lib/sandbox";
 import { getStorage, storageDriverName } from "@/lib/storage";
 import type { RunEvent } from "./events";
 import { runLoop, modelDriverName } from "./loop";
+import { resolveModelId } from "./model";
 import { copyAgentTools } from "./agent-tools";
 import { chargeRun } from "@/lib/billing/credits";
 
@@ -36,6 +37,10 @@ export async function* runAgent(args: {
   projectId: string;
   prompt: string;
   userId?: string;
+  /** Optional selected model id (P5). Validated against the enabled catalog;
+   *  falls back to the default when absent/disallowed. This id is recorded on
+   *  the run and PRICED per-tier (pricing.ts keys by it). */
+  model?: string;
 }): AsyncGenerator<RunEvent, RunResult, void> {
   const storage = getStorage();
   // Mark the wall clock just before the sandbox spins up — sandbox_ms is the
@@ -43,21 +48,24 @@ export async function* runAgent(args: {
   const sandboxStart = Date.now();
   const sandbox = await getSandbox();
   const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const model = modelDriverName();
+  // The resolved model ID drives metering + pricing (per-tier). The driver name
+  // (deepseek/mock) is separate — which backend served the call.
+  const modelId = resolveModelId(args.model);
+  const driver = modelDriverName();
 
   const persist = await maybeCreateRunRow({
     runId,
     projectId: args.projectId,
     userId: args.userId,
-    model,
+    model: modelId,
   });
 
   yield {
     type: "run_start",
     runId,
     sandboxId: sandbox.id,
-    model,
-    driver: { sandbox: sandboxDriverName(), storage: storageDriverName(), model },
+    model: modelId,
+    driver: { sandbox: sandboxDriverName(), storage: storageDriverName(), model: driver },
   };
 
   let result: RunResult = {
@@ -79,7 +87,7 @@ export async function* runAgent(args: {
     await copyAgentTools(sandbox);
 
     // (b) drive the loop, forwarding every event.
-    const loop = runLoop({ sandbox, prompt: args.prompt });
+    const loop = runLoop({ sandbox, prompt: args.prompt, modelId });
     let next = await loop.next();
     while (!next.done) {
       if (next.value.type === "tool_call" && next.value.name === "image_gen") images += 1;
@@ -117,7 +125,7 @@ export async function* runAgent(args: {
       dbRunId: persist?.dbRunId ?? null,
       userId: args.userId,
       usage: {
-        model,
+        model: modelId,
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
         images: result.images,

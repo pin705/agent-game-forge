@@ -1,4 +1,5 @@
-import type { ProjectFile, Storage } from "./types";
+import { contentTypeFor } from "@/lib/publish/content-type";
+import { fileText, type ProjectFile, type Storage } from "./types";
 
 /**
  * Cloudflare R2 storage (S3-compatible). Used in prod when all of
@@ -7,6 +8,10 @@ import type { ProjectFile, Storage } from "./types";
  * No network at import time: the S3 client is created lazily on first use and
  * the SDK is imported dynamically so a missing dependency never breaks the
  * build of the local-dev path.
+ *
+ * Byte-accurate (P5 Item 1): object bodies are written + read as raw bytes
+ * (`Uint8Array`), so binary assets are never re-encoded as text. Content-Type
+ * is derived per-path so R2 stores the correct MIME for binary assets.
  *
  * Files live under `projects/<projectId>/<path>` (see SAAS_ARCHITECTURE.md §4).
  */
@@ -53,28 +58,36 @@ export class R2Storage implements Storage {
     return out;
   }
 
-  async readProjectFile(projectId: string, p: string): Promise<string | null> {
+  async readProjectFile(projectId: string, p: string): Promise<Uint8Array | null> {
     const { GetObjectCommand } = await import("@aws-sdk/client-s3");
     const client = await this.client();
     try {
       const res = await client.send(
         new GetObjectCommand({ Bucket: this.bucket, Key: this.prefix(projectId) + p }),
       );
-      return (await res.Body?.transformToString("utf-8")) ?? null;
+      // Raw bytes — binary-safe (no utf-8 transform).
+      const arr = await res.Body?.transformToByteArray();
+      return arr ? new Uint8Array(arr) : null;
     } catch {
       return null;
     }
   }
 
-  async writeProjectFile(projectId: string, p: string, content: string): Promise<void> {
+  async readProjectFileText(projectId: string, p: string): Promise<string | null> {
+    const bytes = await this.readProjectFile(projectId, p);
+    return bytes === null ? null : fileText({ bytes });
+  }
+
+  async writeProjectFile(projectId: string, p: string, bytes: Uint8Array): Promise<void> {
     const { PutObjectCommand } = await import("@aws-sdk/client-s3");
     const client = await this.client();
     await client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
         Key: this.prefix(projectId) + p,
-        Body: content,
-        ContentType: "text/plain; charset=utf-8",
+        // Write raw bytes verbatim; tag with the correct MIME for the extension.
+        Body: bytes,
+        ContentType: contentTypeFor(p),
       }),
     );
   }
@@ -82,12 +95,15 @@ export class R2Storage implements Storage {
   async getProjectFiles(projectId: string): Promise<ProjectFile[]> {
     const paths = await this.listProjectFiles(projectId);
     const files = await Promise.all(
-      paths.map(async (p) => ({ path: p, content: (await this.readProjectFile(projectId, p)) ?? "" })),
+      paths.map(async (p) => ({
+        path: p,
+        bytes: (await this.readProjectFile(projectId, p)) ?? new Uint8Array(0),
+      })),
     );
     return files;
   }
 
   async putProjectFiles(projectId: string, files: ProjectFile[]): Promise<void> {
-    for (const f of files) await this.writeProjectFile(projectId, f.path, f.content);
+    for (const f of files) await this.writeProjectFile(projectId, f.path, f.bytes);
   }
 }

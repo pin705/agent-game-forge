@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { dataDir } from "@/lib/data-dir";
+import { fileText } from "@/lib/storage/types";
 import type { ExecOptions, ExecResult, Sandbox, SandboxFactory, SandboxFile } from "./types";
 
 const MAX_OUTPUT = 200_000; // bytes per stream — truncation guard fed back to the model.
@@ -35,16 +36,22 @@ export class LocalSandbox implements Sandbox {
     for (const f of files) {
       const full = path.join(this.root, f.path);
       await fs.mkdir(path.dirname(full), { recursive: true });
-      await fs.writeFile(full, f.content, "utf8");
+      // Write raw bytes verbatim (no encoding) → binary-safe.
+      await fs.writeFile(full, f.bytes);
     }
   }
 
-  async readFile(p: string): Promise<string | null> {
+  async readFile(p: string): Promise<Uint8Array | null> {
     try {
-      return await fs.readFile(path.join(this.root, p), "utf8");
+      return new Uint8Array(await fs.readFile(path.join(this.root, p)));
     } catch {
       return null;
     }
+  }
+
+  async readFileText(p: string): Promise<string | null> {
+    const bytes = await this.readFile(p);
+    return bytes === null ? null : fileText({ bytes });
   }
 
   private async walk(rel = ""): Promise<string[]> {
@@ -68,7 +75,7 @@ export class LocalSandbox implements Sandbox {
     const all = await this.walk();
     const matched = all.filter((p) => globs.some((g) => globToRegExp(g).test(p)));
     return Promise.all(
-      matched.map(async (p) => ({ path: p, content: (await this.readFile(p))! })),
+      matched.map(async (p) => ({ path: p, bytes: (await this.readFile(p))! })),
     );
   }
 

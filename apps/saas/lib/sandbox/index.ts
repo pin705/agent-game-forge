@@ -2,6 +2,7 @@ import type { Sandbox, SandboxFactory } from "./types";
 import { LocalSandboxFactory } from "./local";
 
 export type { Sandbox, SandboxFile, ExecResult, ExecOptions } from "./types";
+export { textFile, fileText } from "./types";
 
 /** True when an E2B key is present (i.e. prod sandbox is configured). */
 function e2bConfigured(): boolean {

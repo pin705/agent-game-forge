@@ -82,7 +82,7 @@ console.log(`  stored files: ${stored.join(", ")}`);
 for (const f of ["index.html", "game.js", "data/level.json"]) {
   check(`LocalStorage has ${f}`, stored.includes(f));
 }
-const html = await storage.readProjectFile(projectId, "index.html");
+const html = await storage.readProjectFileText(projectId, "index.html");
 check("index.html has real content", !!html && html.includes("<canvas"));
 check("agent-tools NOT leaked into project storage", !stored.some((p) => p.startsWith("agent-tools/")));
 

@@ -3,6 +3,7 @@ import { LocalStorage } from "./local";
 import { R2Storage } from "./r2";
 
 export type { Storage, ProjectFile } from "./types";
+export { textFile, fileText } from "./types";
 
 let cached: Storage | null = null;
 

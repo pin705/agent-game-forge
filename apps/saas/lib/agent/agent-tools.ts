@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { Sandbox } from "@/lib/sandbox";
+import type { Sandbox, SandboxFile } from "@/lib/sandbox";
 
 /**
  * The Python agent-tools live in `apps/saas/agent-tools/` (copied from the
@@ -15,7 +15,7 @@ function agentToolsDir(): string {
   return path.join(process.cwd(), "agent-tools");
 }
 
-async function readDirFiles(base: string, rel = ""): Promise<{ path: string; content: string }[]> {
+async function readDirFiles(base: string, rel = ""): Promise<SandboxFile[]> {
   const dir = path.join(base, rel);
   let entries;
   try {
@@ -23,17 +23,18 @@ async function readDirFiles(base: string, rel = ""): Promise<{ path: string; con
   } catch {
     return [];
   }
-  const out: { path: string; content: string }[] = [];
+  const out: SandboxFile[] = [];
   for (const e of entries) {
     if (e.name === "__pycache__" || e.name === ".DS_Store") continue;
     const childRel = rel ? `${rel}/${e.name}` : e.name;
     if (e.isDirectory()) out.push(...(await readDirFiles(base, childRel)));
     else {
       try {
-        const content = await fs.readFile(path.join(base, childRel), "utf8");
-        out.push({ path: `agent-tools/${childRel}`, content });
+        // Read raw bytes (no encoding) so any file transfers verbatim.
+        const bytes = new Uint8Array(await fs.readFile(path.join(base, childRel)));
+        out.push({ path: `agent-tools/${childRel}`, bytes });
       } catch {
-        /* skip unreadable / binary */
+        /* skip unreadable */
       }
     }
   }

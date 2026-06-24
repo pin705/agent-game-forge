@@ -33,7 +33,7 @@ const dataDir = await mkdtemp(path.join(tmpdir(), "ogf-publish-"));
 process.env.OGF_DATA_DIR = dataDir;
 
 // Import AFTER env is set.
-const { getStorage } = await import("../lib/storage/index.ts");
+const { getStorage, textFile } = await import("../lib/storage/index.ts");
 const publishRoute = await import("../app/api/projects/[id]/publish/route.ts");
 const remixRoute = await import("../app/api/projects/[id]/remix/route.ts");
 const playRoute = await import("../app/play/[slug]/[[...path]]/route.ts");
@@ -69,9 +69,9 @@ const GAME_JS = `fetch("data/level.json").then(r=>r.json()).then(lvl=>{
 const LEVEL_JSON = JSON.stringify({ bg: "#1b1b1f", player: { x: 10, y: 10 } });
 
 await storage.putProjectFiles(projectId, [
-  { path: "index.html", content: INDEX_HTML },
-  { path: "game.js", content: GAME_JS },
-  { path: "data/level.json", content: LEVEL_JSON },
+  textFile("index.html", INDEX_HTML),
+  textFile("game.js", GAME_JS),
+  textFile("data/level.json", LEVEL_JSON),
 ]);
 const seeded = (await storage.listProjectFiles(projectId)).sort();
 check(`seeded 3 files (${seeded.join(", ")})`, seeded.length === 3);
@@ -147,10 +147,10 @@ let remixedId;
 
   const copied = (await storage.listProjectFiles(remixedId)).sort();
   check(`remix copied all 3 files (${copied.join(", ")})`, copied.length === 3 && copied.join(",") === seeded.join(","));
-  // Byte-for-byte identical copies.
-  check("remix index.html identical", (await storage.readProjectFile(remixedId, "index.html")) === INDEX_HTML);
-  check("remix game.js identical", (await storage.readProjectFile(remixedId, "game.js")) === GAME_JS);
-  check("remix data/level.json identical", (await storage.readProjectFile(remixedId, "data/level.json")) === LEVEL_JSON);
+  // Byte-for-byte identical copies (decoded as text for the string compare).
+  check("remix index.html identical", (await storage.readProjectFileText(remixedId, "index.html")) === INDEX_HTML);
+  check("remix game.js identical", (await storage.readProjectFileText(remixedId, "game.js")) === GAME_JS);
+  check("remix data/level.json identical", (await storage.readProjectFileText(remixedId, "data/level.json")) === LEVEL_JSON);
 
   // The remix is NOT itself published (serving its (nonexistent) slug 404s; and
   // it must not collide with the source slug).

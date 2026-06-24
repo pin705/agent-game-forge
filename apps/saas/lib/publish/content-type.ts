@@ -52,21 +52,6 @@ export function contentTypeFor(path: string): string {
   return CONTENT_TYPES[ext] ?? "application/octet-stream";
 }
 
-/** Extensions whose bytes are binary (served base64-decoded from text storage). */
-const BINARY_EXTS = new Set([
-  "png", "jpg", "jpeg", "gif", "webp", "avif", "ico", "bmp",
-  "wav", "mp3", "ogg", "oga", "m4a",
-  "woff", "woff2", "ttf", "otf",
-  "mp4", "webm", "wasm",
-]);
-
-/** True when a path's extension denotes binary content (not UTF-8 text). */
-export function isBinaryPath(path: string): boolean {
-  const dot = path.lastIndexOf(".");
-  const ext = dot >= 0 ? path.slice(dot + 1).toLowerCase() : "";
-  return BINARY_EXTS.has(ext);
-}
-
 /**
  * Normalise a requested play path to a SAFE, repo-relative POSIX path, or null
  * if it tries to escape the project (path traversal) or is otherwise illegal.

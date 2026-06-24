@@ -1,4 +1,5 @@
 import type { Sandbox } from "@/lib/sandbox";
+import { textFile } from "@/lib/sandbox";
 import type { RunEvent } from "./events";
 
 /** OpenAI-compatible function-calling tool schemas (DeepSeek understands these). */
@@ -105,26 +106,28 @@ export async function executeTool(
   try {
     switch (name) {
       case "read_file": {
-        const content = await sandbox.readFile(String(args.path));
+        // Model-facing: decode as UTF-8 text (models read/write html/js/json).
+        const content = await sandbox.readFileText(String(args.path));
         if (content === null) return { content: `ERROR: file not found: ${args.path}`, events };
         return { content, events };
       }
       case "write_file": {
         const path = String(args.path);
         const content = String(args.content ?? "");
-        await sandbox.writeFiles([{ path, content }]);
+        // The model authors text; encode to bytes at the boundary.
+        await sandbox.writeFiles([textFile(path, content)]);
         events.push({ type: "file_write", path, bytes: Buffer.byteLength(content) });
         return { content: `wrote ${path} (${Buffer.byteLength(content)} bytes)`, events };
       }
       case "edit_file": {
         const path = String(args.path);
-        const existing = await sandbox.readFile(path);
+        const existing = await sandbox.readFileText(path);
         if (existing === null) return { content: `ERROR: file not found: ${path}`, events };
         const oldStr = String(args.old);
         if (!existing.includes(oldStr))
           return { content: `ERROR: \`old\` not found in ${path}; no change made.`, events };
         const next = existing.replace(oldStr, String(args.new));
-        await sandbox.writeFiles([{ path, content: next }]);
+        await sandbox.writeFiles([textFile(path, next)]);
         events.push({ type: "file_write", path, bytes: Buffer.byteLength(next) });
         return { content: `edited ${path}`, events };
       }

@@ -7,6 +7,7 @@
  *
  * Both speak the same minimal message protocol so the loop is driver-agnostic.
  */
+import { isEnabledModel } from "./catalog";
 
 export type ToolCall = {
   id: string;
@@ -43,6 +44,22 @@ export function modelDriverName(): "deepseek" | "mock" {
   return deepseekConfigured() ? "deepseek" : "mock";
 }
 
+/** Default model id when a run doesn't request one (the configured DeepSeek
+ *  model, else `deepseek-chat`). */
+export function defaultModelId(): string {
+  return process.env.DEEPSEEK_MODEL || "deepseek-chat";
+}
+
+/**
+ * Resolve the model id a run will actually use from an OPTIONAL requested id.
+ * Validates against the enabled catalog (never a faked/premium id); falls back
+ * to the default when absent or not allowed. This is the id recorded on the run
+ * and priced by the rate table (pricing.ts keys by these ids).
+ */
+export function resolveModelId(requestedId?: string | null): string {
+  return isEnabledModel(requestedId) ? requestedId : defaultModelId();
+}
+
 /* -------------------------------------------------------------------------- */
 /* DeepSeek (OpenAI-compatible)                                               */
 /* -------------------------------------------------------------------------- */
@@ -54,8 +71,10 @@ export class DeepSeekModel implements Model {
   private clientPromise: Promise<import("openai").default> | null = null;
   private toolSchemas: unknown[];
 
-  constructor(toolSchemas: unknown[]) {
-    this.name = process.env.DEEPSEEK_MODEL || "deepseek-chat";
+  constructor(toolSchemas: unknown[], modelId?: string) {
+    // The resolved model id (validated against the enabled catalog) is the id
+    // we send to DeepSeek AND the id pricing charges by.
+    this.name = resolveModelId(modelId);
     this.toolSchemas = toolSchemas;
   }
 
@@ -141,11 +160,16 @@ type Script = Array<{
  * stable per-step count so metering can be exercised end-to-end.
  */
 export class MockModel implements Model {
-  readonly name = "mock-deepseek";
+  /** The selected model id (so the param → run → pricing path is exercised
+   *  end-to-end even offline). Defaults to "mock-deepseek" when none is chosen. */
+  readonly name: string;
   private step = 0;
   private readonly script: Script;
 
-  constructor() {
+  constructor(modelId?: string) {
+    // The mock ignores the id for BEHAVIOUR (deterministic script) but reports
+    // the chosen id as its name so metering/pricing see the selected model.
+    this.name = modelId && modelId.trim() ? modelId : "mock-deepseek";
     const indexHtml = `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -243,7 +267,15 @@ frame();
   }
 }
 
-/** Factory: real DeepSeek when keyed, else the deterministic mock. */
-export function getModel(toolSchemas: unknown[]): Model {
-  return deepseekConfigured() ? new DeepSeekModel(toolSchemas) : new MockModel();
+/**
+ * Factory: real DeepSeek when keyed, else the deterministic mock. The optional
+ * `modelId` (a validated, enabled catalog id) selects the DeepSeek tier and is
+ * reported as the model's `.name` so it flows into metering + pricing. When
+ * absent/disallowed, `resolveModelId` falls back to the default.
+ */
+export function getModel(toolSchemas: unknown[], modelId?: string): Model {
+  if (deepseekConfigured()) return new DeepSeekModel(toolSchemas, modelId);
+  // Mock path: pass through a VALIDATED chosen id so metering sees the selected
+  // model; with no (or a disallowed) selection it keeps its "mock-deepseek" name.
+  return new MockModel(isEnabledModel(modelId) ? modelId : undefined);
 }

@@ -94,6 +94,20 @@ export async function getPublishedBySlug(slug: string): Promise<LocalPublishReco
   return null;
 }
 
+/**
+ * List ALL published records, sorted for the gallery: play_count desc, then most
+ * recently published first. The dev stand-in for the prod `projects` query.
+ */
+export async function listPublished(): Promise<LocalPublishRecord[]> {
+  const data = await readFile();
+  return Object.values(data.projects)
+    .filter((r) => r.isPublished)
+    .sort((a, b) => {
+      if (b.playCount !== a.playCount) return b.playCount - a.playCount;
+      return (b.publishedAt ?? "").localeCompare(a.publishedAt ?? "");
+    });
+}
+
 /** True if a slug is already taken by ANY project (published or not). */
 export async function slugTaken(slug: string, exceptProjectId?: string): Promise<boolean> {
   const data = await readFile();

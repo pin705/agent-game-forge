@@ -11,9 +11,18 @@
  *
  * Selected at runtime by `getSandbox()` based on `E2B_API_KEY` (see ./index.ts).
  * Matches the `Sandbox` adapter interface in SAAS_ARCHITECTURE.md §3.
+ *
+ * BINARY-ACCURATE (P5 Item 1): a sandbox file's content is raw `bytes`
+ * (`Uint8Array`), so binary assets the agent downloads via run_shell (the
+ * free-art broker's PNG/WAV) transfer to/from storage intact. Text is a
+ * convenience layer — `textFile(path, string)` / `fileText(file)` (re-exported
+ * from lib/storage/types) build/read text files.
  */
 
-export type SandboxFile = { path: string; content: string };
+export { textFile, fileText } from "@/lib/storage/types";
+
+/** A single sandbox file: a repo-relative POSIX path + its raw byte content. */
+export type SandboxFile = { path: string; bytes: Uint8Array };
 
 export type ExecResult = { stdout: string; stderr: string; code: number };
 
@@ -29,10 +38,12 @@ export interface Sandbox {
   readonly id: string;
   /** Write (upsert) files into the sandbox workspace. */
   writeFiles(files: SandboxFile[]): Promise<void>;
-  /** Read files matching glob patterns (POSIX globs, relative to root). */
+  /** Read files matching glob patterns (POSIX globs, relative to root) as bytes. */
   readFiles(globs: string[]): Promise<SandboxFile[]>;
-  /** Read a single file, or `null` if missing. */
-  readFile(path: string): Promise<string | null>;
+  /** Read a single file's raw bytes, or `null` if missing. */
+  readFile(path: string): Promise<Uint8Array | null>;
+  /** Read a single file as UTF-8 text, or `null` if missing (model-facing tools). */
+  readFileText(path: string): Promise<string | null>;
   /** Run a shell command; returns stdout/stderr/exit-code (never throws on non-zero). */
   exec(cmd: string, opts?: ExecOptions): Promise<ExecResult>;
   /** Tear down the workspace. Idempotent. */

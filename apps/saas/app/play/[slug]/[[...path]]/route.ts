@@ -23,10 +23,13 @@ export const dynamic = "force-dynamic";
  * published or the file is missing.
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   ctx: { params: Promise<{ slug: string; path?: string[] }> },
 ) {
   const { slug, path } = await ctx.params;
+  // The gallery embeds each game in a thumbnail iframe with `?preview=1`; those
+  // loads must NOT inflate play_count (only real plays count).
+  const isPreview = req.nextUrl.searchParams.get("preview") === "1";
 
   const result = await serveProjectFile(slug, path);
 
@@ -44,10 +47,10 @@ export async function GET(
     });
   }
 
-  // Count one play per index/entry load (not per asset). Best-effort + awaited
-  // so the registry write lands before we return (matters for the test); it
-  // never throws.
-  if (result.isIndex) {
+  // Count one play per index/entry load (not per asset, not a gallery preview).
+  // Best-effort + awaited so the registry write lands before we return (matters
+  // for the test); it never throws.
+  if (result.isIndex && !isPreview) {
     await recordPlay(slug);
   }
 

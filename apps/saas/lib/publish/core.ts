@@ -16,7 +16,7 @@
  * exact same logic.
  */
 import { getStorage, type ProjectFile } from "@/lib/storage";
-import { contentTypeFor, isBinaryPath, sanitizePlayPath } from "./content-type";
+import { contentTypeFor, sanitizePlayPath } from "./content-type";
 import * as registry from "./registry";
 
 /** True only when real (non-placeholder) Supabase env is present. (Mirrors the
@@ -79,7 +79,7 @@ export type PublishResult = {
 };
 
 export type ServedFile = {
-  /** Decoded bytes of the file (text → utf8 bytes; binary → decoded). */
+  /** The file's raw bytes, served verbatim (text = utf-8 bytes; binary = exact bytes). */
   body: Buffer;
   contentType: string;
   /** The sanitized repo-relative path actually served. */
@@ -259,6 +259,64 @@ export type ResolvedProject = {
   name: string;
 };
 
+/** One published project as the public gallery needs it. */
+export type GalleryProject = {
+  /** Project id — used as the Remix source ref. */
+  projectId: string;
+  name: string;
+  slug: string;
+  playCount: number;
+  /** ISO publish timestamp (for "recent" sorting / display), or null. */
+  publishedAt: string | null;
+};
+
+/**
+ * List PUBLISHED projects for the public gallery (SAAS_ARCHITECTURE §8 P5 —
+ * gallery/discovery). Sorted play_count desc, then most-recently-published. No
+ * auth — only `is_published` rows are returned (the public-by-design slice).
+ *
+ *   • prod (`supabaseConfigured()`) → the `projects` table. Reads via the
+ *     service-role client (works regardless of the public RLS policy from 0004);
+ *     the rows are public-by-design when is_published.
+ *   • local-dev → the publish registry (so the gallery renders with ZERO
+ *     accounts, exactly like the rest of the publish loop).
+ *
+ * `limit` caps the result (default 60). Best-effort: any backend error yields an
+ * empty list so the page degrades to its empty state rather than throwing.
+ */
+export async function listPublishedProjects(limit = 60): Promise<GalleryProject[]> {
+  try {
+    if (supabaseConfigured()) {
+      const { createServiceRoleClient } = await import("@/lib/supabase/server");
+      const supabase = createServiceRoleClient();
+      const { data } = await supabase
+        .from("projects")
+        .select("id, name, slug, play_count, published_at")
+        .eq("is_published", true)
+        .order("play_count", { ascending: false })
+        .order("published_at", { ascending: false, nullsFirst: false })
+        .limit(limit);
+      return (data ?? []).map((r) => ({
+        projectId: r.id as string,
+        name: (r.name as string) ?? r.slug,
+        slug: r.slug as string,
+        playCount: (r.play_count as number) ?? 0,
+        publishedAt: (r.published_at as string) ?? null,
+      }));
+    }
+    const recs = await registry.listPublished();
+    return recs.slice(0, limit).map((r) => ({
+      projectId: r.projectId,
+      name: r.name,
+      slug: r.slug,
+      playCount: r.playCount,
+      publishedAt: r.publishedAt,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 /** Resolve a PUBLISHED project by slug → its id (for serving files). null if
  *  no published project owns that slug. */
 export async function resolvePublishedProject(slug: string): Promise<ResolvedProject | null> {
@@ -307,23 +365,16 @@ export async function serveProjectFile(
   if (!project) return { error: "not_published" };
 
   const storage = getStorage();
-  const content = await storage.readProjectFile(project.projectId, safePath);
-  if (content === null) return { error: "not_found" };
-
-  const contentType = contentTypeFor(safePath);
-  // Storage holds UTF-8 text (P1 is text-only). For binary extensions we accept
-  // base64-encoded content (forward-compat with a binary-aware writer) and
-  // fall back to raw bytes if it isn't valid base64.
-  let body: Buffer;
-  if (isBinaryPath(safePath) && isLikelyBase64(content)) {
-    body = Buffer.from(content, "base64");
-  } else {
-    body = Buffer.from(content, "utf8");
-  }
+  // Storage is byte-accurate (P5 Item 1): read the raw bytes and serve them
+  // verbatim. Text files (html/js/json) are utf-8 bytes; binary assets
+  // (PNG/JPG/WAV) are their exact bytes — both round-trip losslessly, so the
+  // play route renders real art with the correct Content-Type.
+  const bytes = await storage.readProjectFile(project.projectId, safePath);
+  if (bytes === null) return { error: "not_found" };
 
   return {
-    body,
-    contentType,
+    body: Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+    contentType: contentTypeFor(safePath),
     path: safePath,
     isIndex: safePath === "index.html",
   };
@@ -485,10 +536,4 @@ async function copyAllFiles(
 
 function isUuid(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
-}
-
-/** Heuristic: does a stored string look like base64 (for binary assets)? */
-function isLikelyBase64(s: string): boolean {
-  if (s.length === 0 || s.length % 4 !== 0) return false;
-  return /^[A-Za-z0-9+/]+={0,2}$/.test(s);
 }
