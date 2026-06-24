@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Flame, Send, Square, Loader2, Pencil, Terminal, Image as ImageIcon, Sparkles, Wrench, AlertTriangle, ChevronRight } from 'lucide-react';
+import { Send, Square, Loader2, Pencil, Terminal, Image as ImageIcon, Sparkles, Wrench, AlertTriangle, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import {
   cancelRun,
@@ -372,10 +371,10 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
 
   return (
     <div className="flex min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b px-4 py-3">
-        <span className="text-sm font-medium">{t('chat.title')}</span>
+      <div className="flex items-center gap-2.5 border-b px-4 py-3">
+        <span className="text-xs text-muted-foreground">{t('chat.title')}</span>
         {running ? (
-          <Badge variant="secondary" className="gap-1">
+          <Badge variant="secondary" className="ml-auto gap-1">
             <Loader2 className="size-3 animate-spin" />
             {t('chat.working')}
           </Badge>
@@ -385,9 +384,14 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
       <ScrollArea ref={scrollRef} className="min-h-0 flex-1">
         <div className="space-y-4 p-4">
           {turns.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {t('chat.empty')}
-            </p>
+            <div className="flex flex-col items-center gap-4 py-16 text-center">
+              <span className="brand-title brand-title-large" aria-label="Agent Game Forge">
+                <span className="brand-agent">Agent</span>
+                <span className="brand-game">Game</span>
+                <span className="brand-forge">Forge</span>
+              </span>
+              <p className="max-w-xs text-sm text-muted-foreground">{t('chat.empty')}</p>
+            </div>
           ) : null}
 
           {turns.map((turn) => (
@@ -455,47 +459,40 @@ function TurnView({
   const streaming = turn.status === 'streaming';
 
   return (
-    <div className="space-y-3">
-      {/* User bubble — right-aligned */}
+    <div className="space-y-2.5">
+      {/* User message — right-aligned, solid high-contrast bubble with tail */}
       <div className="flex justify-end">
-        <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-xl bg-primary/15 px-3 py-2 text-sm">
+        <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-[14px_14px_4px_14px] bg-foreground px-3.5 py-2.5 text-sm leading-snug text-background">
           {turn.userText}
         </div>
       </div>
 
-      {/* Assistant bubble — left-aligned with avatar */}
-      <div className="flex gap-2">
-        <Avatar className="mt-0.5 size-6">
-          <AvatarFallback className="bg-primary text-primary-foreground">
-            <Flame className="size-3" />
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1 space-y-2">
-          {blocks.length === 0 && streaming ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" />
-              {t('chat.thinking')}
-            </div>
-          ) : null}
+      {/* Assistant — flush prose, no avatar / rail (web style) */}
+      <div className="min-w-0 space-y-2 text-sm leading-relaxed">
+        {blocks.length === 0 && streaming ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <span className="size-1.5 animate-pulse rounded-full bg-foreground" />
+            {t('chat.thinking')}
+          </div>
+        ) : null}
 
-          {blocks.map((b, i) =>
-            b.kind === 'text' ? (
-              <Markdown key={i} text={b.text} />
-            ) : b.kind === 'form' ? (
-              <QuestionFormCard
-                key={i}
-                form={b.form}
-                projectPath={projectPath}
-                locked={submittedForms.has(b.form.id)}
-                onSubmit={onSubmitForm}
-              />
-            ) : (
-              <ToolCard key={i} family={b.family} items={b.items} streaming={streaming} />
-            ),
-          )}
+        {blocks.map((b, i) =>
+          b.kind === 'text' ? (
+            <Markdown key={i} text={b.text} />
+          ) : b.kind === 'form' ? (
+            <QuestionFormCard
+              key={i}
+              form={b.form}
+              projectPath={projectPath}
+              locked={submittedForms.has(b.form.id)}
+              onSubmit={onSubmitForm}
+            />
+          ) : (
+            <ToolCard key={i} family={b.family} items={b.items} streaming={streaming} />
+          ),
+        )}
 
-          {turn.status !== 'streaming' ? <StatusLine status={turn.status} /> : null}
-        </div>
+        {turn.status !== 'streaming' ? <StatusLine status={turn.status} /> : null}
       </div>
     </div>
   );
@@ -520,6 +517,22 @@ function clamp(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + '\n…(truncated)' : s;
 }
 
+// Per-family colored icon chip (matches the web app's edit=purple / shell=green
+// / thinking=blue / image=accent palette, mapped onto the dark studio theme).
+function familyChip(f: ToolFamily): string {
+  if (f === 'edit') return 'bg-violet-500/15 text-violet-400';
+  if (f === 'shell') return 'bg-emerald-500/15 text-emerald-400';
+  if (f === 'thinking') return 'bg-sky-500/15 text-sky-400';
+  if (f === 'image') return 'bg-amber-500/15 text-amber-400';
+  return 'bg-muted text-muted-foreground';
+}
+
+function fileKind(kind: string): { label: string; cls: string } {
+  if (kind === 'add') return { label: 'add', cls: 'bg-emerald-500/15 text-emerald-400' };
+  if (kind === 'delete') return { label: 'del', cls: 'bg-rose-500/15 text-rose-400' };
+  return { label: 'edit', cls: 'bg-amber-500/15 text-amber-400' };
+}
+
 // Collapsible tool call (Claude/Cursor-style): summary row + expandable
 // input/output. Long output is capped + scrolls inside its own box.
 function ToolCard({ family, items, streaming }: { family: ToolFamily; items: ToolItem[]; streaming: boolean }) {
@@ -530,6 +543,15 @@ function ToolCard({ family, items, streaming }: { family: ToolFamily; items: Too
   const anyError = items.some((it) => it.isError);
   const detail = chipDetail(family, items, t);
 
+  // Flatten edit changes across grouped items so the body can render a
+  // file list with add/edit/del badges instead of a raw JSON dump.
+  const editChanges =
+    family === 'edit'
+      ? items.flatMap(
+          (it) => ((it.input as { changes?: { path?: string; kind?: string }[] })?.changes ?? []),
+        )
+      : [];
+
   return (
     <div className={cn('overflow-hidden rounded-lg border bg-card/60', anyError && 'border-destructive/40')}>
       <button
@@ -537,13 +559,11 @@ function ToolCard({ family, items, streaming }: { family: ToolFamily; items: Too
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-accent/40"
       >
-        {running ? (
-          <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
-        ) : (
-          <Icon className={cn('size-3.5 shrink-0', anyError ? 'text-destructive' : 'text-muted-foreground')} />
-        )}
+        <span className={cn('grid size-[18px] shrink-0 place-items-center rounded', familyChip(family))}>
+          {running ? <Loader2 className="size-3 animate-spin" /> : <Icon className="size-3" />}
+        </span>
         <span className="shrink-0 font-medium">{familyLabel(family, items, t)}</span>
-        {detail ? <span className="min-w-0 truncate text-muted-foreground">{detail}</span> : null}
+        {detail ? <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">{detail}</span> : null}
         {running ? <span className="ml-auto shrink-0 text-primary">{t('chat.running')}</span> : null}
         <ChevronRight
           className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', running ? '' : 'ml-auto', open && 'rotate-90')}
@@ -551,31 +571,49 @@ function ToolCard({ family, items, streaming }: { family: ToolFamily; items: Too
       </button>
       {open ? (
         <div className="space-y-2 border-t bg-muted/20 p-2.5">
-          {items.map((it) => {
-            const input = toolInputText(it);
-            return (
-              <div key={it.id} className="min-w-0 space-y-1">
-                <div className="font-mono text-[11px] text-muted-foreground">{it.name}</div>
-                {input ? (
-                  <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-background/70 p-2 font-mono text-[11px] leading-relaxed">
-                    {clamp(input, 2000)}
-                  </pre>
-                ) : null}
-                {it.output !== undefined ? (
-                  <pre
-                    className={cn(
-                      'max-h-56 overflow-auto whitespace-pre-wrap break-words rounded bg-background p-2 font-mono text-[11px] leading-relaxed',
-                      it.isError && 'text-destructive',
-                    )}
-                  >
-                    {clamp(it.output, 4000)}
-                  </pre>
-                ) : running ? (
-                  <div className="text-[11px] text-primary">{t('chat.running')}</div>
-                ) : null}
-              </div>
-            );
-          })}
+          {editChanges.length > 0 ? (
+            <ul className="space-y-1">
+              {editChanges.map((c, i) => {
+                const k = fileKind(c.kind ?? 'modify');
+                return (
+                  <li key={i} className="flex items-center gap-2 font-mono text-[11px]">
+                    <span className={cn('min-w-9 rounded px-1.5 py-0.5 text-center text-[9px] uppercase tracking-wide', k.cls)}>
+                      {k.label}
+                    </span>
+                    <code className="truncate text-muted-foreground" title={c.path}>
+                      {shortPath(c.path ?? '')}
+                    </code>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            items.map((it) => {
+              const input = toolInputText(it);
+              return (
+                <div key={it.id} className="min-w-0 space-y-1">
+                  <div className="font-mono text-[11px] text-muted-foreground">{it.name}</div>
+                  {input ? (
+                    <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-background/70 p-2 font-mono text-[11px] leading-relaxed">
+                      {clamp(input, 2000)}
+                    </pre>
+                  ) : null}
+                  {it.output !== undefined ? (
+                    <pre
+                      className={cn(
+                        'max-h-56 overflow-auto whitespace-pre-wrap break-words rounded bg-background p-2 font-mono text-[11px] leading-relaxed',
+                        it.isError && 'text-destructive',
+                      )}
+                    >
+                      {clamp(it.output, 4000)}
+                    </pre>
+                  ) : running ? (
+                    <div className="text-[11px] text-primary">{t('chat.running')}</div>
+                  ) : null}
+                </div>
+              );
+            })
+          )}
         </div>
       ) : null}
     </div>

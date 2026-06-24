@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ArrowRight, ArrowLeft, Flame, Loader2 } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -55,8 +55,10 @@ export function NewGame() {
         </Button>
       </div>
       <div className="flex flex-1 flex-col items-center justify-center px-6 pb-24 text-center">
-        <span className="mb-6 grid size-11 place-items-center rounded-xl bg-primary text-primary-foreground">
-          <Flame className="size-5" />
+        <span className="brand-title brand-title-large mb-7" aria-label="Agent Game Forge">
+          <span className="brand-agent">Agent</span>
+          <span className="brand-game">Game</span>
+          <span className="brand-forge">Forge</span>
         </span>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{t('newGame.title')}</h1>
         <p className="mt-3 max-w-md text-muted-foreground">
