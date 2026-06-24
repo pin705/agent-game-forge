@@ -51,7 +51,7 @@ const en = {
   'common.comingSoon': '{feature} — coming soon',
 
   // ── App shell / brand ──
-  'app.brand': 'Forge',
+  'app.brand': 'Footage',
   'app.settings': 'Settings',
   'app.theme': 'Toggle light / dark',
   'app.language': 'Language',
@@ -63,7 +63,7 @@ const en = {
   'dashboard.subtitle': 'Create, edit, and publish — assets fetched free, $0 to ship.',
   'dashboard.newGame': 'New game',
   'dashboard.empty.title': 'No games yet',
-  'dashboard.empty.body': 'Describe a game and Forge builds it for you.',
+  'dashboard.empty.body': 'Describe a game and Footage builds it for you.',
   'dashboard.empty.cta': 'Create your first game',
   'dashboard.card.play': 'Play',
   'dashboard.card.edit': 'Edit',
@@ -71,6 +71,8 @@ const en = {
   'dashboard.card.editedAgo': 'edited {when}',
   'dashboard.duplicate': 'Duplicate',
   'dashboard.publish': 'Publish',
+  'dashboard.createHint': 'Enter to create · Shift+Enter for a new line',
+  'dashboard.gamesHeading': 'Your games',
   // relative time
   'time.recently': 'recently',
   'time.justNow': 'just now',
@@ -81,7 +83,7 @@ const en = {
   // ── New game ──
   'newGame.back': 'Dashboard',
   'newGame.title': 'What do you want to make?',
-  'newGame.subtitle': 'Describe a game — Forge builds it with free assets and a live preview. Ships at $0.',
+  'newGame.subtitle': 'Describe a game — Footage builds it with free assets and a live preview. Ships at $0.',
   'newGame.placeholder': 'A sokoban puzzle in a stone dungeon — push crates onto glowing targets…',
   'newGame.hint': '⌘ / Ctrl + Enter',
   'newGame.create': 'Create',
@@ -494,7 +496,7 @@ const vi: Record<TKey, string> = {
   'common.comingSoon': '{feature} — sắp ra mắt',
 
   // ── App shell / brand ──
-  'app.brand': 'Forge',
+  'app.brand': 'Footage',
   'app.settings': 'Cài đặt',
   'app.theme': 'Chuyển sáng / tối',
   'app.language': 'Ngôn ngữ',
@@ -506,7 +508,7 @@ const vi: Record<TKey, string> = {
   'dashboard.subtitle': 'Tạo, chỉnh sửa và phát hành — tài nguyên miễn phí, xuất bản với $0.',
   'dashboard.newGame': 'Trò chơi mới',
   'dashboard.empty.title': 'Chưa có trò chơi nào',
-  'dashboard.empty.body': 'Mô tả một trò chơi và Forge sẽ tạo nó cho bạn.',
+  'dashboard.empty.body': 'Mô tả một trò chơi và Footage sẽ tạo nó cho bạn.',
   'dashboard.empty.cta': 'Tạo trò chơi đầu tiên',
   'dashboard.card.play': 'Chơi',
   'dashboard.card.edit': 'Chỉnh sửa',
@@ -514,6 +516,8 @@ const vi: Record<TKey, string> = {
   'dashboard.card.editedAgo': 'sửa {when}',
   'dashboard.duplicate': 'Nhân bản',
   'dashboard.publish': 'Phát hành',
+  'dashboard.createHint': 'Enter để tạo · Shift+Enter xuống dòng',
+  'dashboard.gamesHeading': 'Game của bạn',
   'time.recently': 'gần đây',
   'time.justNow': 'vừa xong',
   'time.minutesAgo': '{n} phút trước',
@@ -523,7 +527,7 @@ const vi: Record<TKey, string> = {
   // ── New game ──
   'newGame.back': 'Bảng điều khiển',
   'newGame.title': 'Bạn muốn tạo gì?',
-  'newGame.subtitle': 'Mô tả một trò chơi — Forge tạo nó với tài nguyên miễn phí và bản xem trước trực tiếp. Xuất bản với $0.',
+  'newGame.subtitle': 'Mô tả một trò chơi — Footage tạo nó với tài nguyên miễn phí và bản xem trước trực tiếp. Xuất bản với $0.',
   'newGame.placeholder': 'Một trò chơi xếp hộp sokoban trong hầm ngục đá — đẩy thùng vào các ô mục tiêu phát sáng…',
   'newGame.hint': '⌘ / Ctrl + Enter',
   'newGame.create': 'Tạo',

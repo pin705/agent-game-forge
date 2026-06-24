@@ -1,26 +1,10 @@
 <p align="center">
-  <img src="apps/web/public/agf-banner.png" alt="Agent Game Forge" width="640" />
+  <img src="apps/web/public/agf-banner.png" alt="Agent Game Footage" width="640" />
 </p>
 
 <p align="center">
   <b>The local-first, bring-your-own-agent 2D game IDE.</b><br/>
   Codex or Claude Code drives. Web today, Godot and Unity on the roadmap.
-</p>
-
-<p align="center">
-  <b>English</b> ·
-  <a href="./README.es.md">Español</a> ·
-  <a href="./README.pt-BR.md">Português (Brasil)</a> ·
-  <a href="./README.de.md">Deutsch</a> ·
-  <a href="./README.fr.md">Français</a> ·
-  <a href="./README.zh-CN.md">简体中文</a> ·
-  <a href="./README.zh-TW.md">繁體中文</a> ·
-  <a href="./README.ko.md">한국어</a> ·
-  <a href="./README.ja.md">日本語</a> ·
-  <a href="./README.ar.md">العربية</a> ·
-  <a href="./README.ru.md">Русский</a> ·
-  <a href="./README.uk.md">Українська</a> ·
-  <a href="./README.tr.md">Türkçe</a>
 </p>
 
 <p align="center">
@@ -36,7 +20,7 @@
 
 ---
 
-Agent Game Forge (**AGF**) is an open-source desktop IDE that lets an AI coding agent build complete 2D games for you — sprites, parallax backgrounds, physics, hazards, pickups, scene layouts — and gives you a visual editor to drag-tweak whatever the agent got wrong. **You pick the agent** (Codex CLI or Claude Code) and **you pick the image gen** — bring your own API key, or use Codex CLI's built-in image gen (GPT-Image2). Today the default output is vanilla JS + Canvas (zero framework lock-in, runs in any browser); Godot 4 and Unity engine targets are on the roadmap.
+Agent Game Footage (**AGF**) is an open-source desktop IDE that lets an AI coding agent build complete 2D games for you — sprites, parallax backgrounds, physics, hazards, pickups, scene layouts — and gives you a visual editor to drag-tweak whatever the agent got wrong. **You pick the agent** (Codex CLI or Claude Code) and **you pick the image gen** — bring your own API key, or use Codex CLI's built-in image gen (GPT-Image2). Today the default output is vanilla JS + Canvas (zero framework lock-in, runs in any browser); Godot 4 and Unity engine targets are on the roadmap.
 
 ---
 

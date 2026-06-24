@@ -97,7 +97,8 @@ Quick reminders:
 
 - Data and code SEPARATE. Numbers in JSON under data/, never inline.
 - Spatial shapes: { x, y } point / { x, y, w, h } rect / { x, y, radius } circle / { points: [[x,y]...] } polygon.
-- Visual assets follow the generate2dsprite / generate2dmap procedure bundles in .agents/skills/. The bundle is SKILL.md + scripts/*.py — there is no separate "$generate2dsprite" tool to look up; you call your built-in image_gen tool with the SKILL.md prompt template, then run scripts/<name>.py process to postprocess. See common.md "How to invoke the skills".
+- FREE-ART-FIRST: an art-based game must ship real art, never blank placeholder shapes. Before GENERATING any sprite/tile/background/sfx/music, FETCH a free commercial-safe asset — no API key needed, this is the default path: \`python .agents/tools/fetch-asset.py search "<desc>" --kind <sprite|tileset|pickup|sfx|music|background>\`, then \`fetch "<desc>" assets/<path>/<name>.png --kind <kind>\`. Wire the file into data/*.json. See asset-sourcing.md.
+- When you DO generate (no free asset fits the art direction), visual assets follow the generate2dsprite / generate2dmap procedure bundles in .agents/skills/. The bundle is SKILL.md + scripts/*.py — there is no separate "$generate2dsprite" tool to look up; you call your built-in image_gen tool with the SKILL.md prompt template, then run scripts/<name>.py process to postprocess. See common.md "How to invoke the skills".
 - Every gen call after the first MUST view_image a prior asset and pass reference: 'generated_image' for visual consistency.
 - Generating ≠ done. After the skill writes assets, you MUST edit level / catalog JSON to reference them.
 - Live editor state at .ogf/scene-context.json — read it for spatial questions.

@@ -104,7 +104,7 @@ export function Sidebar(props: Props) {
 
   return (
     <aside className="side">
-      {/* Brand head — pixel mascot + "Agent Game Forge" wordmark */}
+      {/* Brand head — pixel mascot + "Agent Game Footage" wordmark */}
       <div className="side-head">
         <div className="brand">
           <img
@@ -115,10 +115,10 @@ export function Sidebar(props: Props) {
             width={22}
             height={22}
           />
-          <span className="brand-title" aria-label="Agent Game Forge">
+          <span className="brand-title" aria-label="Agent Game Footage">
             <span className="brand-agent">Agent</span>
             <span className="brand-game">Game</span>
-            <span className="brand-forge">Forge</span>
+            <span className="brand-forge">Footage</span>
           </span>
         </div>
       </div>

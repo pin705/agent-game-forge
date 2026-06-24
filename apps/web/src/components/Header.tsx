@@ -42,10 +42,10 @@ export function Header(props: Props) {
             width={22}
             height={22}
           />
-          <span className="brand-title" aria-label="Agent Game Forge">
+          <span className="brand-title" aria-label="Agent Game Footage">
             <span className="brand-agent">Agent</span>
             <span className="brand-game">Game</span>
-            <span className="brand-forge">Forge</span>
+            <span className="brand-forge">Footage</span>
           </span>
         </div>
         <div style={{ width: 1, height: 18, background: 'var(--line)', margin: '0 4px' }} />

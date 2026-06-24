@@ -2074,10 +2074,10 @@ function EmptyEditor({ onOpen }: { onOpen: () => void }) {
   return (
     <div className="empty-state">
       <div className="home-hero">
-        <span className="brand-title brand-title-large" aria-label="Agent Game Forge">
+        <span className="brand-title brand-title-large" aria-label="Agent Game Footage">
           <span className="brand-agent">Agent</span>
           <span className="brand-game">Game</span>
-          <span className="brand-forge">Forge</span>
+          <span className="brand-forge">Footage</span>
         </span>
         <h2 className="home-h1">What do you want to make?</h2>
         <p className="home-sub">

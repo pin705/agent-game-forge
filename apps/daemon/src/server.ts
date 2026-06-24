@@ -1909,11 +1909,20 @@ function composePrompt(
     return `${reminder}${specBlock}${formWorkflowBlock}${sceneBlock}${refs}# User request\n\n${userPrompt}\n`;
   }
 
-  return `# Open Game Forge — agent run
+  return `# Open Game Footage — agent run
 
-You are working inside an Open Game Forge project. The user is editing a 2D game in this directory. Edit files on disk in the cwd.
+You are working inside an Open Game Footage project. The user is editing a 2D game in this directory. Edit files on disk in the cwd.
 
-**OGF's two core skills are \`generate2dsprite\` and \`generate2dmap\`. Every visual asset goes through one of these procedures — wrap your \`image_gen\` calls in the skill's prompt template + postprocess script.**
+**BUILD PROTOCOL — for a new or empty game, do this FIRST.** This project ships a declarative pipeline. Before writing game code, run \`python .agents/tools/pipeline.py next\` and work the stages in order (discovery → spec → art_direction → assets → scaffold → systems → verify), checkpointing each with \`pipeline.py done <stage>\`. Do NOT jump straight to coding the seed — that skips the spec + art stages.
+
+**FREE-ART-FIRST — an art-based genre (platformer / top-down / shmup / RPG / tower-defense / card / …) MUST ship real art, never blank placeholder shapes.** For every visual/audio asset, FETCH a free, commercial-safe asset FIRST — this needs NO API key and is the default path:
+\`\`\`
+python .agents/tools/fetch-asset.py search "<what you need>" --kind <sprite|tileset|pickup|sfx|music|background>
+python .agents/tools/fetch-asset.py fetch "<query>" assets/<path>/<name>.png --kind <kind>
+\`\`\`
+The broker auto-records attribution. Wire the file into \`data/*.json\` like any asset. Only GENERATE (skills below) when no free asset fits the art direction. Full rule: \`.ogf/conventions/asset-sourcing.md\`.
+
+**When you DO generate** (no free asset fit), every generated visual goes through \`generate2dsprite\` or \`generate2dmap\` — wrap your \`image_gen\` calls in the skill's prompt template + postprocess script.
 
 - **Sprite-like things** (character / enemy / tower / projectile / item / FX / single prop / UI sprite) → \`generate2dsprite\` procedure. One asset = one skill cycle.
 - **Scene-like things** (level map / tileset / parallax layers / prop pack / battlefield) → \`generate2dmap\` procedure with \`map_mode\` matching the genre (\`scene_mode\` for TD, \`side_scroll_mode\` for platformer, \`tile_mode\` for RPG, etc.). The skill picks its own output pipeline (single image / layered / tilemap / parallax) — don't second-guess it; let the skill output what the genre needs.

@@ -55,10 +55,10 @@ export function NewGame() {
         </Button>
       </div>
       <div className="flex flex-1 flex-col items-center justify-center px-6 pb-24 text-center">
-        <span className="brand-title brand-title-large mb-7" aria-label="Agent Game Forge">
+        <span className="brand-title brand-title-large mb-7" aria-label="Agent Game Footage">
           <span className="brand-agent">Agent</span>
           <span className="brand-game">Game</span>
-          <span className="brand-forge">Forge</span>
+          <span className="brand-forge">Footage</span>
         </span>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{t('newGame.title')}</h1>
         <p className="mt-3 max-w-md text-muted-foreground">

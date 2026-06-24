@@ -89,7 +89,7 @@ export interface ClaudeCodeRunOptions {
  *  gen contract regardless of project state. Plain HTTP via curl works
  *  in every project — no dependency on .agents/tools/ existing. */
 const OGF_SYSTEM_ADDENDUM = `
-=== OGF (Open Game Forge) runtime ===
+=== OGF (Open Game Footage) runtime ===
 
 You ARE able to generate real model-quality images in this environment.
 

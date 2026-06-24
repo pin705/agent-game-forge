@@ -295,12 +295,39 @@ def check_juice():
              "hits need feedback (conventions/juice.md per-event checklist)")
 
 
+def check_art() -> None:
+    """Art-based games must ship real art, not blank placeholder shapes. If the
+    source loads images but assets/ has none, the build skipped the free-asset
+    fetch step (the core OGF value prop). Asset-free Canvas games (no image
+    loading) are exempt."""
+    src_text = ""
+    for p in (ROOT / "src").rglob("*.js"):
+        try:
+            src_text += p.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            pass
+    if not any(t in src_text for t in ("drawImage(", "new Image(", "loadImage")):
+        return  # asset-free Canvas game (draws shapes) — no art expected
+    exts = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+    imgs = [p for p in (ROOT / "assets").rglob("*") if p.suffix.lower() in exts]
+    if not imgs:
+        warn(
+            "art-based game (source loads images) but assets/ has NO image files — it ships "
+            "blank/placeholder shapes. Source real art FREE-FIRST: "
+            "`python .agents/tools/fetch-asset.py search/fetch` (conventions/asset-sourcing.md); "
+            "generate only as a fallback."
+        )
+    else:
+        ok(f"art present ({len(imgs)} image asset(s) in assets/)")
+
+
 def verify() -> None:
     check_js()
     check_json_and_assets()
     check_index()
     check_start_scene()
     check_juice()
+    check_art()
     for m in OKS:
         print(f"  ✓ {m}")
     for m in WARNINGS:
