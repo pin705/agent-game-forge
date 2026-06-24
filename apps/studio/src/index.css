@@ -71,10 +71,10 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.215 0.004 75);
 
-  /* Primary — Claude terracotta. The single brand hue; carries buttons,
-     links, active state, focus ring, selection. */
-  --primary: oklch(0.665 0.13 42);
-  --primary-foreground: oklch(0.99 0.01 80);
+  /* Primary — monochrome ink (black on light), Cursor / Linear style. The UI
+     chrome stays black-and-white; warmth lives only in the paper neutrals. */
+  --primary: oklch(0.24 0.006 75);
+  --primary-foreground: oklch(0.985 0.002 95);
 
   --secondary: oklch(0.967 0.0018 95);
   --secondary-foreground: oklch(0.37 0.006 80);
@@ -91,7 +91,7 @@
   /* Lines — soft warm hairlines, used sparingly; shadows do the lifting. */
   --border: oklch(0.928 0.002 90);
   --input: oklch(0.9 0.003 90);
-  --ring: oklch(0.665 0.13 42);
+  --ring: oklch(0.44 0.006 75);
 
   --chart-1: oklch(0.665 0.13 42);
   --chart-2: oklch(0.585 0.11 150);
@@ -101,12 +101,12 @@
 
   --sidebar: oklch(0.978 0.0018 95);
   --sidebar-foreground: oklch(0.215 0.004 75);
-  --sidebar-primary: oklch(0.665 0.13 42);
-  --sidebar-primary-foreground: oklch(0.99 0.01 80);
+  --sidebar-primary: oklch(0.24 0.006 75);
+  --sidebar-primary-foreground: oklch(0.985 0.002 95);
   --sidebar-accent: oklch(0.955 0.002 95);
   --sidebar-accent-foreground: oklch(0.25 0.005 80);
   --sidebar-border: oklch(0.928 0.002 90);
-  --sidebar-ring: oklch(0.665 0.13 42);
+  --sidebar-ring: oklch(0.44 0.006 75);
 
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-serif: Georgia, serif;
@@ -138,7 +138,7 @@
   --popover: oklch(0.27 0.004 75);
   --popover-foreground: oklch(0.955 0.004 95);
 
-  --primary: oklch(0.7 0.13 44);
+  --primary: oklch(0.955 0.004 95);
   --primary-foreground: oklch(0.205 0.004 75);
 
   --secondary: oklch(0.27 0.004 75);
@@ -156,7 +156,7 @@
   /* Hairlines: warm low-contrast light-on-dark */
   --border: oklch(0.3 0.004 75);
   --input: oklch(0.34 0.004 75);
-  --ring: oklch(0.7 0.13 44);
+  --ring: oklch(0.58 0.006 75);
 
   --chart-1: oklch(0.7 0.13 44);
   --chart-2: oklch(0.72 0.12 150);
@@ -166,12 +166,12 @@
 
   --sidebar: oklch(0.23 0.004 75);
   --sidebar-foreground: oklch(0.955 0.004 95);
-  --sidebar-primary: oklch(0.7 0.13 44);
+  --sidebar-primary: oklch(0.955 0.004 95);
   --sidebar-primary-foreground: oklch(0.205 0.004 75);
   --sidebar-accent: oklch(0.305 0.004 75);
   --sidebar-accent-foreground: oklch(0.955 0.004 95);
   --sidebar-border: oklch(0.3 0.004 75);
-  --sidebar-ring: oklch(0.7 0.13 44);
+  --sidebar-ring: oklch(0.58 0.006 75);
 
   --shadow-2xs: 0 1px 2px 0 oklch(0 0 0 / 0.2);
   --shadow-xs: 0 1px 2px 0 oklch(0 0 0 / 0.24);
