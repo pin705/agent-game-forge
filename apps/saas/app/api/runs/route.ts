@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { runAgent } from "@/lib/agent/run";
 import type { RunEvent } from "@/lib/agent/events";
+import { ENABLED_MODEL_IDS, isEnabledModel } from "@/lib/agent/catalog";
 import { creditFloor, readBalance } from "@/lib/billing/credits";
 
 // The agent loop shells out + touches the filesystem — it must run on Node.
@@ -28,7 +29,7 @@ function sse(event: RunEvent): string {
  *    allowed so the loop can be smoke-tested with zero accounts.
  */
 export async function POST(req: NextRequest) {
-  let body: { projectId?: string; prompt?: string };
+  let body: { projectId?: string; prompt?: string; model?: string };
   try {
     body = await req.json();
   } catch {
@@ -38,6 +39,17 @@ export async function POST(req: NextRequest) {
   const prompt = body.prompt?.trim();
   if (!projectId || !prompt) {
     return Response.json({ error: "projectId and prompt are required" }, { status: 400 });
+  }
+
+  // Optional model selection (P5). An explicit id MUST be an enabled catalog id
+  // — premium tiers aren't wired, so we refuse them rather than fake a run. No
+  // model → runAgent falls back to the default tier.
+  const requestedModel = body.model?.trim();
+  if (requestedModel && !isEnabledModel(requestedModel)) {
+    return Response.json(
+      { error: "model_unavailable", message: "That model isn't available yet.", allowed: ENABLED_MODEL_IDS },
+      { status: 400 },
+    );
   }
 
   let userId: string | undefined;
