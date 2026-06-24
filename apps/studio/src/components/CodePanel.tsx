@@ -24,6 +24,7 @@ import {
   type FileNode,
   type ReadFileResponse,
 } from '@/lib/files';
+import { useT } from '@/lib/i18n';
 
 interface CodePanelProps {
   /** Absolute project path. */
@@ -131,6 +132,7 @@ function FileViewer({
   projectPath: string;
   file: SelectedFile;
 }) {
+  const t = useT();
   const [data, setData] = useState<ReadFileResponse | null>(null);
   const [content, setContent] = useState('');
   const [original, setOriginal] = useState('');
@@ -187,13 +189,13 @@ function FileViewer({
           {file.relPath}
         </span>
         {dirty ? (
-          <span className="text-xs text-amber-500">● unsaved</span>
+          <span className="text-xs text-amber-500">● {t('common.unsaved')}</span>
         ) : null}
         <div className="flex-1" />
         {data?.kind === 'text' ? (
           <Button size="sm" disabled={!dirty || saving} onClick={() => void save()}>
             <Save />
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? t('common.saving') : t('common.save')}
           </Button>
         ) : null}
       </div>
@@ -206,7 +208,7 @@ function FileViewer({
 
       <div className="min-h-0 flex-1">
         {loading ? (
-          <div className="p-6 text-sm text-muted-foreground">Loading…</div>
+          <div className="p-6 text-sm text-muted-foreground">{t('common.loading')}</div>
         ) : data?.kind === 'image' ? (
           <div className="flex h-full items-center justify-center overflow-auto bg-[length:16px_16px] p-6">
             <img
@@ -219,7 +221,7 @@ function FileViewer({
           <div className="flex h-full flex-col">
             {data.truncated ? (
               <div className="shrink-0 px-4 py-1 text-xs text-amber-500">
-                File truncated — only part of it is shown. Saving would overwrite the full file.
+                {t('code.truncated')}
               </div>
             ) : null}
             {/* TODO: Monaco — Textarea is a stopgap editor. */}
@@ -232,7 +234,7 @@ function FileViewer({
           </div>
         ) : data?.kind === 'binary' ? (
           <div className="p-6 text-sm text-muted-foreground">
-            Binary file — no preview available.
+            {t('code.binary')}
           </div>
         ) : null}
       </div>
@@ -243,6 +245,7 @@ function FileViewer({
 // ─── Panel ───────────────────────────────────────────────────────────────
 
 export function CodePanel({ projectPath }: CodePanelProps) {
+  const t = useT();
   const [tree, setTree] = useState<FileNode | null>(null);
   const [treeError, setTreeError] = useState<string | null>(null);
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
@@ -280,23 +283,23 @@ export function CodePanel({ projectPath }: CodePanelProps) {
         <FileViewer key={selected.relPath} projectPath={projectPath} file={selected} />
       ) : (
         <div className="grid h-full place-items-center p-6 text-sm text-muted-foreground">
-          Select a file to view or edit it.
+          {t('code.selectFile')}
         </div>
       ),
-    [selected, projectPath],
+    [selected, projectPath, t],
   );
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[260px_1fr]">
       <div className="flex min-h-0 flex-col border-r">
         <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
-          <span className="text-xs font-medium text-foreground">Files</span>
+          <span className="text-xs font-medium text-foreground">{t('code.files')}</span>
           <div className="flex-1" />
           <Button
             variant="ghost"
             size="icon"
             className="size-6"
-            title="Refresh"
+            title={t('common.refresh')}
             onClick={() => setReloadKey((k) => k + 1)}
           >
             <RefreshCw className="size-3.5" />
@@ -307,7 +310,7 @@ export function CodePanel({ projectPath }: CodePanelProps) {
             {treeError ? (
               <div className="p-3 text-xs text-destructive">{treeError}</div>
             ) : !tree ? (
-              <div className="p-3 text-xs text-muted-foreground">Loading…</div>
+              <div className="p-3 text-xs text-muted-foreground">{t('common.loading')}</div>
             ) : (
               <TreeNode
                 node={tree}

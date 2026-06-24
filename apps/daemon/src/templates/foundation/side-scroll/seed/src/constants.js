@@ -1,7 +1,7 @@
 const VIEW = Object.freeze({ w: 1280, h: 720 });
 
 const GAME = Object.freeze({
-  title: "Ash Banner Road",
+  title: "Platform Quest",
   startScene: "border_road",
   bossScene: "gate_boss_room",
   startMode: "title"

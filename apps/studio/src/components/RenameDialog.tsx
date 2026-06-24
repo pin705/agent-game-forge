@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { renameProject } from '@/lib/assets';
+import { useT } from '@/lib/i18n';
 
 interface RenameDialogProps {
   open: boolean;
@@ -32,6 +33,7 @@ export function RenameDialog({
   currentName,
   onRenamed,
 }: RenameDialogProps) {
+  const t = useT();
   const [name, setName] = useState(currentName);
   const [busy, setBusy] = useState(false);
 
@@ -48,11 +50,11 @@ export function RenameDialog({
     setBusy(true);
     try {
       await renameProject(projectPath, trimmed);
-      toast.success(`Renamed to “${trimmed}”`);
+      toast.success(t('rename.success', { name: trimmed }));
       onRenamed?.(trimmed);
       onOpenChange(false);
     } catch (err) {
-      toast.error(`Rename failed: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(t('rename.failed', { error: err instanceof Error ? err.message : String(err) }));
     } finally {
       setBusy(false);
     }
@@ -70,27 +72,27 @@ export function RenameDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>Rename game</DialogTitle>
-          <DialogDescription>Give this game a new name.</DialogDescription>
+          <DialogTitle>{t('rename.title')}</DialogTitle>
+          <DialogDescription>{t('rename.description')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
-          <Label htmlFor="rename-game-name">Name</Label>
+          <Label htmlFor="rename-game-name">{t('rename.label')}</Label>
           <Input
             id="rename-game-name"
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="My game"
+            placeholder={t('rename.placeholder')}
           />
         </div>
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="ghost" disabled={busy}>
-              Cancel
+              {t('common.cancel')}
             </Button>
           </DialogClose>
           <Button onClick={() => void submit()} disabled={!canSubmit}>
-            {busy ? 'Saving…' : 'Save'}
+            {busy ? t('common.saving') : t('common.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

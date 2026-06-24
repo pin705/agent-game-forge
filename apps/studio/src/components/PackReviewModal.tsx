@@ -24,6 +24,7 @@ import {
   type PackLayout,
   type PendingPack,
 } from '@/lib/review';
+import { useT } from '@/lib/i18n';
 
 export interface PackReviewModalProps {
   open: boolean;
@@ -44,6 +45,7 @@ interface PackPreview {
 }
 
 export function PackReviewModal(props: PackReviewModalProps) {
+  const t = useT();
   const { open, onOpenChange, projectPath, onResolved, onRequestCodeUpdate } = props;
   const [packs, setPacks] = useState<PendingPack[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -61,11 +63,11 @@ export function PackReviewModal(props: PackReviewModalProps) {
       setPacks(r.packs);
       setActiveIdx((i) => Math.min(i, Math.max(0, r.packs.length - 1)));
     } catch (err) {
-      toast.error('Failed to load pending packs', {
+      toast.error(t('pack.loadFailed'), {
         description: err instanceof Error ? err.message : String(err),
       });
     }
-  }, [projectPath]);
+  }, [projectPath, t]);
 
   useEffect(() => {
     if (open) void load();
@@ -118,14 +120,14 @@ export function PackReviewModal(props: PackReviewModalProps) {
     try {
       const r = await apiApplyPack(projectPath, active.packDir);
       if (r.failed.length > 0) {
-        toast.warning('Some files failed to apply', {
+        toast.warning(t('pack.someFailic'), {
           description: r.failed
             .slice(0, 5)
             .map((f) => `${f.relPath}: ${f.err}`)
             .join('\n'),
         });
       } else {
-        toast.success(`Applied ${r.applied.length} file${r.applied.length === 1 ? '' : 's'}`);
+        toast.success(t('pack.applied', { n: r.applied.length }));
       }
       if (autoCodeUpdate && layoutChanged) {
         const prompt = buildCodeUpdatePrompt(active);
@@ -133,14 +135,14 @@ export function PackReviewModal(props: PackReviewModalProps) {
           onRequestCodeUpdate(prompt);
         } else {
           await navigator.clipboard.writeText(prompt).catch(() => {});
-          toast.info('Layout changed — code-update prompt copied', {
-            description: 'Paste it into the agent chat to patch slicing in code/data.',
+          toast.info(t('pack.layoutCopied'), {
+            description: t('pack.layoutCopied.desc'),
           });
         }
       }
       advanceOrClose();
     } catch (err) {
-      toast.error('Apply failed', {
+      toast.error(t('pack.applyFailed'), {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
@@ -153,10 +155,10 @@ export function PackReviewModal(props: PackReviewModalProps) {
     setBusy('discard');
     try {
       await apiDiscardPack(projectPath, active.packDir);
-      toast.success('Pack discarded', { description: 'The live folder was untouched.' });
+      toast.success(t('pack.discarded'), { description: t('pack.discarded.desc') });
       advanceOrClose();
     } catch (err) {
-      toast.error('Discard failed', {
+      toast.error(t('pack.discardFailed'), {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
@@ -178,24 +180,18 @@ export function PackReviewModal(props: PackReviewModalProps) {
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle className="flex items-center gap-2">
             <RefreshCw className="size-4 text-primary" />
-            {active ? (
-              <>
-                Review pack: {entity} / {action}
-              </>
-            ) : (
-              'Review pack'
-            )}
+            {active ? t('pack.reviewTitle', { entity, action }) : t('pack.title')}
           </DialogTitle>
           <DialogDescription>
-            {packs.length > 1 && <>{activeIdx + 1} of {packs.length} pending · </>}
-            {active ? `${active.fileCount} files` : 'No pending packs.'}
+            {packs.length > 1 && t('pack.pendingOf', { current: activeIdx + 1, total: packs.length })}
+            {active ? t('pack.fileCount', { n: active.fileCount }) : t('pack.empty')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {!active && (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No pending packs.
+              {t('pack.empty')}
             </p>
           )}
 
@@ -221,16 +217,18 @@ export function PackReviewModal(props: PackReviewModalProps) {
               {/* Sheet diff side-by-side */}
               <div className="grid grid-cols-2 gap-4">
                 <SheetFigure
-                  caption="Original"
+                  caption={t('pack.original')}
                   url={preview.liveSheetUrl}
                   loading={preview.loading}
-                  emptyLabel="no live sheet"
+                  emptyLabel={t('pack.noLiveSheet')}
+                  loadingLabel={t('pack.loading')}
                 />
                 <SheetFigure
-                  caption="New"
+                  caption={t('pack.new')}
                   url={preview.stagingSheetUrl}
                   loading={preview.loading}
-                  emptyLabel="no staging sheet"
+                  emptyLabel={t('pack.noStagingSheet')}
+                  loadingLabel={t('pack.loading')}
                 />
               </div>
 
@@ -238,36 +236,41 @@ export function PackReviewModal(props: PackReviewModalProps) {
               <div className="mt-4 rounded-lg border">
                 <div className="grid grid-cols-3 border-b px-3 py-2 text-xs font-medium text-muted-foreground">
                   <span />
-                  <span>Original</span>
-                  <span>New</span>
+                  <span>{t('pack.original')}</span>
+                  <span>{t('pack.new')}</span>
                 </div>
                 <LayoutRow
-                  label="Frames"
+                  label={t('pack.frames')}
                   live={active.liveLayout?.frames}
                   stage={active.stagingLayout?.frames}
+                  changedLabel={t('pack.changed')}
                 />
                 <LayoutRow
-                  label="Grid"
+                  label={t('pack.grid')}
                   live={fmtGrid(active.liveLayout)}
                   stage={fmtGrid(active.stagingLayout)}
                   isString
+                  changedLabel={t('pack.changed')}
                 />
                 <LayoutRow
-                  label="Cell size"
+                  label={t('pack.cellSize')}
                   live={active.liveLayout?.cellSize}
                   stage={active.stagingLayout?.cellSize}
                   suffix="px"
+                  changedLabel={t('pack.changed')}
                 />
                 <LayoutRow
-                  label="FPS"
+                  label={t('pack.fps')}
                   live={active.liveLayout?.fps}
                   stage={active.stagingLayout?.fps}
+                  changedLabel={t('pack.changed')}
                 />
                 <LayoutRow
-                  label="Anchor"
+                  label={t('pack.anchor')}
                   live={active.liveLayout?.anchor}
                   stage={active.stagingLayout?.anchor}
                   isString
+                  changedLabel={t('pack.changed')}
                 />
               </div>
 
@@ -279,8 +282,7 @@ export function PackReviewModal(props: PackReviewModalProps) {
                     className="mt-0.5"
                   />
                   <span>
-                    Layout changed — auto-fire a follow-up turn to patch slicing in
-                    code/data after apply
+                    {t('pack.layoutChanged')}
                   </span>
                 </Label>
               )}
@@ -295,15 +297,15 @@ export function PackReviewModal(props: PackReviewModalProps) {
             onClick={doDiscard}
             disabled={!active || busy !== null}
           >
-            {busy === 'discard' ? 'Discarding…' : 'Discard pack'}
+            {busy === 'discard' ? t('pack.discarding') : t('pack.discard')}
           </Button>
           <span className="grow" />
           <Button size="sm" onClick={doApply} disabled={!active || busy !== null}>
             {busy === 'apply'
-              ? 'Applying…'
+              ? t('pack.applying')
               : active
-                ? `Apply pack (${active.fileCount} files)`
-                : 'Apply pack'}
+                ? t('pack.applyCount', { n: active.fileCount })
+                : t('pack.apply')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -316,6 +318,7 @@ function SheetFigure(props: {
   url: string | null;
   loading: boolean;
   emptyLabel: string;
+  loadingLabel: string;
 }) {
   return (
     <figure className="flex flex-col items-center gap-2 rounded-lg border bg-muted/30 p-3">
@@ -323,7 +326,7 @@ function SheetFigure(props: {
         {props.caption}
       </figcaption>
       {props.loading ? (
-        <span className="py-6 font-mono text-xs text-muted-foreground">loading…</span>
+        <span className="py-6 font-mono text-xs text-muted-foreground">{props.loadingLabel}</span>
       ) : props.url ? (
         <img
           src={props.url}
@@ -346,8 +349,9 @@ function LayoutRow(props: {
   stage: number | string | null | undefined;
   suffix?: string;
   isString?: boolean;
+  changedLabel: string;
 }) {
-  const { label, live, stage, suffix = '', isString = false } = props;
+  const { label, live, stage, suffix = '', isString = false, changedLabel } = props;
   const liveStr =
     live === null || live === undefined ? '—' : isString ? String(live) : `${live}${suffix}`;
   const stageStr =
@@ -364,7 +368,7 @@ function LayoutRow(props: {
       <span className="font-mono">{liveStr}</span>
       <span className="flex items-center gap-2 font-mono">
         {stageStr}
-        {changed && <Badge variant="secondary">changed</Badge>}
+        {changed && <Badge variant="secondary">{changedLabel}</Badge>}
       </span>
     </div>
   );

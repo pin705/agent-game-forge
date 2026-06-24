@@ -35,6 +35,7 @@ import {
   type SecretStatus,
 } from '@/lib/settings';
 import { cn } from '@/lib/utils';
+import { useLocale, useT, type Locale } from '@/lib/i18n';
 
 // ── Model + reasoning option tables ──
 // Fallbacks mirror apps/daemon/src/agents.ts `fallbackModels`. At mount we
@@ -141,6 +142,7 @@ function SecretRow({
   status: SecretStatus | undefined;
   onSaved: (next: SecretStatus[]) => void;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const fromEnv = status?.fromEnv ?? false;
@@ -175,16 +177,16 @@ function SecretRow({
         <span className="font-mono text-xs text-muted-foreground">{spec.hint}</span>
         <span className="flex-1" />
         {fromEnv ? (
-          <Badge variant="secondary" title={`Shadowed by ${status?.envVarName}`}>
-            env
+          <Badge variant="secondary" title={t('settings.secret.shadowed', { env: status?.envVarName ?? '' })}>
+            {t('settings.secret.env')}
           </Badge>
         ) : isSet ? (
           <Badge variant="outline" className="border-success/40 text-success">
-            set
+            {t('settings.secret.set')}
           </Badge>
         ) : (
           <Badge variant="outline" className="text-muted-foreground">
-            missing
+            {t('settings.secret.missing')}
           </Badge>
         )}
       </div>
@@ -195,7 +197,7 @@ function SecretRow({
           className="font-mono"
           placeholder={
             fromEnv
-              ? `(from ${status?.envVarName})`
+              ? t('settings.secret.fromEnv', { env: status?.envVarName ?? '' })
               : isSet
                 ? status?.masked
                 : spec.placeholder
@@ -208,18 +210,17 @@ function SecretRow({
           }}
         />
         <Button size="sm" onClick={() => void save()} disabled={fromEnv || busy || !draft.trim()}>
-          {busy ? 'Saving…' : 'Save'}
+          {busy ? t('common.saving') : t('common.save')}
         </Button>
         {isSet && !fromEnv && (
           <Button size="sm" variant="ghost" onClick={() => void clear()} disabled={busy}>
-            Clear
+            {t('common.clear')}
           </Button>
         )}
       </div>
       {fromEnv && (
         <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
-          Override via <code>{status?.envVarName}</code>. Unset that env var to use a value
-          saved here.
+          {t('settings.secret.overrideHint', { env: status?.envVarName ?? '' })}
         </p>
       )}
     </div>
@@ -227,6 +228,8 @@ function SecretRow({
 }
 
 function SettingsDialogBody() {
+  const t = useT();
+  const { locale, setLocale } = useLocale();
   const { agentId, setAgentId, model, setModel, reasoning, setReasoning } = useSettings();
   const modelsByAgent = useAgentModels();
   const [secrets, setSecrets] = useState<SecretStatus[] | null>(null);
@@ -255,12 +258,28 @@ function SettingsDialogBody() {
 
   return (
     <div className="grid gap-6">
+      {/* Language */}
+      <section className="grid gap-2">
+        <Label htmlFor="settings-language">{t('app.language')}</Label>
+        <Select value={locale} onValueChange={(v) => setLocale(v as Locale)}>
+          <SelectTrigger id="settings-language">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="en">{t('app.language.en')}</SelectItem>
+            <SelectItem value="vi">{t('app.language.vi')}</SelectItem>
+          </SelectContent>
+        </Select>
+      </section>
+
+      <Separator />
+
       {/* Agent CLI */}
       <section className="grid gap-3">
         <div>
-          <h3 className="text-sm font-medium">Agent</h3>
+          <h3 className="text-sm font-medium">{t('settings.agent.title')}</h3>
           <p className="text-xs text-muted-foreground">
-            Default CLI for new conversations.
+            {t('settings.agent.hint')}
           </p>
         </div>
         <RadioGroup.Root
@@ -296,15 +315,15 @@ function SettingsDialogBody() {
       {/* Model + reasoning */}
       <section className="grid gap-3">
         <div className="grid gap-2">
-          <Label>Model</Label>
+          <Label>{t('settings.model')}</Label>
           <Select value={model} onValueChange={setModel}>
             <SelectTrigger className="font-mono">
-              <SelectValue placeholder="Select a model" />
+              <SelectValue placeholder={t('settings.model.placeholder')} />
             </SelectTrigger>
             <SelectContent>
               {!modelInList && model && (
                 <SelectItem value={model} className="font-mono">
-                  {model} · (custom)
+                  {t('settings.model.custom', { model })}
                 </SelectItem>
               )}
               {models.map((m) => (
@@ -318,10 +337,10 @@ function SettingsDialogBody() {
 
         {agentId === 'codex' && (
           <div className="grid gap-2">
-            <Label>Reasoning effort</Label>
+            <Label>{t('settings.reasoning')}</Label>
             <Select value={reasoning} onValueChange={setReasoning}>
               <SelectTrigger>
-                <SelectValue placeholder="Select reasoning" />
+                <SelectValue placeholder={t('settings.reasoning.placeholder')} />
               </SelectTrigger>
               <SelectContent>
                 {REASONING_OPTIONS.map((r) => (
@@ -332,7 +351,7 @@ function SettingsDialogBody() {
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Codex only — higher effort trades latency for thoroughness.
+              {t('settings.reasoning.hint')}
             </p>
           </div>
         )}
@@ -343,11 +362,9 @@ function SettingsDialogBody() {
       {/* API keys */}
       <section className="grid gap-4">
         <div>
-          <h3 className="text-sm font-medium">Image generation API keys</h3>
+          <h3 className="text-sm font-medium">{t('settings.keys.title')}</h3>
           <p className="text-xs text-muted-foreground">
-            For agents without built-in image gen (e.g. Claude Code). Stored by the daemon
-            at <code>~/.ogf/secrets.json</code> (mode 600). The key never reaches this UI —
-            only a masked status.
+            {t('settings.keys.body')}
           </p>
         </div>
         {PROVIDERS.map((spec) => (
@@ -365,16 +382,17 @@ function SettingsDialogBody() {
         <>
           <Separator />
           <section className="grid gap-1">
-            <h3 className="text-sm font-medium">Image-gen usage · last 24h</h3>
+            <h3 className="text-sm font-medium">{t('settings.usage.title')}</h3>
             <div className="flex items-baseline justify-between font-mono text-xs">
               <span className="text-muted-foreground">
-                {usage.totalCount} {usage.totalCount === 1 ? 'call' : 'calls'}
+                {usage.totalCount === 1
+                  ? t('settings.usage.call', { n: usage.totalCount })
+                  : t('settings.usage.calls', { n: usage.totalCount })}
               </span>
               <span className="tabular-nums">~${usage.totalEstCostUsd.toFixed(3)}</span>
             </div>
             <p className="text-[11px] leading-relaxed text-muted-foreground">
-              Heuristic estimate (per-image list price × call count). Check the provider
-              dashboard for actual billing.
+              {t('settings.usage.body')}
             </p>
           </section>
         </>
@@ -385,19 +403,20 @@ function SettingsDialogBody() {
 
 /** Ghost icon button that opens the Settings dialog. Drop into any header. */
 export function SettingsButton({ className }: { className?: string }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Settings" className={className}>
+        <Button variant="ghost" size="icon" aria-label={t('app.settings')} className={className}>
           <Settings />
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Settings</DialogTitle>
+          <DialogTitle>{t('settings.title')}</DialogTitle>
           <DialogDescription>
-            Agent, model, and image-generation API keys.
+            {t('settings.description')}
           </DialogDescription>
         </DialogHeader>
         {/* Mount the body only while open so secrets/usage re-fetch on each open. */}

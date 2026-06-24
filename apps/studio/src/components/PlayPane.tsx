@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { gameUrl, hasPlayableIndex } from '@/lib/play';
+import { useT } from '@/lib/i18n';
 
 interface Props {
   /** Absolute path of the web project, as registered with the OGF daemon. */
@@ -28,6 +29,7 @@ interface Props {
  * unmounts on Stop.
  */
 export function PlayPane({ projectPath }: Props) {
+  const t = useT();
   const [running, setRunning] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
   // null = still probing; true/false = whether index.html is served yet.
@@ -65,7 +67,7 @@ export function PlayPane({ projectPath }: Props) {
   // the Play button. A short delay lets the iframe document attach.
   useEffect(() => {
     if (!running) return;
-    const t = setTimeout(() => {
+    const focusTimer = setTimeout(() => {
       const f = iframeRef.current;
       if (!f) return;
       try {
@@ -75,7 +77,7 @@ export function PlayPane({ projectPath }: Props) {
         // cross-origin or detached frame — user can click into it
       }
     }, 80);
-    return () => clearTimeout(t);
+    return () => clearTimeout(focusTimer);
   }, [running, reloadTick]);
 
   const reload = useCallback(() => setReloadTick((n) => n + 1), []);
@@ -86,7 +88,7 @@ export function PlayPane({ projectPath }: Props) {
         {/* Toolbar */}
         <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2">
           <Gamepad2 className="size-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Play</span>
+          <span className="text-sm font-medium">{t('play.play')}</span>
           <div className="flex-1" />
 
           <Tooltip>
@@ -99,10 +101,10 @@ export function PlayPane({ projectPath }: Props) {
                 disabled={!running}
               >
                 <RotateCw />
-                <span className="sr-only">Reload</span>
+                <span className="sr-only">{t('play.reload')}</span>
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Reload</TooltipContent>
+            <TooltipContent>{t('play.reload')}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -115,10 +117,10 @@ export function PlayPane({ projectPath }: Props) {
                 disabled={!hasIndex}
               >
                 <ExternalLink />
-                <span className="sr-only">Open in new tab</span>
+                <span className="sr-only">{t('play.openNewTab')}</span>
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Open in new tab</TooltipContent>
+            <TooltipContent>{t('play.openNewTab')}</TooltipContent>
           </Tooltip>
 
           {running ? (
@@ -129,7 +131,7 @@ export function PlayPane({ projectPath }: Props) {
               onClick={() => setRunning(false)}
             >
               <Square />
-              Stop
+              {t('play.stop')}
             </Button>
           ) : (
             <Button
@@ -143,7 +145,7 @@ export function PlayPane({ projectPath }: Props) {
               }}
             >
               <Play />
-              Play
+              {t('play.play')}
             </Button>
           )}
         </div>
@@ -155,7 +157,7 @@ export function PlayPane({ projectPath }: Props) {
               ref={iframeRef}
               key={reloadTick}
               src={src}
-              title="Game preview"
+              title={t('play.preview')}
               className="aspect-video h-full w-full max-w-3xl rounded-xl border bg-background shadow-sm"
               sandbox="allow-scripts allow-same-origin allow-modals"
             />
@@ -172,15 +174,16 @@ export function PlayPane({ projectPath }: Props) {
 
 /** Idle stage when a game IS built but not yet running. */
 function PlayStub({ onPlay }: { onPlay: () => void }) {
+  const t = useT();
   return (
     <div className="flex aspect-video w-full max-w-3xl flex-col items-center justify-center gap-4 rounded-xl border border-dashed bg-card/50">
       <span className="grid size-12 place-items-center rounded-full bg-primary/15 text-primary">
         <Play className="size-5" />
       </span>
-      <p className="text-sm text-muted-foreground">Press Play to launch your game.</p>
+      <p className="text-sm text-muted-foreground">{t('play.press')}</p>
       <Button size="sm" onClick={onPlay}>
         <Play />
-        Play
+        {t('play.play')}
       </Button>
     </div>
   );
@@ -188,23 +191,23 @@ function PlayStub({ onPlay }: { onPlay: () => void }) {
 
 /** Tasteful empty state when there's no served index.html yet. */
 function EmptyState({ probing, onRetry }: { probing: boolean; onRetry: () => void }) {
+  const t = useT();
   return (
     <div className="flex aspect-video w-full max-w-3xl flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-card/50 text-center">
       <span className="grid size-12 place-items-center rounded-full bg-muted text-muted-foreground">
         <Gamepad2 className="size-5" />
       </span>
       {probing ? (
-        <p className="text-sm text-muted-foreground">Looking for a playable build…</p>
+        <p className="text-sm text-muted-foreground">{t('play.looking')}</p>
       ) : (
         <>
-          <div className="text-sm font-medium">Nothing to play yet</div>
+          <div className="text-sm font-medium">{t('play.empty.title')}</div>
           <p className="max-w-xs text-sm text-muted-foreground">
-            Describe your game in the Assistant and it’ll build a playable
-            preview here.
+            {t('play.empty.body')}
           </p>
           <Button variant="ghost" size="sm" onClick={onRetry}>
             <RotateCw />
-            Check again
+            {t('play.checkAgain')}
           </Button>
         </>
       )}

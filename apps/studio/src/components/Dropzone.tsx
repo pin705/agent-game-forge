@@ -15,6 +15,7 @@ import {
   uploadRef,
   type RefImage,
 } from '@/lib/assets';
+import { useT } from '@/lib/i18n';
 
 interface DropzoneProps {
   /** Absolute project path. Uploads are disabled until this is set. */
@@ -59,6 +60,7 @@ export const Dropzone = forwardRef<DropzoneHandle, DropzoneProps>(function Dropz
   props,
   fwdRef,
 ) {
+  const t = useT();
   const { projectPath, refs, onChange, disabled } = props;
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -70,7 +72,7 @@ export const Dropzone = forwardRef<DropzoneHandle, DropzoneProps>(function Dropz
     if (!projectPath || disabled || busy) return;
     const slots = MAX_REFS - refs.length;
     if (slots <= 0) {
-      toast.error(`Limit reached — up to ${MAX_REFS} references.`);
+      toast.error(t('dropzone.limit', { max: MAX_REFS }));
       return;
     }
     // Only image files are accepted by the ref store.
@@ -78,7 +80,7 @@ export const Dropzone = forwardRef<DropzoneHandle, DropzoneProps>(function Dropz
       .filter((f) => IMAGE_EXT.has(fileExt(f.name)) || f.type.startsWith('image/'))
       .slice(0, slots);
     if (accepted.length === 0) {
-      toast.error('Drop image files (PNG, JPG, WEBP, …).');
+      toast.error(t('dropzone.dropFiles'));
       return;
     }
 
@@ -92,11 +94,11 @@ export const Dropzone = forwardRef<DropzoneHandle, DropzoneProps>(function Dropz
       }
       onChange([...next, ...refs]);
       toast.success(
-        next.length === 1 ? 'Reference added' : `${next.length} references added`,
+        next.length === 1 ? t('dropzone.refAdded') : t('dropzone.refsAdded', { n: next.length }),
       );
     } catch (err) {
       toast.error(
-        `Upload failed: ${err instanceof Error ? err.message : String(err)}`,
+        t('dropzone.uploadFailed', { error: err instanceof Error ? err.message : String(err) }),
       );
     } finally {
       setBusy(false);
@@ -115,7 +117,7 @@ export const Dropzone = forwardRef<DropzoneHandle, DropzoneProps>(function Dropz
       onChange(refs.filter((r) => r.relPath !== relPath));
     } catch (err) {
       toast.error(
-        `Could not remove: ${err instanceof Error ? err.message : String(err)}`,
+        t('dropzone.removeFailed', { error: err instanceof Error ? err.message : String(err) }),
       );
     }
   }
@@ -161,18 +163,18 @@ export const Dropzone = forwardRef<DropzoneHandle, DropzoneProps>(function Dropz
         )}
         <div className="text-sm">
           {busy ? (
-            'Uploading…'
+            t('dropzone.uploading')
           ) : !projectPath ? (
-            'Open a project to attach references'
+            t('dropzone.openProject')
           ) : (
             <>
-              <span className="font-medium text-foreground">Drop images</span> or
-              click to attach references
+              <span className="font-medium text-foreground">{t('dropzone.dropImages')}</span>{' '}
+              {t('dropzone.clickAttach')}
             </>
           )}
         </div>
         <div className="text-xs text-muted-foreground">
-          {refs.length}/{MAX_REFS} · PNG, JPG, WEBP, GIF
+          {refs.length}/{MAX_REFS} · {t('dropzone.formats')}
         </div>
       </div>
 
@@ -201,7 +203,7 @@ export const Dropzone = forwardRef<DropzoneHandle, DropzoneProps>(function Dropz
                   e.stopPropagation();
                   void removeRef(r.relPath);
                 }}
-                title="Remove"
+                title={t('dropzone.remove')}
                 className="absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-destructive group-hover:opacity-100"
               >
                 <X className="size-3" />
@@ -212,7 +214,7 @@ export const Dropzone = forwardRef<DropzoneHandle, DropzoneProps>(function Dropz
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              title="Add reference"
+              title={t('dropzone.addReference')}
               className="flex size-16 items-center justify-center rounded-md border border-dashed text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
             >
               <ImagePlus className="size-5" />

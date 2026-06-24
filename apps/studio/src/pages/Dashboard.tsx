@@ -18,14 +18,15 @@ import { DeleteConfirm } from '@/components/DeleteConfirm';
 import { SettingsButton } from '@/components/SettingsDialog';
 import { OpenProjectDialog } from '@/components/OpenProjectDialog';
 import { fetchProjects, projectId, type Project } from '@/lib/api';
+import { useT, type TKey } from '@/lib/i18n';
 
-function timeAgo(ts?: number) {
-  if (!ts) return 'recently';
+function timeAgo(ts: number | undefined, t: (key: TKey, vars?: Record<string, string | number>) => string) {
+  if (!ts) return t('time.recently');
   const s = (Date.now() - ts) / 1000;
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
+  if (s < 60) return t('time.justNow');
+  if (s < 3600) return t('time.minutesAgo', { n: Math.floor(s / 60) });
+  if (s < 86400) return t('time.hoursAgo', { n: Math.floor(s / 3600) });
+  return t('time.daysAgo', { n: Math.floor(s / 86400) });
 }
 
 export function Dashboard() {
@@ -34,6 +35,7 @@ export function Dashboard() {
   const [deleteFor, setDeleteFor] = useState<Project | null>(null);
   const [openImport, setOpenImport] = useState(false);
   const navigate = useNavigate();
+  const t = useT();
 
   const reload = () =>
     fetchProjects()
@@ -51,12 +53,12 @@ export function Dashboard() {
           <SettingsButton />
           <Button variant="outline" size="sm" onClick={() => setOpenImport(true)}>
             <FolderOpen />
-            Open
+            {t('common.open')}
           </Button>
           <Button asChild size="sm">
             <Link to="/new">
               <Plus />
-              New game
+              {t('dashboard.newGame')}
             </Link>
           </Button>
         </>
@@ -64,25 +66,25 @@ export function Dashboard() {
     >
       <div className="mx-auto w-full max-w-6xl px-6 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Your games</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t('dashboard.title')}</h1>
           <p className="text-sm text-muted-foreground">
-            Create, edit, and publish — assets fetched free, $0 to ship.
+            {t('dashboard.subtitle')}
           </p>
         </div>
 
         {projects === null ? (
-          <div className="text-sm text-muted-foreground">Loading…</div>
+          <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
         ) : projects.length === 0 ? (
           <Card className="flex flex-col items-center gap-3 p-12 text-center">
             <span className="grid size-12 place-items-center rounded-full bg-muted">
               <Gamepad2 className="size-6 text-muted-foreground" />
             </span>
-            <div className="text-lg font-medium">No games yet</div>
-            <p className="max-w-sm text-sm text-muted-foreground">Describe a game and Forge builds it for you.</p>
+            <div className="text-lg font-medium">{t('dashboard.empty.title')}</div>
+            <p className="max-w-sm text-sm text-muted-foreground">{t('dashboard.empty.body')}</p>
             <Button asChild>
               <Link to="/new">
                 <Plus />
-                Create your first game
+                {t('dashboard.empty.cta')}
               </Link>
             </Button>
           </Card>
@@ -111,12 +113,14 @@ export function Dashboard() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => setRenameFor(p)}>
                             <Pencil />
-                            Rename
+                            {t('common.rename')}
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => toast('Duplicate — coming soon')}>Duplicate</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => toast(t('common.comingSoon', { feature: t('dashboard.duplicate') }))}>
+                            {t('dashboard.duplicate')}
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem className="text-destructive" onClick={() => setDeleteFor(p)}>
-                            Remove
+                            {t('common.remove')}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -125,22 +129,22 @@ export function Dashboard() {
                       <Badge variant="secondary" className="capitalize">
                         {p.engine}
                       </Badge>
-                      <span className="text-xs text-muted-foreground">edited {timeAgo(p.updatedAt)}</span>
+                      <span className="text-xs text-muted-foreground">{t('dashboard.card.editedAgo', { when: timeAgo(p.updatedAt, t) })}</span>
                     </div>
                     <div className="mt-3 flex gap-2">
                       <Button asChild size="sm" variant="secondary" className="flex-1">
                         <Link to={`/build/${id}`}>
                           <Play />
-                          Play
+                          {t('dashboard.card.play')}
                         </Link>
                       </Button>
                       <Button asChild size="sm" variant="secondary" className="flex-1">
                         <Link to={`/build/${id}`}>
                           <Pencil />
-                          Edit
+                          {t('dashboard.card.edit')}
                         </Link>
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => toast('Publish — coming soon')}>
+                      <Button size="sm" variant="outline" onClick={() => toast(t('common.comingSoon', { feature: t('dashboard.publish') }))}>
                         <Upload />
                       </Button>
                     </div>

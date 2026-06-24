@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { fetchFileTree, type FileNode } from '@/lib/assets';
+import { useT } from '@/lib/i18n';
 
 export interface RegenerateOptions {
   /** 'auto' = trust the agent (default). 'manual' = use the numeric fields. */
@@ -59,16 +60,6 @@ interface RegenerateOptionsModalProps {
     packCtx: PackContext,
   ) => void;
 }
-
-const ASPECTS: Array<{ value: RegenerateOptions['aspectRatio']; label: string }> = [
-  { value: 'same', label: 'Same as current' },
-  { value: '1:1', label: '1:1 (square)' },
-  { value: '4:3', label: '4:3' },
-  { value: '3:4', label: '3:4' },
-  { value: '16:9', label: '16:9' },
-  { value: '9:16', label: '9:16' },
-  { value: 'free', label: 'Free (let model pick)' },
-];
 
 function findNodeByRelPath(tree: FileNode, relPath: string): FileNode | null {
   if (relPath === '' || tree.relPath.replace(/\\/g, '/') === relPath) return tree;
@@ -149,6 +140,16 @@ function suggestGrid(frames: number): { cols: number; rows: number } {
  * to the caller, which drives the actual agent turn.
  */
 export function RegenerateOptionsModal(props: RegenerateOptionsModalProps) {
+  const t = useT();
+  const ASPECTS: Array<{ value: RegenerateOptions['aspectRatio']; label: string }> = [
+    { value: 'same', label: t('regen.aspect.same') },
+    { value: '1:1', label: t('regen.aspect.square') },
+    { value: '4:3', label: '4:3' },
+    { value: '3:4', label: '3:4' },
+    { value: '16:9', label: '16:9' },
+    { value: '9:16', label: '9:16' },
+    { value: 'free', label: t('regen.aspect.free') },
+  ];
   const initialFrames =
     (props.initial?.cols ?? 0) * (props.initial?.rows ?? 0) || 4;
   const [mode, setMode] = useState<'auto' | 'manual'>('auto');
@@ -255,7 +256,7 @@ export function RegenerateOptionsModal(props: RegenerateOptionsModalProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <RefreshCw className="size-4" />
-            {packCtx.isPack ? `Regenerate ${packLabel}` : 'Regenerate sprite'}
+            {packCtx.isPack ? t('regen.title', { label: packLabel ?? '' }) : t('regen.sprite')}
           </DialogTitle>
           <DialogDescription
             className="truncate font-mono"
@@ -268,16 +269,13 @@ export function RegenerateOptionsModal(props: RegenerateOptionsModalProps) {
         <div className="space-y-4">
           {packCtx.isPack && (
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
-              <strong>This regenerates the entire animation pack.</strong>{' '}
+              <strong>{t('regen.body')}</strong>{' '}
               <span className="text-muted-foreground">
-                All {packCtx.packFiles.length} files in{' '}
-                <code className="text-xs">{packCtx.packDir}/</code> swap atomically
-                when you apply.
+                {t('regen.atomicHint', { count: packCtx.packFiles.length, dir: packCtx.packDir ?? '' })}
                 {packCtx.siblingActions.length > 0 && (
                   <>
-                    {' '}Other actions of the same entity (
-                    {packCtx.siblingActions.map((a) => a.name).join(', ')}) won't be
-                    touched.
+                    {' '}
+                    {t('regen.siblingsHint', { names: packCtx.siblingActions.map((a) => a.name).join(', ') })}
                   </>
                 )}
               </span>
@@ -285,11 +283,11 @@ export function RegenerateOptionsModal(props: RegenerateOptionsModalProps) {
           )}
 
           <label className="block space-y-1.5">
-            <span className="text-sm font-medium">What should change?</span>
+            <span className="text-sm font-medium">{t('regen.whatChange')}</span>
             <Textarea
               value={hint}
               onChange={(e) => setHint(e.target.value)}
-              placeholder="Optional. e.g. 'more aggressive — bigger swings'. Leave blank for a fresh take with the same intent."
+              placeholder={t('regen.changePlaceholder')}
               rows={3}
               autoFocus
             />
@@ -304,15 +302,15 @@ export function RegenerateOptionsModal(props: RegenerateOptionsModalProps) {
             />
             <span>
               {packCtx.isPack
-                ? 'Match style of other actions of this entity'
-                : 'Match style of sibling sprites in the same folder'}
+                ? t('regen.matchEntity')
+                : t('regen.matchSiblings')}
               {scanLoading ? (
                 <span className="ml-1.5 font-mono text-xs text-muted-foreground">
-                  scanning…
+                  {t('regen.scanning')}
                 </span>
               ) : (
                 <span className="ml-1.5 rounded-full bg-secondary px-1.5 py-0.5 text-xs">
-                  {referenceFiles.length} found
+                  {referenceFiles.length} {t('regen.found')}
                 </span>
               )}
             </span>
@@ -324,7 +322,7 @@ export function RegenerateOptionsModal(props: RegenerateOptionsModalProps) {
                 <li key={s} className="truncate">{s}</li>
               ))}
               {referenceFiles.length > 6 && (
-                <li>… and {referenceFiles.length - 6} more</li>
+                <li>{t('regen.andMore', { n: referenceFiles.length - 6 })}</li>
               )}
             </ul>
           )}
@@ -341,8 +339,8 @@ export function RegenerateOptionsModal(props: RegenerateOptionsModalProps) {
                   : 'hover:bg-accent/50',
               )}
             >
-              <span className="font-medium">Quick</span>
-              <span className="text-xs text-muted-foreground">agent decides layout</span>
+              <span className="font-medium">{t('regen.quick')}</span>
+              <span className="text-xs text-muted-foreground">{t('regen.quickHint')}</span>
             </button>
             <button
               type="button"
@@ -354,15 +352,15 @@ export function RegenerateOptionsModal(props: RegenerateOptionsModalProps) {
                   : 'hover:bg-accent/50',
               )}
             >
-              <span className="font-medium">Manual</span>
-              <span className="text-xs text-muted-foreground">set frames / grid / fps</span>
+              <span className="font-medium">{t('regen.manual')}</span>
+              <span className="text-xs text-muted-foreground">{t('regen.manualHint')}</span>
             </button>
           </div>
 
           {mode === 'manual' && (
             <div className="space-y-3 rounded-md border p-3">
               <label className="flex items-center justify-between gap-3 text-sm">
-                <span>Aspect ratio</span>
+                <span>{t('regen.aspect')}</span>
                 <Select
                   value={aspectRatio}
                   onValueChange={(v) =>
@@ -383,7 +381,7 @@ export function RegenerateOptionsModal(props: RegenerateOptionsModalProps) {
               </label>
 
               <div className="flex items-center justify-between gap-2 text-sm">
-                <span>Frames</span>
+                <span>{t('regen.frames')}</span>
                 <div className="flex items-center gap-1.5">
                   <Input
                     type="number"
@@ -392,7 +390,7 @@ export function RegenerateOptionsModal(props: RegenerateOptionsModalProps) {
                     onChange={(e) => applyFrames(Number(e.target.value))}
                     className="h-8 w-16"
                   />
-                  <span className="text-xs text-muted-foreground">in</span>
+                  <span className="text-xs text-muted-foreground">{t('regen.in')}</span>
                   <Input
                     type="number"
                     min={1}
@@ -418,21 +416,21 @@ export function RegenerateOptionsModal(props: RegenerateOptionsModalProps) {
                       setCols(g.cols);
                       setRows(g.rows);
                     }}
-                    title="Suggest a grid that matches the frame count"
+                    title={t('regen.suggestGrid')}
                   >
-                    auto
+                    {t('regen.auto')}
                   </Button>
                 </div>
               </div>
               {gridMismatch && (
                 <div className="flex items-center gap-1.5 text-xs text-warning">
                   <AlertTriangle className="size-3.5" />
-                  cols × rows ({cols * rows}) doesn't match frames ({frames}).
+                  {t('regen.gridMismatch', { grid: cols * rows, frames })}
                 </div>
               )}
 
               <label className="flex items-center justify-between gap-3 text-sm">
-                <span>FPS</span>
+                <span>{t('regen.fps')}</span>
                 <Input
                   type="number"
                   min={1}
@@ -450,11 +448,11 @@ export function RegenerateOptionsModal(props: RegenerateOptionsModalProps) {
 
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={props.onCancel}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button size="sm" onClick={submit}>
             <RefreshCw className="size-4" />
-            Regenerate
+            {t('regen.regenerate')}
           </Button>
         </DialogFooter>
       </DialogContent>

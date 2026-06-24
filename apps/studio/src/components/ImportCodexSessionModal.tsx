@@ -11,6 +11,7 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { useT } from '@/lib/i18n';
 
 // ---- Daemon client (mirrors apps/daemon/src/server.ts codex routes) --------
 // These live here rather than in lib/api.ts because the studio's api.ts has no
@@ -84,6 +85,7 @@ export function ImportCodexSessionModal({
   projectPath,
   onImported,
 }: Props) {
+  const t = useT();
   const [sessions, setSessions] = useState<CodexSessionSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState<string | null>(null);
@@ -100,14 +102,14 @@ export function ImportCodexSessionModal({
         if (cancelled) return;
         setSessions([]);
         toast.error(
-          `Could not load sessions: ${e instanceof Error ? e.message : String(e)}`,
+          t('import.loadFailed', { error: e instanceof Error ? e.message : String(e) }),
         );
       })
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [open, projectPath]);
+  }, [open, projectPath, t]);
 
   async function doImport(s: CodexSessionSummary) {
     setImporting(s.id);
@@ -119,12 +121,12 @@ export function ImportCodexSessionModal({
         title: s.firstPrompt ? s.firstPrompt.slice(0, 60) : `Codex ${s.id.slice(0, 8)}`,
       });
       toast.success(
-        `Session imported — ${r.importedCount} messages restored. Codex resumes with full memory.`,
+        t('import.success', { n: r.importedCount }),
       );
       onImported?.(r.conversation.id);
       onOpenChange(false);
     } catch (e) {
-      toast.error(`Import failed: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(t('import.failed', { error: e instanceof Error ? e.message : String(e) }));
     } finally {
       setImporting(null);
     }
@@ -136,7 +138,7 @@ export function ImportCodexSessionModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <GitBranch className="size-4 text-primary" />
-            Import Codex session
+            {t('import.title')}
           </DialogTitle>
           <DialogDescription className="truncate">{projectPath}</DialogDescription>
         </DialogHeader>
@@ -144,18 +146,16 @@ export function ImportCodexSessionModal({
         <div className="-mx-6 min-h-0 flex-1 overflow-auto border-y bg-muted/20">
           {loading && (
             <div className="p-8 text-center text-sm text-muted-foreground">
-              Scanning Codex sessions…
+              {t('import.scanning')}
             </div>
           )}
 
           {!loading && sessions?.length === 0 && (
             <div className="flex flex-col items-center gap-2 p-8 text-center text-sm text-muted-foreground">
               <Sparkles className="size-5" />
-              <span>No Codex sessions found for this project folder.</span>
+              <span>{t('import.empty')}</span>
               <span className="text-xs">
-                Sessions live in{' '}
-                <code className="rounded bg-muted px-1 py-0.5">~/.codex/sessions/</code>{' '}
-                and are matched by cwd.
+                {t('import.emptyHint')}
               </span>
             </div>
           )}
@@ -182,8 +182,8 @@ export function ImportCodexSessionModal({
                     </div>
                   )}
                   <div className="flex gap-3 font-mono text-[11px] text-muted-foreground">
-                    <span>{s.userMsgCount ?? '?'} user</span>
-                    <span>{s.agentMsgCount ?? '?'} agent</span>
+                    <span>{s.userMsgCount ?? '?'} {t('import.user')}</span>
+                    <span>{s.agentMsgCount ?? '?'} {t('import.agent')}</span>
                     <span>{formatSize(s.fileSize)}</span>
                   </div>
                 </div>
@@ -192,7 +192,7 @@ export function ImportCodexSessionModal({
                   disabled={importing !== null}
                   onClick={() => void doImport(s)}
                 >
-                  {importing === s.id ? 'Importing…' : 'Import'}
+                  {importing === s.id ? t('import.importing') : t('import.import')}
                 </Button>
               </div>
             ))}
@@ -200,11 +200,11 @@ export function ImportCodexSessionModal({
 
         <DialogFooter className="items-center sm:justify-between">
           <span className="text-xs text-muted-foreground">
-            Replays user + agent text; Codex resumes with full rollout memory.
+            {t('import.body')}
           </span>
           <DialogClose asChild>
             <Button variant="ghost" size="sm">
-              Close
+              {t('common.close')}
             </Button>
           </DialogClose>
         </DialogFooter>

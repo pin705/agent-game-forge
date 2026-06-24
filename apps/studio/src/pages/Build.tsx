@@ -25,8 +25,11 @@ import { StatusBar } from '@/components/StatusBar';
 import { PendingChangesModal } from '@/components/PendingChangesModal';
 import { PackReviewModal } from '@/components/PackReviewModal';
 import { ImportCodexSessionModal } from '@/components/ImportCodexSessionModal';
+import { LanguageToggle } from '@/components/LanguageToggle';
+import { useT } from '@/lib/i18n';
 
 export function Build() {
+  const t = useT();
   const { id } = useParams();
   const [project, setProject] = useState<Project | null>(null);
   const [idea] = useState<string>(() => (id ? (localStorage.getItem(`forge.idea.${id}`) ?? '') : ''));
@@ -57,7 +60,7 @@ export function Build() {
         <span className="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground">
           <Flame className="size-4" />
         </span>
-        <div className="font-medium">{project?.name ?? 'Loading…'}</div>
+        <div className="font-medium">{project?.name ?? t('common.loading')}</div>
         {project ? (
           <Badge variant="secondary" className="capitalize">
             {project.engine}
@@ -65,8 +68,9 @@ export function Build() {
         ) : null}
         <div className="flex-1" />
         <Badge variant="outline" className="text-emerald-500">
-          $0.00 · free
+          {t('build.free')}
         </Badge>
+        <LanguageToggle />
         <SettingsButton />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -75,14 +79,14 @@ export function Build() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setPendingOpen(true)}>Pending changes…</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setPackOpen(true)}>Review sprite pack…</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setImportOpen(true)}>Import Codex session…</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setPendingOpen(true)}>{t('build.pendingChanges')}</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setPackOpen(true)}>{t('build.reviewPack')}</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setImportOpen(true)}>{t('build.importSession')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button size="sm" onClick={() => toast('Publish — coming soon')}>
+        <Button size="sm" onClick={() => toast(t('common.comingSoon', { feature: t('build.publish') }))}>
           <Upload />
-          Publish
+          {t('build.publish')}
         </Button>
       </header>
 
@@ -104,7 +108,7 @@ export function Build() {
               conversationId={conversationId ?? undefined}
             />
           ) : (
-            <div className="grid flex-1 place-items-center text-sm text-muted-foreground">Loading…</div>
+            <div className="grid flex-1 place-items-center text-sm text-muted-foreground">{t('common.loading')}</div>
           )}
         </div>
 
@@ -115,23 +119,23 @@ export function Build() {
               <TabsList>
                 <TabsTrigger value="play">
                   <Play />
-                  Play
+                  {t('tab.play')}
                 </TabsTrigger>
                 <TabsTrigger value="scene">
                   <Layers />
-                  Scene
+                  {t('tab.scene')}
                 </TabsTrigger>
                 <TabsTrigger value="assets">
                   <ImageIcon />
-                  Assets
+                  {t('tab.assets')}
                 </TabsTrigger>
                 <TabsTrigger value="data">
                   <Database />
-                  Data
+                  {t('tab.data')}
                 </TabsTrigger>
                 <TabsTrigger value="code">
                   <Code2 />
-                  Code
+                  {t('tab.code')}
                 </TabsTrigger>
               </TabsList>
             </div>

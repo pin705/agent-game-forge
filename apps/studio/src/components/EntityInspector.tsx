@@ -11,6 +11,7 @@ import {
   writeFileContent,
   type CatalogRow,
 } from '@/lib/catalog';
+import { useT } from '@/lib/i18n';
 
 interface EntityInspectorProps {
   /** Absolute project path. */
@@ -116,6 +117,7 @@ function getAt(root: unknown, path: Array<string | number>): unknown {
 }
 
 export function EntityInspector({ projectPath, catalog, id, onSaved }: EntityInspectorProps) {
+  const t = useT();
   const [root, setRoot] = useState<unknown>(null);
   const [eol, setEol] = useState<'\n' | '\r\n'>('\n');
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -136,7 +138,7 @@ export function EntityInspector({ projectPath, catalog, id, onSaved }: EntityIns
       .then((r) => {
         if (cancelled) return;
         if (r.kind !== 'text' || r.content === undefined) {
-          setLoadError('Catalog is not editable text.');
+          setLoadError(t('entity.notText'));
           return;
         }
         setEol(r.content.includes('\r\n') ? '\r\n' : '\n');
@@ -154,7 +156,7 @@ export function EntityInspector({ projectPath, catalog, id, onSaved }: EntityIns
     return () => {
       cancelled = true;
     };
-  }, [projectPath, catalog, id]);
+  }, [projectPath, catalog, id, t]);
 
   const located = useMemo(() => (root === null ? null : locateRow(root, id)), [root, id]);
   const row = located?.row ?? null;
@@ -229,16 +231,15 @@ export function EntityInspector({ projectPath, catalog, id, onSaved }: EntityIns
   }
 
   if (loadError) {
-    return <div className="p-6 text-sm text-destructive">Failed to load {catalog}: {loadError}</div>;
+    return <div className="p-6 text-sm text-destructive">{t('entity.loadFailed', { catalog, error: loadError })}</div>;
   }
   if (root === null) {
-    return <div className="p-6 text-sm text-muted-foreground">Loading {id}…</div>;
+    return <div className="p-6 text-sm text-muted-foreground">{t('entity.loading', { id })}</div>;
   }
   if (notFound || !row) {
     return (
       <div className="p-6 text-sm text-muted-foreground">
-        Entity <span className="font-mono text-foreground">{id}</span> not found in{' '}
-        <span className="font-mono">{catalog}</span>.
+        {t('entity.notFound', { id, catalog })}
       </div>
     );
   }
@@ -252,7 +253,7 @@ export function EntityInspector({ projectPath, catalog, id, onSaved }: EntityIns
             {kind ? <Badge variant="secondary">{kind}</Badge> : null}
             {dirty ? (
               <Badge variant="outline" className="border-warning/40 text-warning">
-                unsaved
+                {t('common.unsaved')}
               </Badge>
             ) : null}
           </div>
@@ -262,7 +263,7 @@ export function EntityInspector({ projectPath, catalog, id, onSaved }: EntityIns
         </div>
         <Button size="sm" onClick={save} disabled={!dirty || saving} className="shrink-0">
           {saving ? <Loader2 className="animate-spin" /> : <Save />}
-          Save
+          {t('common.save')}
         </Button>
       </div>
 
@@ -271,14 +272,14 @@ export function EntityInspector({ projectPath, catalog, id, onSaved }: EntityIns
       <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-auto pr-1">
         {groups.length === 0 ? (
           <div className="rounded-lg border p-6 text-sm text-muted-foreground">
-            No editable scalar fields on this entity. Edit it as raw JSON instead.
+            {t('entity.noScalarFields')}
           </div>
         ) : (
           groups.map((g) => (
             <Card key={g.group ?? '__top'}>
               <CardHeader className="p-4 pb-2">
                 <CardTitle className="text-sm font-medium capitalize">
-                  {g.group ?? 'Fields'}
+                  {g.group ?? t('entity.fields')}
                 </CardTitle>
               </CardHeader>
               <CardContent className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-x-3 gap-y-2 p-4 pt-2">

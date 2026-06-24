@@ -17,6 +17,9 @@ import {
   writeFileContent,
   type CatalogRow,
 } from '@/lib/catalog';
+import { useT, type TKey } from '@/lib/i18n';
+
+type TFn = (key: TKey, vars?: Record<string, string | number>) => string;
 
 interface TableEditorProps {
   /** Absolute project path. */
@@ -155,6 +158,7 @@ function defaultValueForType(t: ColumnType): unknown {
 }
 
 export function TableEditor({ projectPath, relPath }: TableEditorProps) {
+  const t = useT();
   const [content, setContent] = useState<string | null>(null);
   const [eol, setEol] = useState<'\n' | '\r\n'>('\n');
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -175,7 +179,7 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
       .then((r) => {
         if (cancelled) return;
         if (r.kind !== 'text' || r.content === undefined) {
-          setLoadError('File is not editable text.');
+          setLoadError(t('table.notEditableText'));
           return;
         }
         setEol(r.content.includes('\r\n') ? '\r\n' : '\n');
@@ -187,7 +191,7 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
     return () => {
       cancelled = true;
     };
-  }, [projectPath, relPath]);
+  }, [projectPath, relPath, t]);
 
   const doc = useMemo<ParsedDoc | null>(
     () => (content === null ? null : parseDoc(content, eol)),
@@ -233,21 +237,21 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
 
   if (loadError) {
     return (
-      <div className="p-6 text-sm text-destructive">Failed to load {fileName}: {loadError}</div>
+      <div className="p-6 text-sm text-destructive">{t('table.loadFailed', { file: fileName, error: loadError })}</div>
     );
   }
   if (doc === null) {
-    return <div className="p-6 text-sm text-muted-foreground">Loading {fileName}…</div>;
+    return <div className="p-6 text-sm text-muted-foreground">{t('table.loadingFile', { file: fileName })}</div>;
   }
 
   if (doc.blocks.length === 0) {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <Header fileName={fileName} relPath={relPath} dirty={dirty} saving={saving} onSave={save} canSave={false} />
+        <Header fileName={fileName} relPath={relPath} dirty={dirty} saving={saving} onSave={save} canSave={false} t={t} />
         <div className="mt-3 rounded-lg border p-6 text-sm text-muted-foreground">
-          <p className="font-medium text-foreground">Not a table</p>
-          <p className="mt-1">{doc.reason ?? 'No editable array-of-objects found.'}</p>
-          <p className="mt-2">Edit this file as raw JSON instead.</p>
+          <p className="font-medium text-foreground">{t('table.notTable')}</p>
+          <p className="mt-1">{doc.reason ?? t('table.noArray')}</p>
+          <p className="mt-2">{t('table.editRaw')}</p>
         </div>
       </div>
     );
@@ -290,10 +294,11 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
         saving={saving}
         onSave={save}
         canSave
+        t={t}
         extra={
           <Button size="sm" variant="outline" onClick={addRow}>
             <Plus />
-            Add row
+            {t('table.addRow')}
           </Button>
         }
       />
@@ -311,7 +316,7 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
                   ? 'border-input bg-accent text-accent-foreground'
                   : 'text-muted-foreground hover:bg-muted/50',
               )}
-              title={`Edit ${b.label} (${b.rows.length} rows)`}
+              title={t('table.edit', { label: `${b.label} (${b.rows.length} ${t('table.rows')})` })}
             >
               <span className="font-mono">{b.label}</span>
               <span className="ml-1 opacity-60">· {b.rows.length}</span>
@@ -322,12 +327,12 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
 
       <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
         <span className="font-mono">
-          {active.path.length > 0 ? `.${active.path.join('.')}` : '(root array)'}
+          {active.path.length > 0 ? `.${active.path.join('.')}` : t('table.rootArray')}
         </span>
         <span>·</span>
-        <span>{rows.length} rows</span>
+        <span>{rows.length} {t('table.rows')}</span>
         <span>·</span>
-        <span>{columns.length} columns</span>
+        <span>{columns.length} {t('table.columns')}</span>
       </div>
 
       {saveError ? <div className="mt-2 text-sm text-destructive">{saveError}</div> : null}
@@ -335,7 +340,7 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
       <div className="mt-2 min-h-0 flex-1 overflow-auto rounded-lg border">
         {rows.length === 0 ? (
           <div className="p-6 text-sm text-muted-foreground">
-            No rows yet. Use <span className="font-medium text-foreground">Add row</span> to create one.
+            {t('table.noRows')}
           </div>
         ) : (
           <Table>
@@ -350,7 +355,7 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
                     </span>
                   </TableHead>
                 ))}
-                <TableHead className="w-[96px] text-right">Actions</TableHead>
+                <TableHead className="w-[96px] text-right">{t('table.actions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -372,7 +377,7 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
                         size="icon"
                         variant="ghost"
                         className="size-7"
-                        title="Move up"
+                        title={t('table.moveUp')}
                         disabled={i === 0}
                         onClick={() => moveRow(i, -1)}
                       >
@@ -382,7 +387,7 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
                         size="icon"
                         variant="ghost"
                         className="size-7"
-                        title="Move down"
+                        title={t('table.moveDown')}
                         disabled={i === rows.length - 1}
                         onClick={() => moveRow(i, 1)}
                       >
@@ -392,7 +397,7 @@ export function TableEditor({ projectPath, relPath }: TableEditorProps) {
                         size="icon"
                         variant="ghost"
                         className="size-7 text-destructive hover:text-destructive"
-                        title="Delete row"
+                        title={t('table.deleteRow')}
                         onClick={() => deleteRow(i)}
                       >
                         <Trash2 />
@@ -417,6 +422,7 @@ function Header({
   canSave,
   onSave,
   extra,
+  t,
 }: {
   fileName: string;
   relPath: string;
@@ -425,6 +431,7 @@ function Header({
   canSave: boolean;
   onSave: () => void;
   extra?: React.ReactNode;
+  t: TFn;
 }) {
   return (
     <div className="flex items-center justify-between gap-2">
@@ -433,7 +440,7 @@ function Header({
           <span className="truncate text-sm font-medium">{fileName}</span>
           {dirty ? (
             <Badge variant="outline" className="border-warning/40 text-warning">
-              unsaved
+              {t('common.unsaved')}
             </Badge>
           ) : null}
         </div>
@@ -443,7 +450,7 @@ function Header({
         {extra}
         <Button size="sm" onClick={onSave} disabled={!canSave || !dirty || saving}>
           {saving ? <Loader2 className="animate-spin" /> : <Save />}
-          Save
+          {t('common.save')}
         </Button>
       </div>
     </div>

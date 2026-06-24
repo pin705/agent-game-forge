@@ -21,6 +21,9 @@ import {
 import { QuestionFormCard } from '@/components/QuestionFormCard';
 import { Markdown } from '@/components/Markdown';
 import { useSettings } from '@/lib/settings';
+import { useT, type TKey } from '@/lib/i18n';
+
+type TFn = (key: TKey, vars?: Record<string, string | number>) => string;
 
 // ---------------------------------------------------------------------------
 // Turn model + block builder (simplified port of apps/web/src/lib/blocks.ts).
@@ -144,15 +147,15 @@ function familyIcon(f: ToolFamily) {
   return Wrench;
 }
 
-function familyLabel(f: ToolFamily, items: ToolItem[]): string {
-  if (f === 'edit') return 'Edited files';
-  if (f === 'shell') return 'Ran command';
-  if (f === 'thinking') return 'Thinking';
-  if (f === 'image') return 'Generated image';
-  return items[0]?.name ?? 'Tool';
+function familyLabel(f: ToolFamily, items: ToolItem[], t: TFn): string {
+  if (f === 'edit') return t('chat.tool.editedFiles');
+  if (f === 'shell') return t('chat.tool.ranCommand');
+  if (f === 'thinking') return t('chat.tool.thinking');
+  if (f === 'image') return t('chat.tool.generatedImage');
+  return items[0]?.name ?? t('chat.tool.fallback');
 }
 
-function chipDetail(family: ToolFamily, items: ToolItem[]): string {
+function chipDetail(family: ToolFamily, items: ToolItem[], t: TFn): string {
   if (family === 'shell') {
     const cmd = String((items[0]?.input as { command?: unknown })?.command ?? '');
     return cmd.length > 48 ? cmd.slice(0, 48) + '…' : cmd;
@@ -164,7 +167,7 @@ function chipDetail(family: ToolFamily, items: ToolItem[]): string {
   if (family === 'edit') {
     const changes = (items[0]?.input as { changes?: { path?: string }[] })?.changes ?? [];
     if (changes.length === 1 && changes[0].path) return shortPath(changes[0].path);
-    if (changes.length > 1) return `${changes.length} files`;
+    if (changes.length > 1) return t('chat.tool.files', { n: changes.length });
   }
   return items.length > 1 ? `×${items.length}` : '';
 }
@@ -194,6 +197,7 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
   const [error, setError] = useState<string | null>(null);
   const [submittedForms, setSubmittedForms] = useState<Set<string>>(() => new Set());
   const { agentId, model, reasoning } = useSettings();
+  const t = useT();
 
   const conversationIdRef = useRef<string | null>(null);
   const runIdRef = useRef<string | null>(null);
@@ -246,7 +250,7 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
         } else if (e.type === 'error') {
           const msg =
             e.data.reason === 'stalled'
-              ? 'Run stalled — the agent stopped emitting events for 5+ minutes.'
+              ? t('chat.stalled')
               : e.data.message;
           setError(msg);
           finalizeLastTurn('failed');
@@ -261,7 +265,7 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
         }
       });
     },
-    [appendEventToLastTurn, finalizeLastTurn, closeRunSub],
+    [appendEventToLastTurn, finalizeLastTurn, closeRunSub, t],
   );
 
   const send = useCallback(
@@ -369,11 +373,11 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
   return (
     <div className="flex min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b px-4 py-3">
-        <span className="text-sm font-medium">Assistant</span>
+        <span className="text-sm font-medium">{t('chat.title')}</span>
         {running ? (
           <Badge variant="secondary" className="gap-1">
             <Loader2 className="size-3 animate-spin" />
-            Working
+            {t('chat.working')}
           </Badge>
         ) : null}
       </div>
@@ -382,14 +386,14 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
         <div className="space-y-4 p-4">
           {turns.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Describe a change and the Assistant will build it.
+              {t('chat.empty')}
             </p>
           ) : null}
 
-          {turns.map((t) => (
+          {turns.map((turn) => (
             <TurnView
-              key={t.id}
-              turn={t}
+              key={turn.id}
+              turn={turn}
               projectPath={projectPath}
               submittedForms={submittedForms}
               onSubmitForm={onSubmitForm}
@@ -417,15 +421,15 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
             }}
             onKeyDown={onKey}
             rows={1}
-            placeholder="Describe a change…"
+            placeholder={t('chat.placeholder')}
             className="max-h-40 min-h-[40px] resize-none"
           />
           {running ? (
-            <Button size="icon" variant="secondary" onClick={() => void stop()} title="Stop">
+            <Button size="icon" variant="secondary" onClick={() => void stop()} title={t('chat.stop')}>
               <Square />
             </Button>
           ) : (
-            <Button size="icon" onClick={() => void send()} disabled={!prompt.trim()} title="Send">
+            <Button size="icon" onClick={() => void send()} disabled={!prompt.trim()} title={t('chat.send')}>
               <Send />
             </Button>
           )}
@@ -446,6 +450,7 @@ function TurnView({
   submittedForms: Set<string>;
   onSubmitForm: (a: QuestionFormAnswers) => void;
 }) {
+  const t = useT();
   const blocks = buildBlocks(turn.events);
   const streaming = turn.status === 'streaming';
 
@@ -469,7 +474,7 @@ function TurnView({
           {blocks.length === 0 && streaming ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" />
-              Thinking…
+              {t('chat.thinking')}
             </div>
           ) : null}
 
@@ -518,11 +523,12 @@ function clamp(s: string, n: number): string {
 // Collapsible tool call (Claude/Cursor-style): summary row + expandable
 // input/output. Long output is capped + scrolls inside its own box.
 function ToolCard({ family, items, streaming }: { family: ToolFamily; items: ToolItem[]; streaming: boolean }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const Icon = familyIcon(family);
   const running = streaming && items.some((it) => it.output === undefined);
   const anyError = items.some((it) => it.isError);
-  const detail = chipDetail(family, items);
+  const detail = chipDetail(family, items, t);
 
   return (
     <div className={cn('overflow-hidden rounded-lg border bg-card/60', anyError && 'border-destructive/40')}>
@@ -536,9 +542,9 @@ function ToolCard({ family, items, streaming }: { family: ToolFamily; items: Too
         ) : (
           <Icon className={cn('size-3.5 shrink-0', anyError ? 'text-destructive' : 'text-muted-foreground')} />
         )}
-        <span className="shrink-0 font-medium">{familyLabel(family, items)}</span>
+        <span className="shrink-0 font-medium">{familyLabel(family, items, t)}</span>
         {detail ? <span className="min-w-0 truncate text-muted-foreground">{detail}</span> : null}
-        {running ? <span className="ml-auto shrink-0 text-primary">running…</span> : null}
+        {running ? <span className="ml-auto shrink-0 text-primary">{t('chat.running')}</span> : null}
         <ChevronRight
           className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', running ? '' : 'ml-auto', open && 'rotate-90')}
         />
@@ -565,7 +571,7 @@ function ToolCard({ family, items, streaming }: { family: ToolFamily; items: Too
                     {clamp(it.output, 4000)}
                   </pre>
                 ) : running ? (
-                  <div className="text-[11px] text-primary">running…</div>
+                  <div className="text-[11px] text-primary">{t('chat.running')}</div>
                 ) : null}
               </div>
             );
@@ -577,11 +583,12 @@ function ToolCard({ family, items, streaming }: { family: ToolFamily; items: Too
 }
 
 function StatusLine({ status }: { status: TurnStatus }) {
+  const t = useT();
   const map: Record<TurnStatus, string> = {
-    streaming: 'Working…',
-    done: 'Done',
-    failed: 'Failed',
-    canceled: 'Stopped',
+    streaming: t('chat.status.streaming'),
+    done: t('chat.status.done'),
+    failed: t('chat.status.failed'),
+    canceled: t('chat.status.canceled'),
   };
   return (
     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

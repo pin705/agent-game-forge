@@ -17,6 +17,7 @@ import {
   type AssetItem,
   type LicenseTone,
 } from '@/lib/assets';
+import { useT } from '@/lib/i18n';
 
 interface AssetsPanelProps {
   /** Absolute project path. */
@@ -82,6 +83,7 @@ function Thumb({ projectPath, asset }: { projectPath: string; asset: AssetItem }
 }
 
 export function AssetsPanel({ projectPath }: AssetsPanelProps) {
+  const t = useT();
   const [assets, setAssets] = useState<AssetItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,36 +109,35 @@ export function AssetsPanel({ projectPath }: AssetsPanelProps) {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <div className="text-sm font-medium">Assets</div>
+          <div className="text-sm font-medium">{t('assets.title')}</div>
           <p className="text-sm text-muted-foreground">
-            Fetched free, with CC0 / CC-BY license badges.
+            {t('assets.subtitle')}
           </p>
         </div>
         {creditedCount > 0 ? (
           <Badge variant="outline" className="text-emerald-500">
-            {creditedCount} fetched free · $0.00
+            {creditedCount} {t('assets.freeBadge')}
           </Badge>
         ) : null}
       </div>
 
       <div className="mt-3 min-h-0 flex-1 overflow-auto rounded-lg border">
         {error ? (
-          <div className="p-6 text-sm text-destructive">Failed to load assets: {error}</div>
+          <div className="p-6 text-sm text-destructive">{t('assets.loadFailed', { error })}</div>
         ) : assets === null ? (
-          <div className="p-6 text-sm text-muted-foreground">Loading assets…</div>
+          <div className="p-6 text-sm text-muted-foreground">{t('assets.loading')}</div>
         ) : assets.length === 0 ? (
           <div className="p-6 text-sm text-muted-foreground">
-            No assets yet. They appear here once the Assistant fetches free art
-            and audio into <code className="text-xs">assets/</code>.
+            {t('assets.empty')}
           </div>
         ) : (
           <Table>
             <TableHeader className="sticky top-0 bg-background">
               <TableRow>
-                <TableHead className="w-[64px]">Preview</TableHead>
-                <TableHead>Asset</TableHead>
-                <TableHead>License</TableHead>
-                <TableHead>Source</TableHead>
+                <TableHead className="w-[64px]">{t('assets.col.preview')}</TableHead>
+                <TableHead>{t('assets.col.asset')}</TableHead>
+                <TableHead>{t('assets.col.license')}</TableHead>
+                <TableHead>{t('assets.col.source')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -155,7 +156,7 @@ export function AssetsPanel({ projectPath }: AssetsPanelProps) {
                     {a.credit ? (
                       <div className="flex flex-col items-start gap-1">
                         <LicenseBadge license={a.credit.license} />
-                        <span className="text-xs text-emerald-500">fetched free</span>
+                        <span className="text-xs text-emerald-500">{t('assets.fetchedFree')}</span>
                       </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
@@ -164,11 +165,11 @@ export function AssetsPanel({ projectPath }: AssetsPanelProps) {
                   <TableCell>
                     {a.credit ? (
                       <div className="text-xs text-muted-foreground">
-                        <div>{a.credit.author ? `by ${a.credit.author}` : 'unknown author'}</div>
+                        <div>{a.credit.author ? `by ${a.credit.author}` : t('assets.unknownAuthor')}</div>
                         {a.credit.source ? <div>{a.credit.source}</div> : null}
                       </div>
                     ) : (
-                      <span className="text-xs text-muted-foreground">local</span>
+                      <span className="text-xs text-muted-foreground">{t('assets.local')}</span>
                     )}
                   </TableCell>
                 </TableRow>

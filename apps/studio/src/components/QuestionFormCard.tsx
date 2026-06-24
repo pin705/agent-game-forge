@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { fetchFileContent, type FormField, type QuestionForm, type QuestionFormAnswers } from '@/lib/runs';
 import { Markdown } from '@/components/Markdown';
+import { useT } from '@/lib/i18n';
 
 interface Props {
   form: QuestionForm;
@@ -37,6 +38,7 @@ function defaultValueFor(field: FormField): string | string[] {
 }
 
 export function QuestionFormCard(props: Props) {
+  const t = useT();
   const initial = useMemo(() => {
     if (props.lockedAnswers) return props.lockedAnswers;
     const o: Record<string, string | string[]> = {};
@@ -143,20 +145,19 @@ export function QuestionFormCard(props: Props) {
         {props.locked ? (
           <span className="ml-auto inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
             <Lock className="size-3" />
-            submitted
+            {t('form.submitted')}
           </span>
         ) : null}
         {autoActive && !props.locked ? (
           <button
             type="button"
             className="ml-auto rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            title="Cancel the auto-submit timer — keep this form open until you submit it manually"
             onClick={(e) => {
               e.stopPropagation();
               setAutoActive(false);
             }}
           >
-            auto-submit in {formatCountdown(secondsLeft)} · cancel
+            {t('form.autoSubmit', { countdown: formatCountdown(secondsLeft) })}
           </button>
         ) : null}
       </div>
@@ -186,10 +187,10 @@ export function QuestionFormCard(props: Props) {
           {!props.locked ? (
             <div className="flex items-center justify-end gap-3 pt-1">
               {missing.length > 0 ? (
-                <span className="text-xs text-muted-foreground">Need: {missing.join(', ')}</span>
+                <span className="text-xs text-muted-foreground">{t('form.need', { fields: missing.join(', ') })}</span>
               ) : null}
               <Button size="sm" onClick={submit} disabled={missing.length > 0}>
-                {props.form.submitLabel ?? 'Submit'}
+                {props.form.submitLabel ?? t('form.submit')}
               </Button>
             </div>
           ) : null}
@@ -340,6 +341,7 @@ function renderInput(
  *  collapsed (a 'View spec' toggle + 1-line summary); click expands the full
  *  markdown body. */
 function SpecViewer({ projectPath }: { projectPath: string }) {
+  const t = useT();
   const [content, setContent] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -353,18 +355,18 @@ function SpecViewer({ projectPath }: { projectPath: string }) {
       })
       .catch(() => {
         if (cancelled) return;
-        setError('spec.md not found yet — agent is still writing it');
+        setError(t('form.specNotFound'));
       });
     return () => {
       cancelled = true;
     };
-  }, [projectPath]);
+  }, [projectPath, t]);
 
   if (error) {
     return <div className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">{error}</div>;
   }
   if (content === null) {
-    return <div className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">Loading spec…</div>;
+    return <div className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">{t('form.loadingSpec')}</div>;
   }
 
   const titleMatch = /^#\s+(.+)$/m.exec(content);
@@ -381,7 +383,7 @@ function SpecViewer({ projectPath }: { projectPath: string }) {
         <ChevronRight className={cn('size-3.5 shrink-0 transition-transform', open && 'rotate-90')} />
         <span className="truncate">{title}</span>
         <span className="ml-auto shrink-0 text-muted-foreground">
-          {phaseCount} phase{phaseCount === 1 ? '' : 's'}
+          {phaseCount} {phaseCount === 1 ? t('form.phase') : t('form.phases')}
         </span>
       </button>
       {open ? (

@@ -23,6 +23,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { fsList, openProject, type FsListResult } from '@/lib/files';
 import type { Project } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 
 interface OpenProjectDialogProps {
   open: boolean;
@@ -34,6 +35,7 @@ interface OpenProjectDialogProps {
 const LS_LAST_BROWSE = 'ogf:lastBrowsePath';
 
 export function OpenProjectDialog({ open, onOpenChange, onOpened }: OpenProjectDialogProps) {
+  const t = useT();
   // '' = home dir (POSIX) / drive list (Windows). Seeded from the last browse.
   const [path, setPath] = useState<string>('');
   const [data, setData] = useState<FsListResult | null>(null);
@@ -79,11 +81,11 @@ export function OpenProjectDialog({ open, onOpenChange, onOpened }: OpenProjectD
     setBusy(true);
     try {
       const { project } = await openProject(data.cwd);
-      toast.success(`Opened “${project.name}”`);
+      toast.success(t('openProject.success', { name: project.name }));
       onOpened(project as Project);
       onOpenChange(false);
     } catch (e) {
-      toast.error(`Open failed: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(t('openProject.failed', { error: e instanceof Error ? e.message : String(e) }));
     } finally {
       setBusy(false);
     }
@@ -93,9 +95,9 @@ export function OpenProjectDialog({ open, onOpenChange, onOpened }: OpenProjectD
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85vh] flex-col gap-0 p-0 sm:max-w-2xl">
         <DialogHeader className="space-y-1 p-6 pb-4">
-          <DialogTitle>Open existing project</DialogTitle>
+          <DialogTitle>{t('openProject.title')}</DialogTitle>
           <DialogDescription>
-            Browse to a folder and register it as a project. Projects are highlighted.
+            {t('openProject.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -105,7 +107,7 @@ export function OpenProjectDialog({ open, onOpenChange, onOpened }: OpenProjectD
             variant="ghost"
             size="icon"
             className="size-7 shrink-0"
-            title={isWindows ? 'Drive list' : 'Home'}
+            title={isWindows ? t('openProject.driveList') : t('openProject.home')}
             onClick={() => setPath('')}
           >
             <Home />
@@ -114,7 +116,7 @@ export function OpenProjectDialog({ open, onOpenChange, onOpened }: OpenProjectD
             variant="ghost"
             size="icon"
             className="size-7 shrink-0"
-            title="Up one level"
+            title={t('openProject.upOne')}
             disabled={data?.parent === null || data?.parent === undefined}
             onClick={() => setPath(data?.parent ?? '')}
           >
@@ -123,7 +125,7 @@ export function OpenProjectDialog({ open, onOpenChange, onOpened }: OpenProjectD
           <Separator orientation="vertical" className="mx-1 h-5" />
           <div className="flex min-w-0 flex-1 items-center overflow-x-auto text-sm">
             {data && data.parts.length === 0 && (
-              <span className="text-muted-foreground">{isWindows ? 'Drives' : 'Home'}</span>
+              <span className="text-muted-foreground">{isWindows ? t('openProject.drives') : t('openProject.home')}</span>
             )}
             {data?.parts.map((p, i) => (
               <span key={p.path} className="flex items-center">
@@ -154,14 +156,14 @@ export function OpenProjectDialog({ open, onOpenChange, onOpened }: OpenProjectD
             {!error && loading && !data && (
               <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
-                Loading…
+                {t('common.loading')}
               </div>
             )}
             {!error &&
               data &&
               data.entries.length === 0 &&
               (data.drives && data.drives.length === 0 ? null : (
-                <div className="p-4 text-sm text-muted-foreground">This folder is empty.</div>
+                <div className="p-4 text-sm text-muted-foreground">{t('openProject.empty')}</div>
               ))}
             {data?.entries.map((e) => (
               <button
@@ -193,7 +195,7 @@ export function OpenProjectDialog({ open, onOpenChange, onOpened }: OpenProjectD
           <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
             {data?.cwd ? (
               <>
-                <span className="shrink-0">Open:</span>
+                <span className="shrink-0">{t('openProject.openLabel')}</span>
                 <code className="truncate text-foreground">{data.cwd}</code>
                 {data.isProject && data.engine && (
                   <Badge variant="secondary" className="shrink-0 capitalize">
@@ -202,16 +204,16 @@ export function OpenProjectDialog({ open, onOpenChange, onOpened }: OpenProjectD
                 )}
               </>
             ) : (
-              <span>{isWindows ? 'Pick a drive' : 'Pick a folder'}</span>
+              <span>{isWindows ? t('openProject.pickDrive') : t('openProject.pickFolder')}</span>
             )}
           </div>
           <div className="flex shrink-0 justify-end gap-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button onClick={() => void openCurrent()} disabled={!data?.cwd || busy}>
               {busy ? <Loader2 className="animate-spin" /> : null}
-              {data?.isProject ? 'Open project' : 'Open folder'}
+              {data?.isProject ? t('openProject.openProject') : t('openProject.openFolder')}
             </Button>
           </div>
         </DialogFooter>

@@ -18,6 +18,7 @@ import {
   type GodotInfo,
   type GodotStreamEvent,
 } from '@/lib/godot';
+import { useT } from '@/lib/i18n';
 
 interface Props {
   /** Absolute path of the Godot project, as registered with the OGF daemon. */
@@ -47,6 +48,7 @@ function classify(channel: 'stdout' | 'stderr', text: string): ConsoleLine['leve
  * console. Mirrors the original OGF web PlayPane's Godot branch.
  */
 export function GodotPlayPane({ projectPath }: Props) {
+  const t = useT();
   const [godot, setGodot] = useState<GodotInfo | null>(null);
   const [detecting, setDetecting] = useState(true);
   const [runId, setRunId] = useState<string | null>(null);
@@ -204,7 +206,7 @@ export function GodotPlayPane({ projectPath }: Props) {
         {/* Toolbar */}
         <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2">
           <Gamepad2 className="size-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Play</span>
+          <span className="text-sm font-medium">{t('play.play')}</span>
           <Badge variant="secondary" className="font-normal">
             godot
           </Badge>
@@ -228,10 +230,10 @@ export function GodotPlayPane({ projectPath }: Props) {
                 disabled={lines.length === 0}
               >
                 <Trash2 />
-                <span className="sr-only">Clear output</span>
+                <span className="sr-only">{t('godot.clearOutput')}</span>
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Clear output</TooltipContent>
+            <TooltipContent>{t('godot.clearOutput')}</TooltipContent>
           </Tooltip>
 
           {running ? (
@@ -242,7 +244,7 @@ export function GodotPlayPane({ projectPath }: Props) {
               onClick={() => void stop()}
             >
               <Square />
-              Stop
+              {t('play.stop')}
             </Button>
           ) : (
             <Button
@@ -251,7 +253,7 @@ export function GodotPlayPane({ projectPath }: Props) {
               onClick={() => void play()}
             >
               <Play />
-              Play
+              {t('play.play')}
             </Button>
           )}
         </div>
@@ -259,7 +261,7 @@ export function GodotPlayPane({ projectPath }: Props) {
         {/* Stage */}
         {detecting ? (
           <div className="flex min-h-0 flex-1 items-center justify-center bg-muted/30 p-6 text-sm text-muted-foreground">
-            Detecting Godot…
+            {t('godot.detecting')}
           </div>
         ) : !godot?.available ? (
           <GodotNotFound
@@ -273,7 +275,7 @@ export function GodotPlayPane({ projectPath }: Props) {
           />
         ) : lines.length === 0 ? (
           <div className="flex min-h-0 flex-1 items-center justify-center bg-muted/30 p-6 text-sm text-muted-foreground">
-            {running ? 'Waiting for output…' : 'Press Play to launch Godot.'}
+            {running ? t('godot.waiting') : t('godot.press')}
           </div>
         ) : (
           <div
@@ -302,23 +304,20 @@ export function GodotPlayPane({ projectPath }: Props) {
 
 /** Empty state when no Godot binary is detected on the daemon host. */
 function GodotNotFound({ onRecheck }: { onRecheck: () => void }) {
+  const t = useT();
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center bg-muted/30 p-6">
       <div className="flex max-w-md flex-col items-center gap-3 rounded-xl border border-dashed bg-card/50 p-6 text-center">
         <span className="grid size-12 place-items-center rounded-full bg-muted text-muted-foreground">
           <Gamepad2 className="size-5" />
         </span>
-        <div className="text-sm font-medium">Godot binary not detected</div>
+        <div className="text-sm font-medium">{t('godot.notDetected')}</div>
         <p className="text-sm text-muted-foreground">
-          The daemon looked on PATH and common install locations. Set the{' '}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">OGF_GODOT</code>{' '}
-          environment variable to your Godot executable, or add Godot to your{' '}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">PATH</code>, then
-          restart the daemon.
+          {t('godot.notDetected.body')}
         </p>
         <Button variant="ghost" size="sm" onClick={onRecheck}>
           <RotateCw />
-          Re-check
+          {t('godot.recheck')}
         </Button>
       </div>
     </div>

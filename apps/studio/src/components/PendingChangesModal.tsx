@@ -19,6 +19,7 @@ import {
   fetchPendingSlices,
   type PendingSliceEntry,
 } from '@/lib/review';
+import { useT } from '@/lib/i18n';
 
 export interface PendingChangesModalProps {
   open: boolean;
@@ -36,6 +37,7 @@ export interface PendingChangesModalProps {
 }
 
 export function PendingChangesModal(props: PendingChangesModalProps) {
+  const t = useT();
   const { open, onOpenChange, projectPath, engine, onResolved, onApplyPrompt } = props;
   const [pending, setPending] = useState<PendingSliceEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -47,13 +49,13 @@ export function PendingChangesModal(props: PendingChangesModalProps) {
       const r = await fetchPendingSlices(projectPath);
       setPending(r.pending);
     } catch (err) {
-      toast.error('Failed to load pending changes', {
+      toast.error(t('pending.loadFailed'), {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
       setLoading(false);
     }
-  }, [projectPath]);
+  }, [projectPath, t]);
 
   useEffect(() => {
     if (open) void load();
@@ -71,12 +73,12 @@ export function PendingChangesModal(props: PendingChangesModalProps) {
     void navigator.clipboard
       .writeText(prompt)
       .then(() =>
-        toast.success('Apply prompt copied', {
-          description: 'Paste it into the agent chat and send to apply.',
+        toast.success(t('pending.promptCopied'), {
+          description: t('pending.promptCopied.desc'),
         }),
       )
       .catch(() =>
-        toast.error('Could not copy prompt to clipboard'),
+        toast.error(t('pending.copyFailed')),
       );
   }
 
@@ -87,14 +89,14 @@ export function PendingChangesModal(props: PendingChangesModalProps) {
       // GAP: daemon has no per-sidecar discard route — DELETE clears every
       // pending slice for the project at once. So this is "Revert all" only.
       const r = await clearPendingSlices(projectPath);
-      toast.success(`Reverted ${r.removed} pending change${r.removed === 1 ? '' : 's'}`, {
-        description: 'Sidecars deleted. Engine files were left untouched.',
+      toast.success(t('pending.reverted', { n: r.removed }), {
+        description: t('pending.reverted.desc'),
       });
       setPending([]);
       onResolved?.();
       onOpenChange(false);
     } catch (err) {
-      toast.error('Revert failed', {
+      toast.error(t('pending.revertFailed'), {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
@@ -108,21 +110,20 @@ export function PendingChangesModal(props: PendingChangesModalProps) {
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle className="flex items-center gap-2">
             <Scissors className="size-4 text-primary" />
-            Pending slicing changes
+            {t('pending.title')}
           </DialogTitle>
           <DialogDescription>
-            {pending.length} sheet{pending.length === 1 ? '' : 's'} edited locally — not yet
-            applied to the engine.
+            {pending.length} {pending.length === 1 ? t('pending.sheet') : t('pending.sheets')} {t('pending.editedLocally')}
           </DialogDescription>
         </DialogHeader>
 
         <ScrollArea className="flex-1 overflow-y-auto px-6 py-4">
           {loading && (
-            <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
+            <p className="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>
           )}
           {!loading && pending.length === 0 && (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No pending changes.
+              {t('pending.empty')}
             </p>
           )}
           <div className="flex flex-col gap-3">
@@ -137,19 +138,19 @@ export function PendingChangesModal(props: PendingChangesModalProps) {
                   </Badge>
                 </div>
                 <dl className="mt-2 grid grid-cols-[90px_1fr] gap-x-3 gap-y-1 text-xs">
-                  <dt className="text-muted-foreground">Frame</dt>
+                  <dt className="text-muted-foreground">{t('pending.frame')}</dt>
                   <dd>
                     {p.frameW ?? '?'} × {p.frameH ?? '?'}
                     {(p.padding > 0 || p.offsetX !== 0 || p.offsetY !== 0) && (
                       <> · padding {p.padding}, offset ({p.offsetX}, {p.offsetY})</>
                     )}
                   </dd>
-                  <dt className="text-muted-foreground">Sidecar</dt>
+                  <dt className="text-muted-foreground">{t('pending.sidecar')}</dt>
                   <dd className="text-muted-foreground">{p.sidecarPath}</dd>
-                  <dt className="text-muted-foreground">Used in</dt>
+                  <dt className="text-muted-foreground">{t('pending.usedIn')}</dt>
                   <dd>
                     {p.usages.length === 0 ? (
-                      <span className="text-muted-foreground">(no references found)</span>
+                      <span className="text-muted-foreground">{t('pending.noRefs')}</span>
                     ) : (
                       <ul className="flex flex-col gap-1">
                         {p.usages.map((u, i) => (
@@ -175,17 +176,16 @@ export function PendingChangesModal(props: PendingChangesModalProps) {
 
         <DialogFooter className="flex-row items-center gap-2 border-t px-6 py-4">
           <span className="mr-auto text-xs text-muted-foreground">
-            Applying builds one prompt covering all entries for the agent. You review and send.
+            {t('pending.applyHint')}
           </span>
           <Button
             variant="outline"
             size="sm"
             onClick={handleRevertAll}
             disabled={pending.length === 0 || busy}
-            title="Discard all pending changes (deletes sidecars; engine files untouched)"
           >
             <RefreshCw className={cn('size-4', busy && 'animate-spin')} />
-            Revert all
+            {t('pending.revertAll')}
           </Button>
           <Button
             size="sm"
@@ -193,7 +193,7 @@ export function PendingChangesModal(props: PendingChangesModalProps) {
             disabled={pending.length === 0 || busy}
           >
             <Sparkles className="size-4" />
-            Apply all via Codex
+            {t('pending.applyAll')}
           </Button>
         </DialogFooter>
       </DialogContent>

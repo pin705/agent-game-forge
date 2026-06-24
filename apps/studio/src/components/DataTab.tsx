@@ -3,9 +3,11 @@ import { Database } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TableEditor } from '@/components/TableEditor';
 import { fetchFileTree } from '@/lib/files';
+import { useT } from '@/lib/i18n';
 
 // Surfaces TableEditor over the project's editable data/*.json catalogs.
 export function DataTab({ projectPath }: { projectPath: string }) {
+  const t = useT();
   const [files, setFiles] = useState<string[]>([]);
   const [sel, setSel] = useState<string | null>(null);
 
@@ -40,7 +42,7 @@ export function DataTab({ projectPath }: { projectPath: string }) {
       <div className="grid h-full place-items-center p-6 text-center text-sm text-muted-foreground">
         <div>
           <Database className="mx-auto mb-2 size-6 opacity-60" />
-          No editable data files yet. The Assistant writes catalogs into <code>data/*.json</code>.
+          {t('data.empty')}
         </div>
       </div>
     );
@@ -49,10 +51,10 @@ export function DataTab({ projectPath }: { projectPath: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b px-4 py-2">
-        <span className="text-xs text-muted-foreground">Catalog</span>
+        <span className="text-xs text-muted-foreground">{t('data.catalog')}</span>
         <Select value={sel ?? undefined} onValueChange={setSel}>
           <SelectTrigger className="h-8 w-[280px]">
-            <SelectValue placeholder="Pick a data file" />
+            <SelectValue placeholder={t('data.pickFile')} />
           </SelectTrigger>
           <SelectContent>
             {files.map((f) => (

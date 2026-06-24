@@ -36,6 +36,7 @@ import {
   type SceneProp,
   type Vec2,
 } from '@/lib/scene';
+import { useT } from '@/lib/i18n';
 
 type Camera = { scale: number; panX: number; panY: number };
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -86,6 +87,7 @@ function propBounds(p: SceneProp): { x: number; y: number; w: number; h: number 
 }
 
 export function SceneEditor({ projectPath }: { projectPath: string }) {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -526,11 +528,11 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
             <div className="mb-1 grid size-9 place-items-center rounded-md bg-muted">
               <Layers className="size-5 text-muted-foreground" />
             </div>
-            <CardTitle>No levels yet</CardTitle>
+            <CardTitle>{t('scene.empty.title')}</CardTitle>
             <CardDescription>
               {error
-                ? `Couldn't read the project files: ${error}`
-                : 'This project has no level files under data/*.json. Once the Assistant generates a map, it will show up here for drag-editing.'}
+                ? t('scene.readFailed', { error })
+                : t('scene.empty.body')}
             </CardDescription>
           </CardHeader>
         </Card>
@@ -551,7 +553,7 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
-            <DropdownMenuLabel>Levels</DropdownMenuLabel>
+            <DropdownMenuLabel>{t('scene.levels')}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {levels.map((l) => (
               <DropdownMenuItem
@@ -567,16 +569,16 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
 
         <div className="mx-1 h-5 w-px bg-border" />
 
-        <Button variant="ghost" size="icon" className="size-8" onClick={() => zoomBy(1 / 1.2)} title="Zoom out">
+        <Button variant="ghost" size="icon" className="size-8" onClick={() => zoomBy(1 / 1.2)} title={t('scene.zoomOut')}>
           <Minus className="size-4" />
         </Button>
         <span className="w-12 text-center text-xs tabular-nums text-muted-foreground">
           {Math.round(camera.scale * 100)}%
         </span>
-        <Button variant="ghost" size="icon" className="size-8" onClick={() => zoomBy(1.2)} title="Zoom in">
+        <Button variant="ghost" size="icon" className="size-8" onClick={() => zoomBy(1.2)} title={t('scene.zoomIn')}>
           <Plus className="size-4" />
         </Button>
-        <Button variant="ghost" size="icon" className="size-8" onClick={fitToView} title="Fit to view">
+        <Button variant="ghost" size="icon" className="size-8" onClick={fitToView} title={t('scene.fit')}>
           <Scan className="size-4" />
         </Button>
 
@@ -584,20 +586,20 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
 
         {scene ? (
           <span className="text-xs text-muted-foreground">
-            {scene.props.length} object{scene.props.length === 1 ? '' : 's'}
+            {scene.props.length} {scene.props.length === 1 ? t('scene.object') : t('scene.objects')}
           </span>
         ) : null}
         {saveState === 'saving' ? (
           <Badge variant="secondary" className="gap-1">
-            <Loader2 className="size-3 animate-spin" /> Saving
+            <Loader2 className="size-3 animate-spin" /> {t('scene.saving')}
           </Badge>
         ) : saveState === 'saved' ? (
           <Badge variant="secondary" className="text-emerald-500">
-            Saved
+            {t('scene.saved')}
           </Badge>
         ) : saveState === 'error' ? (
           <Badge variant="destructive" className="gap-1">
-            <AlertCircle className="size-3" /> Save failed
+            <AlertCircle className="size-3" /> {t('scene.saveFailed')}
           </Badge>
         ) : null}
       </div>
@@ -620,7 +622,7 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
         {loading ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center">
             <div className="flex items-center gap-2 rounded-md border bg-card/90 px-3 py-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> Loading scene…
+              <Loader2 className="size-4 animate-spin" /> {t('scene.loading')}
             </div>
           </div>
         ) : null}
@@ -641,7 +643,7 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
         {/* Hint */}
         {scene && !loading ? (
           <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-card/70 px-2 py-1 text-[11px] text-muted-foreground">
-            Drag objects to move · scroll to zoom · drag empty space to pan
+            {t('scene.hint')}
           </div>
         ) : null}
       </div>

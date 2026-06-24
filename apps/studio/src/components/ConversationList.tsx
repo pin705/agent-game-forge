@@ -10,6 +10,7 @@ import {
   removeConversation,
   type Conversation,
 } from '@/lib/files';
+import { useT } from '@/lib/i18n';
 
 interface ConversationListProps {
   projectPath: string;
@@ -17,15 +18,16 @@ interface ConversationListProps {
   onSelect: (id: string) => void;
 }
 
-function title(c: Conversation): string {
-  if (c.title && c.title.trim()) return c.title;
-  return 'Untitled chat';
-}
-
 export function ConversationList({ projectPath, conversationId, onSelect }: ConversationListProps) {
+  const t = useT();
   const [conversations, setConversations] = useState<Conversation[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const title = useCallback(
+    (c: Conversation): string => (c.title && c.title.trim() ? c.title : t('conversations.untitled')),
+    [t],
+  );
 
   const reload = useCallback(
     () =>
@@ -33,9 +35,9 @@ export function ConversationList({ projectPath, conversationId, onSelect }: Conv
         .then((r) => setConversations(r.conversations))
         .catch((e) => {
           setConversations([]);
-          toast.error(`Could not load chats: ${e instanceof Error ? e.message : String(e)}`);
+          toast.error(t('conversations.loadFailed', { error: e instanceof Error ? e.message : String(e) }));
         }),
-    [projectPath],
+    [projectPath, t],
   );
 
   useEffect(() => {
@@ -51,7 +53,7 @@ export function ConversationList({ projectPath, conversationId, onSelect }: Conv
       setConversations((prev) => (prev ? [conversation, ...prev] : [conversation]));
       onSelect(conversation.id);
     } catch (e) {
-      toast.error(`New chat failed: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(t('conversations.newFailed', { error: e instanceof Error ? e.message : String(e) }));
     } finally {
       setCreating(false);
     }
@@ -68,7 +70,7 @@ export function ConversationList({ projectPath, conversationId, onSelect }: Conv
         if (next) onSelect(next.id);
       }
     } catch (e) {
-      toast.error(`Delete failed: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(t('conversations.deleteFailed', { error: e instanceof Error ? e.message : String(e) }));
     } finally {
       setDeletingId(null);
     }
@@ -77,7 +79,7 @@ export function ConversationList({ projectPath, conversationId, onSelect }: Conv
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between gap-2 px-3 py-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Chats</span>
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('conversations.title')}</span>
         <Button
           variant="ghost"
           size="sm"
@@ -86,7 +88,7 @@ export function ConversationList({ projectPath, conversationId, onSelect }: Conv
           disabled={creating}
         >
           {creating ? <Loader2 className="animate-spin" /> : <Plus />}
-          New
+          {t('conversations.new')}
         </Button>
       </div>
 
@@ -95,10 +97,10 @@ export function ConversationList({ projectPath, conversationId, onSelect }: Conv
           {conversations === null ? (
             <div className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              Loading…
+              {t('common.loading')}
             </div>
           ) : conversations.length === 0 ? (
-            <div className="px-2 py-3 text-sm text-muted-foreground">No chats yet.</div>
+            <div className="px-2 py-3 text-sm text-muted-foreground">{t('conversations.empty')}</div>
           ) : (
             conversations.map((c) => {
               const active = c.id === conversationId;
@@ -125,7 +127,7 @@ export function ConversationList({ projectPath, conversationId, onSelect }: Conv
                     variant="ghost"
                     size="icon"
                     className="size-6 shrink-0 text-muted-foreground opacity-0 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
-                    title="Delete chat"
+                    title={t('conversations.deleteChat')}
                     disabled={deletingId === c.id}
                     onClick={() => void onDelete(c.id)}
                   >

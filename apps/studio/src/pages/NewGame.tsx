@@ -6,10 +6,22 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { createProject, fsList, projectId } from '@/lib/api';
+import { useT, type TKey } from '@/lib/i18n';
 
-const GENRES = ['Platformer', 'Top-down', 'Tower defense', 'Survivor', 'Shmup', 'Grid puzzle', 'Card battler'];
+// `seed` is the English genre phrase used to seed the project idea/slug (kept
+// stable regardless of UI locale so generated folder names stay ASCII-friendly).
+const GENRES: { key: TKey; seed: string }[] = [
+  { key: 'genre.platformer', seed: 'Platformer' },
+  { key: 'genre.topDown', seed: 'Top-down' },
+  { key: 'genre.towerDefense', seed: 'Tower defense' },
+  { key: 'genre.survivor', seed: 'Survivor' },
+  { key: 'genre.shmup', seed: 'Shmup' },
+  { key: 'genre.gridPuzzle', seed: 'Grid puzzle' },
+  { key: 'genre.cardBattler', seed: 'Card battler' },
+];
 
 export function NewGame() {
+  const t = useT();
   const nav = useNavigate();
   const [idea, setIdea] = useState('');
   const [busy, setBusy] = useState(false);
@@ -27,7 +39,7 @@ export function NewGame() {
       localStorage.setItem(`forge.idea.${projectId(project)}`, text);
       nav(`/build/${projectId(project)}`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not create game');
+      toast.error(e instanceof Error ? e.message : t('newGame.error'));
       setBusy(false);
     }
   }
@@ -38,7 +50,7 @@ export function NewGame() {
         <Button asChild variant="ghost" size="sm">
           <Link to="/">
             <ArrowLeft />
-            Dashboard
+            {t('newGame.back')}
           </Link>
         </Button>
       </div>
@@ -46,9 +58,9 @@ export function NewGame() {
         <span className="mb-6 grid size-11 place-items-center rounded-xl bg-primary text-primary-foreground">
           <Flame className="size-5" />
         </span>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">What do you want to make?</h1>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{t('newGame.title')}</h1>
         <p className="mt-3 max-w-md text-muted-foreground">
-          Describe a game — Forge builds it with free assets and a live preview. Ships at $0.
+          {t('newGame.subtitle')}
         </p>
 
         <div className="mt-7 w-full max-w-xl">
@@ -58,7 +70,7 @@ export function NewGame() {
               onChange={(e) => setIdea(e.target.value)}
               rows={3}
               autoFocus
-              placeholder="A sokoban puzzle in a stone dungeon — push crates onto glowing targets…"
+              placeholder={t('newGame.placeholder')}
               className="resize-none border-0 p-0 shadow-none focus-visible:ring-0"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -68,13 +80,13 @@ export function NewGame() {
               }}
             />
             <div className="mt-2 flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">⌘ / Ctrl + Enter</span>
+              <span className="text-xs text-muted-foreground">{t('newGame.hint')}</span>
               <Button disabled={busy} onClick={() => void create()}>
                 {busy ? (
                   <Loader2 className="animate-spin" />
                 ) : (
                   <>
-                    Create
+                    {t('newGame.create')}
                     <ArrowRight />
                   </>
                 )}
@@ -85,12 +97,12 @@ export function NewGame() {
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             {GENRES.map((g) => (
               <Badge
-                key={g}
+                key={g.key}
                 variant="secondary"
                 className="cursor-pointer px-3 py-1 hover:bg-accent"
-                onClick={() => void create(`A ${g.toLowerCase()} game`)}
+                onClick={() => void create(`A ${g.seed.toLowerCase()} game`)}
               >
-                {g}
+                {t(g.key)}
               </Badge>
             ))}
           </div>
