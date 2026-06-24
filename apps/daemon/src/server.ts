@@ -9,7 +9,7 @@ import {
   isAgentId,
   resolveOnPath,
 } from './agents.js';
-import { isSecretKey, listSecretStatuses, setSecret } from './secrets.js';
+import { isSecretKey, listSecretStatuses, resolveSecret, setSecret } from './secrets.js';
 import { generateImage, GenImageError, type GenImageRequest } from './gen-image.js';
 import { logGenImageCall, summarizeGenImageCalls } from './gen-image-log.js';
 import { isImageGenProviderPref, readPreferences, writePreferences, type Preferences } from './prefs.js';
@@ -35,8 +35,8 @@ import {
   type ProjectRow,
 } from './projects.js';
 import { execSync, spawn as spawnProcess } from 'node:child_process';
-import { homedir } from 'node:os';
-import { readdirSync, statSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { readdirSync, statSync, mkdtempSync, rmSync } from 'node:fs';
 import {
   deleteProjectFile,
   listRefImages,
@@ -552,6 +552,255 @@ export function createServer() {
         res.setHeader('Pragma', 'no-cache');
       },
     })(req, res, next);
+  });
+
+  // -------------------- Publish (Cloudflare Pages) --------------------
+  // Deploy a static OGF game (vanilla HTML5 Canvas) to Cloudflare Pages via
+  // wrangler. Creds come from resolveSecret() (env > ~/.ogf/secrets.json) and
+  // are injected into wrangler's env — never written to disk or passed on the
+  // CLI. We stage ONLY the game's static files to a temp dir so .ogf/.agents/
+  // .git/node_modules never ship to the public site.
+
+  /** Dirs/files that must never be uploaded to the public site. */
+  const PUBLISH_SKIP_DIRS = new Set([
+    '.ogf',
+    '.agents',
+    '.git',
+    'node_modules',
+    '.ogf-qa',
+  ]);
+
+  /** Top-level dirs that ARE part of the static game. */
+  const PUBLISH_GAME_DIRS = new Set(['src', 'data', 'assets']);
+
+  /** Recursively copy a directory, skipping nothing (caller pre-filters). */
+  function copyDirRec(src: string, dst: string): void {
+    mkdirSync(dst, { recursive: true });
+    for (const entry of readdirSync(src)) {
+      const s = path.join(src, entry);
+      const d = path.join(dst, entry);
+      if (statSync(s).isDirectory()) {
+        copyDirRec(s, d);
+      } else {
+        copyFileSync(s, d);
+      }
+    }
+  }
+
+  /** Stage the static game into `tmpDir`. Copies index.html, styles.css, any
+   *  top-level *.css/*.js, and the src/ data/ assets/ dirs. Excludes the
+   *  OGF/build/VCS metadata listed above. Returns the count of staged files. */
+  function stageStaticGame(projectRoot: string, tmpDir: string): number {
+    let staged = 0;
+    for (const entry of readdirSync(projectRoot)) {
+      if (PUBLISH_SKIP_DIRS.has(entry)) continue;
+      if (entry === '.gitignore') continue;
+      const abs = path.join(projectRoot, entry);
+      const st = statSync(abs);
+      if (st.isDirectory()) {
+        if (!PUBLISH_GAME_DIRS.has(entry)) continue;
+        copyDirRec(abs, path.join(tmpDir, entry));
+        staged++;
+      } else {
+        // Top-level files: index.html, styles.css, any *.css / *.js.
+        // Exclude markdown.
+        const lower = entry.toLowerCase();
+        if (lower.endsWith('.md')) continue;
+        const keep =
+          entry === 'index.html' ||
+          entry === 'styles.css' ||
+          lower.endsWith('.css') ||
+          lower.endsWith('.js');
+        if (!keep) continue;
+        copyFileSync(abs, path.join(tmpDir, entry));
+        staged++;
+      }
+    }
+    return staged;
+  }
+
+  /** Stable, valid Cloudflare Pages project name derived from the OGF project
+   *  name. Pages names: lowercase alphanumeric + hyphens. Same project name →
+   *  same slug → re-deploys update the same site. */
+  function pagesSlug(projectName: string): string {
+    return ('ogf-' + projectName)
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .slice(0, 54);
+  }
+
+  /** Run a wrangler subcommand with creds injected via env. Resolves with the
+   *  collected stdout/stderr + exit code rather than rejecting on non-zero so
+   *  the caller can decide (e.g. ignore "already exists" on project create). */
+  function runWrangler(
+    args: string[],
+    token: string,
+    account: string,
+    timeoutMs: number,
+  ): Promise<{ code: number | null; stdout: string; stderr: string; timedOut: boolean }> {
+    return new Promise((resolve) => {
+      const child = spawnProcess('npx', ['--yes', 'wrangler@4', ...args], {
+        env: {
+          ...process.env,
+          CLOUDFLARE_API_TOKEN: token,
+          CLOUDFLARE_ACCOUNT_ID: account,
+          // wrangler is interactive by default; force non-interactive + no
+          // telemetry prompts in a headless daemon context.
+          CI: '1',
+          WRANGLER_SEND_METRICS: 'false',
+        },
+        shell: process.platform === 'win32',
+      });
+      let stdout = '';
+      let stderr = '';
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        try {
+          child.kill('SIGKILL');
+        } catch {
+          /* best-effort */
+        }
+      }, timeoutMs);
+      child.stdout?.on('data', (d) => {
+        stdout += d.toString();
+      });
+      child.stderr?.on('data', (d) => {
+        stderr += d.toString();
+      });
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        resolve({ code: null, stdout, stderr: stderr + String(err), timedOut });
+      });
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        resolve({ code, stdout, stderr, timedOut });
+      });
+    });
+  }
+
+  app.post('/api/publish', async (req, res) => {
+    const body = req.body as { projectPath?: string };
+    if (!body?.projectPath || typeof body.projectPath !== 'string') {
+      return res.status(400).json({ error: 'projectPath is required' });
+    }
+    const projectRoot = path.resolve(body.projectPath);
+    const project = getProject(projectRoot);
+    if (!project) {
+      return res.status(404).json({ error: 'project not registered' });
+    }
+
+    const token = resolveSecret('cloudflare_api_token');
+    const account = resolveSecret('cloudflare_account_id');
+    if (!token || !account) {
+      return res.status(400).json({
+        error:
+          'Cloudflare not configured — add your API token (Pages: Edit) + Account ID in Settings, or set CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID.',
+      });
+    }
+
+    if (!existsSync(projectRoot)) {
+      return res.status(404).json({ error: 'project folder missing' });
+    }
+
+    const slug = pagesSlug(project.name);
+    let tmpDir: string | undefined;
+    try {
+      tmpDir = mkdtempSync(path.join(tmpdir(), 'ogf-pub-'));
+      const staged = stageStaticGame(projectRoot, tmpDir);
+      if (staged === 0) {
+        rmSync(tmpDir, { recursive: true, force: true });
+        return res.status(400).json({
+          error: 'nothing to publish — no index.html / src / data / assets found in project',
+        });
+      }
+
+      // First run downloads wrangler, so give it room. Project-create may fail
+      // with "already exists" on re-deploys — that's expected, we ignore it
+      // and proceed straight to deploy.
+      const TIMEOUT_MS = 180_000;
+      await runWrangler(
+        ['pages', 'project', 'create', slug, '--production-branch', 'production'],
+        token,
+        account,
+        TIMEOUT_MS,
+      );
+
+      const deploy = await runWrangler(
+        [
+          'pages',
+          'deploy',
+          tmpDir,
+          '--project-name',
+          slug,
+          '--branch',
+          'production',
+          '--commit-dirty=true',
+        ],
+        token,
+        account,
+        TIMEOUT_MS,
+      );
+
+      if (deploy.code !== 0) {
+        const detail = (deploy.stderr || deploy.stdout || '').slice(-500);
+        const msg = deploy.timedOut ? `wrangler timed out. ${detail}` : detail;
+        return res.status(500).json({ error: msg || 'wrangler deploy failed' });
+      }
+
+      // wrangler prints the live deployment URL to stdout, e.g.
+      // "✨ Deployment complete! Take a peek over at https://abcd1234.<slug>.pages.dev".
+      // Prefer the canonical project URL (https://<slug>.pages.dev) if present,
+      // else the first pages.dev URL we see, else synthesize it.
+      const combined = deploy.stdout + '\n' + deploy.stderr;
+      const urls = combined.match(/https:\/\/[a-z0-9.-]*\.pages\.dev/gi) ?? [];
+      const canonical = `https://${slug}.pages.dev`;
+      const url = urls.find((u) => u.toLowerCase() === canonical) ?? urls[0] ?? canonical;
+
+      // Persist publish state next to the project.
+      try {
+        const ogfDir = path.join(projectRoot, '.ogf');
+        mkdirSync(ogfDir, { recursive: true });
+        writeFileSync(
+          path.join(ogfDir, 'publish.json'),
+          JSON.stringify({ url, slug, deployedAt: Date.now() }, null, 2) + '\n',
+          'utf8',
+        );
+      } catch {
+        // Non-fatal: the deploy succeeded; we just couldn't cache the URL.
+      }
+
+      return res.json({ url });
+    } catch (err) {
+      return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      if (tmpDir) {
+        try {
+          rmSync(tmpDir, { recursive: true, force: true });
+        } catch {
+          /* best-effort cleanup */
+        }
+      }
+    }
+  });
+
+  app.get('/api/publish', (req, res) => {
+    const projectPath = req.query.projectPath;
+    if (typeof projectPath !== 'string') {
+      return res.status(400).json({ error: 'projectPath query required' });
+    }
+    const publishFile = path.join(path.resolve(projectPath), '.ogf', 'publish.json');
+    if (!existsSync(publishFile)) {
+      return res.json({ url: null });
+    }
+    try {
+      const parsed = JSON.parse(readFileSync(publishFile, 'utf8'));
+      const url = parsed && typeof parsed.url === 'string' ? parsed.url : null;
+      return res.json({ url });
+    } catch {
+      return res.json({ url: null });
+    }
   });
 
   // -------------------- Filesystem browser --------------------

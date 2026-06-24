@@ -31,9 +31,17 @@ import path from 'node:path';
 export type SecretKey =
   | 'openai_api_key'
   | 'gemini_api_key'
-  | 'anthropic_api_key';
+  | 'anthropic_api_key'
+  | 'cloudflare_api_token'
+  | 'cloudflare_account_id';
 
-const ALL_KEYS: SecretKey[] = ['openai_api_key', 'gemini_api_key', 'anthropic_api_key'];
+const ALL_KEYS: SecretKey[] = [
+  'openai_api_key',
+  'gemini_api_key',
+  'anthropic_api_key',
+  'cloudflare_api_token',
+  'cloudflare_account_id',
+];
 
 /** Env var that shadows each secret. When set, the env value is what gets
  *  used at runtime, regardless of what's in the file. */
@@ -41,6 +49,8 @@ const ENV_VAR_FOR: Record<SecretKey, string> = {
   openai_api_key: 'OPENAI_API_KEY',
   gemini_api_key: 'GEMINI_API_KEY',
   anthropic_api_key: 'ANTHROPIC_API_KEY',
+  cloudflare_api_token: 'CLOUDFLARE_API_TOKEN',
+  cloudflare_account_id: 'CLOUDFLARE_ACCOUNT_ID',
 };
 
 function secretsDir(): string {

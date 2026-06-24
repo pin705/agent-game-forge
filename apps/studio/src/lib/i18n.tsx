@@ -103,6 +103,20 @@ const en = {
   'build.reviewPack': 'Review sprite pack…',
   'build.importSession': 'Import Codex session…',
   'tab.play': 'Play',
+
+  // ── Publish to web (Cloudflare Pages) ──
+  'publish.title': 'Publish to web',
+  'publish.description': 'Deploy this game to Cloudflare Pages and get a public link to share.',
+  'publish.cta': 'Publish to web',
+  'publish.publishing': 'Publishing…',
+  'publish.live': 'Your game is live',
+  'publish.copyLink': 'Copy link',
+  'publish.copied': 'Copied',
+  'publish.openGame': 'Open game',
+  'publish.republish': 'Re-publish',
+  'publish.failed': 'Publish failed: {error}',
+  'publish.needCreds': 'Add your Cloudflare API token and Account ID in Settings, then try again.',
+
   'tab.scene': 'Scene',
   'tab.assets': 'Assets',
   'tab.data': 'Data',
@@ -177,6 +191,11 @@ const en = {
   'settings.secret.shadowed': 'Shadowed by {env}',
   'settings.secret.fromEnv': '(from {env})',
   'settings.secret.overrideHint': 'Override via {env}. Unset that env var to use a value saved here.',
+  'settings.cloudflare.title': 'Publishing (Cloudflare Pages)',
+  'settings.cloudflare.body':
+    'Needed to publish your game to the web. Get a token at Cloudflare → My Profile → API Tokens (use the “Edit Cloudflare Pages” template). Your Account ID is in the dashboard URL (dash.cloudflare.com/<account-id>). Stored by the daemon at ~/.ogf/secrets.json (mode 600).',
+  'settings.cloudflare.token': 'API token',
+  'settings.cloudflare.account': 'Account ID',
 
   // ── Rename dialog ──
   'rename.title': 'Rename game',
@@ -547,6 +566,20 @@ const vi: Record<TKey, string> = {
   'build.reviewPack': 'Xem lại gói sprite…',
   'build.importSession': 'Nhập phiên Codex…',
   'tab.play': 'Chơi',
+
+  // ── Publish to web (Cloudflare Pages) ──
+  'publish.title': 'Phát hành lên web',
+  'publish.description': 'Triển khai trò chơi này lên Cloudflare Pages và nhận liên kết công khai để chia sẻ.',
+  'publish.cta': 'Phát hành lên web',
+  'publish.publishing': 'Đang phát hành…',
+  'publish.live': 'Trò chơi của bạn đã trực tuyến',
+  'publish.copyLink': 'Sao chép liên kết',
+  'publish.copied': 'Đã sao chép',
+  'publish.openGame': 'Mở trò chơi',
+  'publish.republish': 'Phát hành lại',
+  'publish.failed': 'Phát hành thất bại: {error}',
+  'publish.needCreds': 'Thêm API token và Account ID của Cloudflare trong Cài đặt, rồi thử lại.',
+
   'tab.scene': 'Cảnh',
   'tab.assets': 'Tài nguyên',
   'tab.data': 'Dữ liệu',
@@ -621,6 +654,11 @@ const vi: Record<TKey, string> = {
   'settings.secret.shadowed': 'Bị ghi đè bởi {env}',
   'settings.secret.fromEnv': '(từ {env})',
   'settings.secret.overrideHint': 'Ghi đè qua {env}. Bỏ đặt biến môi trường đó để dùng giá trị lưu ở đây.',
+  'settings.cloudflare.title': 'Phát hành (Cloudflare Pages)',
+  'settings.cloudflare.body':
+    'Cần thiết để phát hành trò chơi lên web. Lấy token tại Cloudflare → My Profile → API Tokens (dùng mẫu “Edit Cloudflare Pages”). Account ID nằm trong URL bảng điều khiển (dash.cloudflare.com/<account-id>). Được daemon lưu tại ~/.ogf/secrets.json (chế độ 600).',
+  'settings.cloudflare.token': 'API token',
+  'settings.cloudflare.account': 'Account ID',
 
   // ── Rename dialog ──
   'rename.title': 'Đổi tên trò chơi',

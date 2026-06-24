@@ -18,7 +18,12 @@ export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
  *  but Claude Code authenticates via its own CLI login — only the two
  *  image-gen providers (Gemini, OpenAI) need keys entered here. */
 export type SecretProvider = 'gemini' | 'openai';
-export type SecretKey = 'gemini_api_key' | 'openai_api_key' | 'anthropic_api_key';
+export type SecretKey =
+  | 'gemini_api_key'
+  | 'openai_api_key'
+  | 'anthropic_api_key'
+  | 'cloudflare_api_token'
+  | 'cloudflare_account_id';
 
 export interface SecretStatus {
   key: SecretKey;
@@ -241,6 +246,16 @@ export const clearSecret = (provider: SecretProvider) =>
     key: PROVIDER_TO_SECRET_KEY[provider],
     value: null,
   });
+
+/** Save a secret by its raw key. The provider→key model only covers the two
+ *  image-gen providers; this lets the UI set keys that have no provider entry
+ *  (e.g. the Cloudflare publish creds). Returns refreshed masked statuses. */
+export const setSecretKey = (key: SecretKey, value: string) =>
+  jpost<SecretsResponse>('/api/secrets', { key, value });
+
+/** Remove a secret by its raw key (env-var override, if any, still applies). */
+export const clearSecretKey = (key: SecretKey) =>
+  jpost<SecretsResponse>('/api/secrets', { key, value: null });
 
 /** Gen-image call-count + heuristic-cost summary for the Settings panel.
  *  Resolves to null if the daemon doesn't expose the route (older builds). */

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Upload, Play, Layers, Image as ImageIcon, Code2, Database, MoreVertical, Sun, Moon, Settings, History, Package, Download, PanelLeftOpen } from 'lucide-react';
-import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -28,6 +27,7 @@ import { PendingChangesModal } from '@/components/PendingChangesModal';
 import { PackReviewModal } from '@/components/PackReviewModal';
 import { ImportCodexSessionModal } from '@/components/ImportCodexSessionModal';
 import { CommandPalette, type TabValue } from '@/components/CommandPalette';
+import { PublishDialog } from '@/components/PublishDialog';
 import { useT } from '@/lib/i18n';
 
 // Resizable workspace columns: [conversations, assistant]. Column 3 (workspace)
@@ -74,16 +74,17 @@ export function Build() {
   const [packOpen, setPackOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
   const [convOpen, setConvOpen] = useState<boolean>(() => localStorage.getItem('forge.convOpen') !== '0');
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [tab, setTab] = useState<TabValue>('play');
   const [cols, setCols] = useState<ColWidths>(loadCols);
   const { theme, toggle: toggleTheme } = useTheme();
 
-  const publish = useCallback(
-    () => toast(t('common.comingSoon', { feature: t('build.publish') })),
-    [t],
-  );
+  // Header Publish button + palette action both open the publish dialog. It
+  // only renders once a project is loaded (it needs project.path), so opening
+  // it before then is a no-op in practice.
+  const publish = useCallback(() => setPublishOpen(true), []);
   // "New chat" = drop back to the latest/fresh conversation (Chat re-keys to
   // 'latest' and replays the idea prompt), mirroring an empty selection.
   const newChat = useCallback(() => setConversationId(null), []);
@@ -355,6 +356,7 @@ export function Build() {
             engine={project.engine}
           />
           <PackReviewModal open={packOpen} onOpenChange={setPackOpen} projectPath={project.path} />
+          <PublishDialog open={publishOpen} onOpenChange={setPublishOpen} projectPath={project.path} />
           <ImportCodexSessionModal
             open={importOpen}
             onOpenChange={setImportOpen}

@@ -38,3 +38,38 @@ export const fetchFileContent = (projectPath: string, relPath: string) =>
 export function projectId(p: Project): string {
   return btoa(p.path).replace(/[^a-zA-Z0-9]/g, '');
 }
+
+// -------------------- Publish to web (Cloudflare Pages) --------------------
+// The daemon surfaces a human-readable `error` string on 4xx/5xx (e.g. the 400
+// "configure Cloudflare in Settings" case). The default jget/jpost helpers
+// above collapse failures to "<url>: <status>", so publish uses its own
+// helpers that read the JSON `{ error }` body and throw that text instead —
+// the message reaches the PublishDialog verbatim.
+
+async function readError(r: Response, fallback: string): Promise<string> {
+  try {
+    const body = (await r.json()) as { error?: unknown };
+    if (body && typeof body.error === 'string' && body.error.trim()) return body.error;
+  } catch {
+    /* non-JSON / empty body — fall back to the status line below */
+  }
+  return fallback;
+}
+
+/** Deploy the project to Cloudflare Pages. Resolves with the public URL.
+ *  Rejects with the daemon's `error` text (400 when CF creds are missing,
+ *  500 on deploy failure) so the UI can show it — and detect the creds case. */
+export async function publishProject(projectPath: string): Promise<{ url: string }> {
+  const r = await fetch('/api/publish', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectPath }),
+  });
+  if (!r.ok) throw new Error(await readError(r, `Publish failed (${r.status})`));
+  return r.json() as Promise<{ url: string }>;
+}
+
+/** Last-published URL for a project, or null if it has never been published. */
+export function getPublishUrl(projectPath: string): Promise<{ url: string | null }> {
+  return jget<{ url: string | null }>(`/api/publish?projectPath=${encodeURIComponent(projectPath)}`);
+}

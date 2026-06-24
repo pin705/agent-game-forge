@@ -123,11 +123,11 @@ export function Dashboard() {
       <div className="mx-auto w-full max-w-5xl px-6 py-10">
         {/* Hero — prompt-first creation */}
         <section className="flex flex-col items-center text-center">
-          <span className="brand-title brand-title-large mb-6" aria-label="Agent Game Footage">
+          {/* <span className="brand-title brand-title-large mb-6" aria-label="Agent Game Footage">
             <span className="brand-agent">Agent</span>
             <span className="brand-game">Game</span>
             <span className="brand-forge">Footage</span>
-          </span>
+          </span> */}
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t('newGame.title')}</h1>
           <p className="mt-2 max-w-md text-sm text-muted-foreground">{t('newGame.subtitle')}</p>
 

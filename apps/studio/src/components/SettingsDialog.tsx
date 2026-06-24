@@ -22,9 +22,11 @@ import {
 } from '@/components/ui/select';
 import {
   clearSecret,
+  clearSecretKey,
   getGenImageSummary,
   getSecretsStatus,
   setSecret,
+  setSecretKey,
   useSettings,
   type AgentId,
   type GenImageSummary,
@@ -66,6 +68,16 @@ const PROVIDERS: {
     hint: 'gpt-image-1 / gpt-image-2',
     placeholder: 'sk-…',
   },
+];
+
+// Cloudflare publish creds — set by raw key (no SecretProvider entry).
+const CLOUDFLARE_SECRETS: {
+  key: SecretKey;
+  labelKey: 'settings.cloudflare.token' | 'settings.cloudflare.account';
+  placeholder: string;
+}[] = [
+  { key: 'cloudflare_api_token', labelKey: 'settings.cloudflare.token', placeholder: 'cf-…' },
+  { key: 'cloudflare_account_id', labelKey: 'settings.cloudflare.account', placeholder: '1a2b3c…' },
 ];
 
 function SecretRow({
@@ -110,6 +122,101 @@ function SecretRow({
       <div className="flex items-center gap-2">
         <Label className="text-sm">{spec.label}</Label>
         <span className="font-mono text-xs text-muted-foreground">{spec.hint}</span>
+        <span className="flex-1" />
+        {fromEnv ? (
+          <Badge variant="secondary" title={t('settings.secret.shadowed', { env: status?.envVarName ?? '' })}>
+            {t('settings.secret.env')}
+          </Badge>
+        ) : isSet ? (
+          <Badge variant="outline" className="border-success/40 text-success">
+            {t('settings.secret.set')}
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="text-muted-foreground">
+            {t('settings.secret.missing')}
+          </Badge>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          type="password"
+          autoComplete="off"
+          className="font-mono"
+          placeholder={
+            fromEnv
+              ? t('settings.secret.fromEnv', { env: status?.envVarName ?? '' })
+              : isSet
+                ? status?.masked
+                : spec.placeholder
+          }
+          value={draft}
+          disabled={fromEnv || busy}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void save();
+          }}
+        />
+        <Button size="sm" onClick={() => void save()} disabled={fromEnv || busy || !draft.trim()}>
+          {busy ? t('common.saving') : t('common.save')}
+        </Button>
+        {isSet && !fromEnv && (
+          <Button size="sm" variant="ghost" onClick={() => void clear()} disabled={busy}>
+            {t('common.clear')}
+          </Button>
+        )}
+      </div>
+      {fromEnv && (
+        <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
+          {t('settings.secret.overrideHint', { env: status?.envVarName ?? '' })}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Like SecretRow, but keyed by a raw SecretKey (no SecretProvider). Used for
+ *  the Cloudflare publish creds, which the provider→key map doesn't cover. */
+function SecretKeyRow({
+  spec,
+  status,
+  onSaved,
+}: {
+  spec: (typeof CLOUDFLARE_SECRETS)[number];
+  status: SecretStatus | undefined;
+  onSaved: (next: SecretStatus[]) => void;
+}) {
+  const t = useT();
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const fromEnv = status?.fromEnv ?? false;
+  const isSet = status?.set ?? false;
+
+  async function save() {
+    if (!draft.trim() || busy) return;
+    setBusy(true);
+    try {
+      const r = await setSecretKey(spec.key, draft.trim());
+      onSaved(r.secrets);
+      setDraft('');
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function clear() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = await clearSecretKey(spec.key);
+      onSaved(r.secrets);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center gap-2">
+        <Label className="text-sm">{t(spec.labelKey)}</Label>
         <span className="flex-1" />
         {fromEnv ? (
           <Badge variant="secondary" title={t('settings.secret.shadowed', { env: status?.envVarName ?? '' })}>
@@ -304,6 +411,26 @@ function SettingsDialogBody() {
         </div>
         {PROVIDERS.map((spec) => (
           <SecretRow
+            key={spec.key}
+            spec={spec}
+            status={statusFor(spec.key)}
+            onSaved={setSecrets}
+          />
+        ))}
+      </section>
+
+      <Separator />
+
+      {/* Publishing (Cloudflare Pages) creds */}
+      <section className="grid gap-4">
+        <div>
+          <h3 className="text-sm font-medium">{t('settings.cloudflare.title')}</h3>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {t('settings.cloudflare.body')}
+          </p>
+        </div>
+        {CLOUDFLARE_SECRETS.map((spec) => (
+          <SecretKeyRow
             key={spec.key}
             spec={spec}
             status={statusFor(spec.key)}
