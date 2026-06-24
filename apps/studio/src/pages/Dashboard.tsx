@@ -89,27 +89,35 @@ export function Dashboard() {
   return (
     <AppShell
       right={
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8 text-muted-foreground">
-              <MoreVertical />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setOpenImport(true)}>
-              <FolderOpen />
-              {t('common.open')}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={toggleTheme}>
-              {theme === 'dark' ? <Sun /> : <Moon />}
-              {t('app.theme')}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
-              <Settings />
-              {t('app.settings')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-muted-foreground"
+            onClick={() => setOpenImport(true)}
+          >
+            <FolderOpen />
+            {t('common.open')}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 text-muted-foreground"
+            onClick={toggleTheme}
+            title={t('app.theme')}
+          >
+            {theme === 'dark' ? <Sun /> : <Moon />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 text-muted-foreground"
+            onClick={() => setSettingsOpen(true)}
+            title={t('app.settings')}
+          >
+            <Settings />
+          </Button>
+        </>
       }
     >
       <div className="mx-auto w-full max-w-5xl px-6 py-10">
