@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, MessageSquare, Trash2, Loader2 } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, Loader2, PanelLeftClose } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -16,9 +16,11 @@ interface ConversationListProps {
   projectPath: string;
   conversationId: string | null;
   onSelect: (id: string) => void;
+  /** When provided, renders a collapse button in the header. */
+  onCollapse?: () => void;
 }
 
-export function ConversationList({ projectPath, conversationId, onSelect }: ConversationListProps) {
+export function ConversationList({ projectPath, conversationId, onSelect, onCollapse }: ConversationListProps) {
   const t = useT();
   const [conversations, setConversations] = useState<Conversation[] | null>(null);
   const [creating, setCreating] = useState(false);
@@ -78,12 +80,25 @@ export function ConversationList({ projectPath, conversationId, onSelect }: Conv
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-between gap-2 px-3 py-2">
-        <span className="text-xs font-medium tracking-wide text-muted-foreground">{t('conversations.title')}</span>
+      <div className="flex items-center justify-between gap-2 px-2 py-2">
+        <div className="flex min-w-0 items-center gap-1">
+          {onCollapse ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6 shrink-0 text-muted-foreground"
+              onClick={onCollapse}
+              title={t('conversations.collapse')}
+            >
+              <PanelLeftClose className="size-4" />
+            </Button>
+          ) : null}
+          <span className="truncate text-xs font-medium tracking-wide text-muted-foreground">{t('conversations.title')}</span>
+        </div>
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 gap-1 px-2"
+          className="h-7 shrink-0 gap-1 px-2"
           onClick={() => void onNew()}
           disabled={creating}
         >

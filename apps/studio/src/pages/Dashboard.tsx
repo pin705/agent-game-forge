@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Play, Pencil, Upload, MoreVertical, Gamepad2, FolderOpen } from 'lucide-react';
+import { Plus, Play, Pencil, Upload, MoreVertical, Gamepad2, FolderOpen, Sun, Moon, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 import { AppShell } from '@/components/AppShell';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { RenameDialog } from '@/components/RenameDialog';
 import { DeleteConfirm } from '@/components/DeleteConfirm';
-import { SettingsButton } from '@/components/SettingsDialog';
+import { SettingsDialog } from '@/components/SettingsDialog';
+import { useTheme } from '@/components/ThemeToggle';
 import { GameCover } from '@/components/GameThumb';
 import { OpenProjectDialog } from '@/components/OpenProjectDialog';
 import { fetchProjects, projectId, type Project } from '@/lib/api';
@@ -35,8 +36,10 @@ export function Dashboard() {
   const [renameFor, setRenameFor] = useState<Project | null>(null);
   const [deleteFor, setDeleteFor] = useState<Project | null>(null);
   const [openImport, setOpenImport] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const navigate = useNavigate();
   const t = useT();
+  const { theme, toggle: toggleTheme } = useTheme();
 
   const reload = () =>
     fetchProjects()
@@ -51,11 +54,27 @@ export function Dashboard() {
     <AppShell
       right={
         <>
-          <SettingsButton />
-          <Button variant="outline" size="sm" onClick={() => setOpenImport(true)}>
-            <FolderOpen />
-            {t('common.open')}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8 text-muted-foreground">
+                <MoreVertical />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setOpenImport(true)}>
+                <FolderOpen />
+                {t('common.open')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={toggleTheme}>
+                {theme === 'dark' ? <Sun /> : <Moon />}
+                {t('app.theme')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
+                <Settings />
+                {t('app.settings')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button asChild size="sm">
             <Link to="/new">
               <Plus />
@@ -155,6 +174,7 @@ export function Dashboard() {
         )}
       </div>
 
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <OpenProjectDialog
         open={openImport}
         onOpenChange={setOpenImport}

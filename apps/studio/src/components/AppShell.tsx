@@ -1,6 +1,5 @@
 import { type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ThemeToggle } from '@/components/ThemeToggle';
 
 export function AppShell({ children, right }: { children: ReactNode; right?: ReactNode }) {
   return (
@@ -20,9 +19,7 @@ export function AppShell({ children, right }: { children: ReactNode; right?: Rea
           </span>
         </Link>
         <div className="flex-1" />
-        <ThemeToggle />
         {right}
-        <div className="size-8 rounded-full bg-gradient-to-br from-primary to-emerald-400" aria-hidden />
       </header>
       <main className="flex min-h-0 flex-1 flex-col">{children}</main>
     </div>

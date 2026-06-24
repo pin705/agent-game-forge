@@ -134,6 +134,8 @@ const en = {
   // ── Conversation list ──
   'conversations.title': 'Chats',
   'conversations.new': 'New',
+  'conversations.collapse': 'Collapse',
+  'conversations.expand': 'Show chats',
   'conversations.untitled': 'Untitled chat',
   'conversations.empty': 'No chats yet.',
   'conversations.deleteChat': 'Delete chat',
@@ -540,6 +542,8 @@ const vi: Record<TKey, string> = {
   // ── Conversation list ──
   'conversations.title': 'Cuộc trò chuyện',
   'conversations.new': 'Mới',
+  'conversations.collapse': 'Thu gọn',
+  'conversations.expand': 'Hiện cuộc trò chuyện',
   'conversations.untitled': 'Trò chuyện chưa đặt tên',
   'conversations.empty': 'Chưa có cuộc trò chuyện nào.',
   'conversations.deleteChat': 'Xóa cuộc trò chuyện',

@@ -8,7 +8,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -401,28 +400,47 @@ function SettingsDialogBody() {
   );
 }
 
+/** Controlled Settings dialog with no trigger — drive `open` from a header
+ *  overflow menu (or anywhere). Body mounts only while open so secrets/usage
+ *  re-fetch on each open. */
+export function SettingsDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const t = useT();
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t('settings.title')}</DialogTitle>
+          <DialogDescription>{t('settings.description')}</DialogDescription>
+        </DialogHeader>
+        {open && <SettingsDialogBody />}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /** Ghost icon button that opens the Settings dialog. Drop into any header. */
 export function SettingsButton({ className }: { className?: string }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={t('app.settings')} className={className}>
-          <Settings />
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{t('settings.title')}</DialogTitle>
-          <DialogDescription>
-            {t('settings.description')}
-          </DialogDescription>
-        </DialogHeader>
-        {/* Mount the body only while open so secrets/usage re-fetch on each open. */}
-        {open && <SettingsDialogBody />}
-      </DialogContent>
-    </Dialog>
+    <>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={t('app.settings')}
+        className={className}
+        onClick={() => setOpen(true)}
+      >
+        <Settings />
+      </Button>
+      <SettingsDialog open={open} onOpenChange={setOpen} />
+    </>
   );
 }
 

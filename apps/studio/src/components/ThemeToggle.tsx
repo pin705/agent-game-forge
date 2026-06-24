@@ -7,7 +7,7 @@ type Theme = 'light' | 'dark';
 const LS_KEY = 'ogf-theme';
 
 /** Read the current theme from the <html> class (set pre-paint by the inline
- *  script in index.html, default dark). */
+ *  script in index.html, default light). */
 function currentTheme(): Theme {
   return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
 }
@@ -21,23 +21,30 @@ function applyTheme(theme: Theme): void {
   }
 }
 
+/** Theme state + toggle, shared by the icon button and the header menus so the
+ *  control can live anywhere (standalone button, dropdown item, settings). */
+export function useTheme() {
+  const [theme, setThemeState] = useState<Theme>(() => currentTheme());
+
+  // Keep local state in sync if some other surface changes the class.
+  useEffect(() => {
+    setThemeState(currentTheme());
+  }, []);
+
+  const setTheme = (next: Theme) => {
+    applyTheme(next);
+    setThemeState(next);
+  };
+  const toggle = () => setTheme(theme === 'dark' ? 'light' : 'dark');
+  return { theme, toggle, setTheme };
+}
+
 /** Sun/Moon header button. Studio is light-first; this flips the `.dark` class
  *  on <html> and persists the choice. Shows the icon for the theme you'd
  *  switch TO (Sun while dark, Moon while light). */
 export function ThemeToggle({ className }: { className?: string }) {
   const t = useT();
-  const [theme, setTheme] = useState<Theme>(() => currentTheme());
-
-  // Keep local state in sync if some other surface changes the class.
-  useEffect(() => {
-    setTheme(currentTheme());
-  }, []);
-
-  const toggle = () => {
-    const next: Theme = theme === 'dark' ? 'light' : 'dark';
-    applyTheme(next);
-    setTheme(next);
-  };
+  const { theme, toggle } = useTheme();
 
   return (
     <Button

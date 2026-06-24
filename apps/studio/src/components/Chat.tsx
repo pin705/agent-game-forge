@@ -370,9 +370,9 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
   };
 
   return (
-    <div className="flex min-h-0 flex-col">
-      <div className="flex items-center gap-2.5 bg-muted/20 px-3 py-2">
-        <span className="text-xs text-muted-foreground">{t('chat.title')}</span>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center gap-2.5 border-b bg-muted/20 px-3 py-2">
+        <span className="text-xs font-medium text-muted-foreground">{t('chat.title')}</span>
         {running ? (
           <Badge variant="secondary" className="ml-auto gap-1">
             <Loader2 className="size-3 animate-spin" />
@@ -409,8 +409,8 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
         </div>
       </ScrollArea>
 
-      <div className="bg-muted/20 p-2.5">
-        <div className="flex items-end gap-1.5">
+      <div className="shrink-0 border-t p-3">
+        <div className="flex items-end gap-2 rounded-xl border bg-background px-3 py-2 shadow-sm transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25">
           <Textarea
             value={prompt}
             onChange={(e) => {
@@ -422,14 +422,14 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
             onKeyDown={onKey}
             rows={1}
             placeholder={t('chat.placeholder')}
-            className="max-h-40 min-h-[34px] resize-none py-1.5 text-[13px]"
+            className="max-h-40 min-h-[24px] flex-1 resize-none border-0 bg-transparent p-0 text-[13px] shadow-none focus-visible:ring-0"
           />
           {running ? (
-            <Button size="icon" variant="secondary" className="size-8 shrink-0" onClick={() => void stop()} title={t('chat.stop')}>
+            <Button size="icon" variant="ghost" className="size-7 shrink-0 text-muted-foreground hover:text-foreground" onClick={() => void stop()} title={t('chat.stop')}>
               <Square className="size-3.5" />
             </Button>
           ) : (
-            <Button size="icon" className="size-8 shrink-0" onClick={() => void send()} disabled={!prompt.trim()} title={t('chat.send')}>
+            <Button size="icon" className="size-7 shrink-0" onClick={() => void send()} disabled={!prompt.trim()} title={t('chat.send')}>
               <Send className="size-3.5" />
             </Button>
           )}

@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Upload, Play, Layers, Image as ImageIcon, Code2, Database, MoreVertical } from 'lucide-react';
+import { ArrowLeft, Upload, Play, Layers, Image as ImageIcon, Code2, Database, MoreVertical, Sun, Moon, Settings, History, Package, Download, PanelLeftOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { fetchProjects, projectId, type Project } from '@/lib/api';
 import { Chat } from '@/components/Chat';
@@ -20,8 +20,8 @@ import { AssetsPanel } from '@/components/AssetsPanel';
 import { CodePanel } from '@/components/CodePanel';
 import { DataTab } from '@/components/DataTab';
 import { ConversationList } from '@/components/ConversationList';
-import { SettingsButton } from '@/components/SettingsDialog';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import { SettingsDialog } from '@/components/SettingsDialog';
+import { useTheme } from '@/components/ThemeToggle';
 import { GameIcon } from '@/components/GameThumb';
 import { StatusBar } from '@/components/StatusBar';
 import { PendingChangesModal } from '@/components/PendingChangesModal';
@@ -38,6 +38,20 @@ export function Build() {
   const [pendingOpen, setPendingOpen] = useState(false);
   const [packOpen, setPackOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [convOpen, setConvOpen] = useState<boolean>(() => localStorage.getItem('forge.convOpen') !== '0');
+  const { theme, toggle: toggleTheme } = useTheme();
+
+  const toggleConv = () =>
+    setConvOpen((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem('forge.convOpen', next ? '1' : '0');
+      } catch {
+        /* storage disabled — toggle still works for this session */
+      }
+      return next;
+    });
 
   useEffect(() => {
     fetchProjects()
@@ -60,17 +74,7 @@ export function Build() {
         </Button>
         <GameIcon path={project?.path} name={project?.name} />
         <div className="font-medium">{project?.name ?? t('common.loading')}</div>
-        {project ? (
-          <Badge variant="secondary" className="capitalize">
-            {project.engine}
-          </Badge>
-        ) : null}
         <div className="flex-1" />
-        <Badge variant="outline" className="text-emerald-500">
-          {t('build.free')}
-        </Badge>
-        <ThemeToggle />
-        <SettingsButton />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="size-8 text-muted-foreground">
@@ -78,9 +82,27 @@ export function Build() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setPendingOpen(true)}>{t('build.pendingChanges')}</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setPackOpen(true)}>{t('build.reviewPack')}</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setImportOpen(true)}>{t('build.importSession')}</DropdownMenuItem>
+            <DropdownMenuItem onClick={toggleTheme}>
+              {theme === 'dark' ? <Sun /> : <Moon />}
+              {t('app.theme')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
+              <Settings />
+              {t('app.settings')}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setPendingOpen(true)}>
+              <History />
+              {t('build.pendingChanges')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setPackOpen(true)}>
+              <Package />
+              {t('build.reviewPack')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setImportOpen(true)}>
+              <Download />
+              {t('build.importSession')}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <Button size="sm" onClick={() => toast(t('common.comingSoon', { feature: t('build.publish') }))}>
@@ -89,11 +111,33 @@ export function Build() {
         </Button>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[210px_360px_1fr]">
+      <div
+        className="grid min-h-0 flex-1"
+        style={{ gridTemplateColumns: `${convOpen ? '210px' : '44px'} 360px 1fr` }}
+      >
         {/* Conversations */}
         <div className="flex min-h-0 flex-col bg-muted/20">
           {project ? (
-            <ConversationList projectPath={project.path} conversationId={conversationId} onSelect={setConversationId} />
+            convOpen ? (
+              <ConversationList
+                projectPath={project.path}
+                conversationId={conversationId}
+                onSelect={setConversationId}
+                onCollapse={toggleConv}
+              />
+            ) : (
+              <div className="flex flex-col items-center py-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 text-muted-foreground"
+                  onClick={toggleConv}
+                  title={t('conversations.expand')}
+                >
+                  <PanelLeftOpen className="size-4" />
+                </Button>
+              </div>
+            )
           ) : null}
         </div>
 
@@ -158,6 +202,8 @@ export function Build() {
       </div>
 
       <StatusBar project={project} />
+
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 
       {project ? (
         <>
