@@ -13,6 +13,9 @@ next-env.d.ts
 # Created at runtime by the dev drivers; never commit.
 /.data/
 
+# E2E artifacts (real-browser screenshots + isolated temp data dirs).
+/e2e/shots/
+
 # Logs / misc
 *.log
 .DS_Store

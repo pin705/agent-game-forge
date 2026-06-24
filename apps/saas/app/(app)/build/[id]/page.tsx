@@ -40,6 +40,13 @@ export default async function BuildPage({ params }: { params: Promise<{ id: stri
       .maybeSingle();
     if (!data) notFound();
     project = { name: data.name, slug: data.slug };
+  } else {
+    // Local-dev: read the project name/slug from the on-disk registry so the
+    // builder header shows the real project. Unregistered ids (e.g. a remix)
+    // still render via the "Local project" default above — the editor is open.
+    const projectsRegistry = await import("@/lib/projects/registry");
+    const rec = await projectsRegistry.getProject(id);
+    if (rec) project = { name: rec.name, slug: rec.slug };
   }
 
   const origin = resolveSiteOrigin(await requestOrigin());

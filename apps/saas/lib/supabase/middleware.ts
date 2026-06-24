@@ -32,7 +32,28 @@ const AUTH_ROUTES = ["/login", "/signup"];
  * routes. Must run in middleware so the refreshed auth cookie is written
  * back on the response (Server Components can't set cookies).
  */
+/**
+ * True only when real (non-placeholder) Supabase env is present (the SAME guard
+ * used app-wide). Derived SOLELY from the server env — never a request header,
+ * cookie, or query param.
+ */
+function supabaseConfigured(): boolean {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  return Boolean(url && !url.includes("placeholder"));
+}
+
 export async function updateSession(request: NextRequest) {
+  // ⚠️ LOCAL-DEV AUTH BYPASS — unreachable in prod (gated on server env only).
+  // When Supabase is NOT configured there is no auth backend, so the edge guard
+  // would bounce every protected route to /login (which itself can't sign in
+  // without Supabase), making the app unreachable offline. In local-dev we skip
+  // the session refresh + the protected-route redirect entirely; the
+  // server-side getSessionUser() supplies the stable dev user downstream. This
+  // branch can NEVER run when a real Supabase project is wired.
+  if (!supabaseConfigured()) {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(

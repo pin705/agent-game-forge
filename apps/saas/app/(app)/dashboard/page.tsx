@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Gamepad2, Plus } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionUser, isLocalDev } from "@/lib/auth/current-user";
+import * as projectsRegistry from "@/lib/projects/registry";
 import { createProject } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,15 +23,32 @@ export default async function DashboardPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
-  const supabase = await createClient();
 
-  // RLS scopes this to the current user; ordered newest-first.
-  const { data, error: queryError } = await supabase
-    .from("projects")
-    .select("id, name, slug, updated_at, created_at")
-    .order("updated_at", { ascending: false, nullsFirst: false });
+  let projects: Project[] = [];
+  let queryError: { message: string } | null = null;
 
-  const projects = (data ?? []) as Project[];
+  if (isLocalDev()) {
+    // Local-dev: list from the on-disk projects registry (the dev user owns all).
+    const user = await getSessionUser();
+    const recs = user ? await projectsRegistry.listProjects(user.id) : [];
+    projects = recs.map((r) => ({
+      id: r.id,
+      name: r.name,
+      slug: r.slug,
+      updated_at: new Date(r.updatedAt).toISOString(),
+      created_at: new Date(r.createdAt).toISOString(),
+    }));
+  } else {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+    // RLS scopes this to the current user; ordered newest-first.
+    const { data, error: qErr } = await supabase
+      .from("projects")
+      .select("id, name, slug, updated_at, created_at")
+      .order("updated_at", { ascending: false, nullsFirst: false });
+    projects = (data ?? []) as Project[];
+    queryError = qErr;
+  }
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">

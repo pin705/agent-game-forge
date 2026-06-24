@@ -1,17 +1,22 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { isLocalDev } from "@/lib/auth/current-user";
 import { AuthForm } from "@/components/auth-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
 
 export default async function SignupPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (user) redirect("/dashboard");
+  // Local-dev (no Supabase): render the form without touching Supabase (empty
+  // keys would throw). Prod: query the real user + bounce if already signed in.
+  if (!isLocalDev()) {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) redirect("/dashboard");
+  }
 
   return (
     <main className="flex min-h-svh items-center justify-center px-6 py-12">

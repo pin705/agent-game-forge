@@ -9,6 +9,15 @@
  */
 import { creditsForRun, type RunUsage } from "./pricing";
 
+/**
+ * Standing balance shown in local-dev (no Supabase) — the same 50 free credits a
+ * fresh signup gets in prod. Lets the top-nav chip, the /billing balance, and
+ * the credit-gate path all render + be exercised with ZERO accounts. Charges in
+ * local-dev are computed + logged but not persisted (see chargeRun), so this
+ * stays constant — that's expected offline.
+ */
+export const DEV_CREDITS = 50;
+
 /** Floor a run's balance must clear before it may start (§5 guardrail). */
 export function creditFloor(): number {
   const n = Number(process.env.CREDIT_FLOOR);

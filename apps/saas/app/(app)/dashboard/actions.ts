@@ -2,7 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionUser, isLocalDev } from "@/lib/auth/current-user";
+import * as projects from "@/lib/projects/registry";
 
 /** Lowercase, hyphenated, ascii slug with a short random suffix for uniqueness. */
 function slugify(name: string): string {
@@ -17,20 +18,29 @@ function slugify(name: string): string {
 }
 
 /**
- * Creates a new project row for the current user and redirects into its
- * builder. The R2 prefix is derived once here (files live under
- * projects/<id>/… in R2 — see SAAS_ARCHITECTURE.md §4).
+ * Creates a new project for the current user and redirects into its builder.
+ *
+ *   • prod      → insert a `projects` row (RLS-scoped), R2 prefix = projects/<id>.
+ *   • local-dev → create a record in the on-disk projects registry (no Supabase),
+ *     so the "New game" → build loop works with ZERO accounts. Files for that
+ *     id land under projects/<id>/ in LocalStorage exactly as in prod.
  */
 export async function createProject(formData: FormData) {
   const rawName = String(formData.get("name") ?? "").trim();
   const name = rawName || "Untitled game";
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/login");
 
+  // ⚠️ LOCAL-DEV PROJECT CREATE — registry-backed; unreachable in prod.
+  if (isLocalDev()) {
+    const rec = await projects.createProject({ userId: user.id, name });
+    revalidatePath("/dashboard");
+    redirect(`/build/${rec.id}`);
+  }
+
+  const { createClient } = await import("@/lib/supabase/server");
+  const supabase = await createClient();
   const slug = slugify(name);
 
   const { data, error } = await supabase

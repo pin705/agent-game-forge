@@ -7,7 +7,7 @@
  * Best-effort: returns nulls/empties when Supabase is absent (local dev) or the
  * profile/ledger isn't readable yet — never throws.
  */
-import { supabaseConfigured } from "./credits";
+import { DEV_CREDITS, supabaseConfigured } from "./credits";
 
 export type LedgerEntry = {
   id: string;
@@ -22,7 +22,9 @@ export type CreditSummary = {
 };
 
 export async function getCreditSummary(limit = 10): Promise<CreditSummary> {
-  if (!supabaseConfigured()) return { balance: null, recentLedger: [] };
+  // Local-dev (no Supabase): surface the standing dev balance so /billing shows
+  // a real number + the top-up flow is exercisable with ZERO accounts.
+  if (!supabaseConfigured()) return { balance: DEV_CREDITS, recentLedger: [] };
   try {
     const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
