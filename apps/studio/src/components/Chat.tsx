@@ -17,10 +17,12 @@ import {
   createRun,
   fetchActiveRun,
   fetchConversations,
+  fetchMessages,
   formatFormAnswers,
   subscribeRun,
   uploadRefImage,
   type AgentEvent,
+  type Message,
   type QuestionForm,
   type QuestionFormAnswers,
   type ReasoningEffort,
@@ -213,6 +215,39 @@ export interface ChatProps {
   conversationId?: string;
 }
 
+/** Rebuild the transcript from persisted messages so an existing / in-progress
+ *  conversation shows its history on mount + refresh instead of starting blank.
+ *  A user message starts a turn; the next agent message's events (or its text)
+ *  attach to that turn. */
+function rebuildTurns(messages: Message[]): UiTurn[] {
+  const ordered = [...messages].sort((a, b) => a.position - b.position);
+  const turns: UiTurn[] = [];
+  for (const m of ordered) {
+    if (m.role === 'user') {
+      turns.push({ id: `m${m.id}`, userText: m.content, events: [], status: 'done' });
+    } else {
+      if (turns.length === 0) turns.push({ id: `m${m.id}`, userText: '', events: [], status: 'done' });
+      const last = turns[turns.length - 1];
+      const evs: AgentEvent[] =
+        m.events && m.events.length ? m.events : m.content ? [{ type: 'text_delta', delta: m.content }] : [];
+      last.events = [...last.events, ...evs];
+    }
+  }
+  return turns;
+}
+
+/** Live "Working" elapsed timer (ticks once a second). */
+function RunTimer({ startedAt }: { startedAt: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const s = Math.max(0, Math.floor((now - startedAt) / 1000));
+  const label = s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s`;
+  return <span className="tabular-nums opacity-80">{label}</span>;
+}
+
 export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) {
   const [turns, setTurns] = useState<UiTurn[]>([]);
   const [prompt, setPrompt] = useState('');
@@ -224,6 +259,10 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
   const [refPaths, setRefPaths] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  // Epoch ms the active run started (for the "Working …" elapsed timer). Null
+  // when idle. Set from the run start on send, or from the daemon's startedAt on
+  // resume.
+  const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
   const { agentId, model, reasoning } = useSettings();
   const t = useT();
 
@@ -385,12 +424,14 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
           setError(msg);
           finalizeLastTurn('failed');
           setRunning(false);
+          setRunStartedAt(null);
           runIdRef.current = null;
         } else if (e.type === 'end') {
           const status: TurnStatus =
             e.data.status === 'succeeded' ? 'done' : e.data.status === 'canceled' ? 'canceled' : 'failed';
           finalizeLastTurn(status);
           setRunning(false);
+          setRunStartedAt(null);
           runIdRef.current = null;
         }
       });
@@ -416,6 +457,7 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
       setError(null);
       setTurns((s) => [...s, { id: cryptoRandomId(), userText: text, events: [], status: 'streaming' }]);
       setRunning(true);
+      setRunStartedAt(Date.now());
 
       try {
         const r = await createRun({
@@ -441,6 +483,7 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
         setError(err instanceof Error ? err.message : String(err));
         finalizeLastTurn('failed');
         setRunning(false);
+        setRunStartedAt(null);
         runIdRef.current = null;
       }
     },
@@ -465,14 +508,18 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
       }
     }
     setRunning(false);
+    setRunStartedAt(null);
     runIdRef.current = null;
   }, []);
 
-  // On mount: resume any in-flight run for the latest conversation, then
-  // auto-send the initial prompt exactly once if one was provided.
+  // On mount / refresh / conversation switch: rebuild the transcript from
+  // persisted history, resume any in-flight run (keep streaming + show Working),
+  // and auto-send the initial idea ONLY for a brand-new project (no conversation
+  // yet) — never on refresh of an existing one (that re-fired "Working" before).
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      let hadConversation = false;
       try {
         let targetId = conversationId ?? null;
         if (!targetId) {
@@ -480,18 +527,32 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
           targetId = conversations[0]?.id ?? null;
         }
         if (targetId && !cancelled) {
+          hadConversation = true;
           conversationIdRef.current = targetId;
+          // 1) Replay persisted history so the chat isn't blank on entry/F5.
+          const { messages } = await fetchMessages(targetId).catch(() => ({ messages: [] as Message[] }));
+          if (!cancelled && messages.length) setTurns(rebuildTurns(messages));
+          // 2) Re-attach to an in-flight run so it keeps streaming + shows Working.
           const active = await fetchActiveRun(targetId).catch(() => ({ active: false }) as const);
           if (!cancelled && active.active) {
             runIdRef.current = active.runId;
+            setRunStartedAt(active.startedAt ?? Date.now());
             setRunning(true);
+            // Ensure the streaming run has a turn to append to + mark it live.
+            setTurns((prev) => {
+              if (prev.length === 0)
+                return [{ id: cryptoRandomId(), userText: '', events: [], status: 'streaming' }];
+              const next = [...prev];
+              next[next.length - 1] = { ...next[next.length - 1], status: 'streaming' };
+              return next;
+            });
             subscribeToRun(active.runId);
           }
         }
       } catch {
         // No daemon / no conversations yet — first send() creates one.
       }
-      if (!cancelled && initialPrompt && initialPrompt.trim() && !autoSentRef.current) {
+      if (!cancelled && !hadConversation && initialPrompt && initialPrompt.trim() && !autoSentRef.current) {
         autoSentRef.current = true;
         void send(initialPrompt);
       }
@@ -518,6 +579,7 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
           <Badge variant="secondary" className="ml-auto gap-1">
             <Loader2 className="size-3 animate-spin" />
             {t('chat.working')}
+            {runStartedAt != null ? <RunTimer startedAt={runStartedAt} /> : null}
           </Badge>
         ) : null}
       </div>
