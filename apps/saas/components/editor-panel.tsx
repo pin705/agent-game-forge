@@ -37,11 +37,17 @@ export function EditorPanel({
   files,
   onRefresh,
   loading,
+  onDirtyChange,
+  openSignal,
 }: {
   projectId: string;
   files: string[];
   onRefresh: () => void;
   loading?: boolean;
+  /** Bubbles the code editor's dirty state up (Batch 4 status bar / guard). */
+  onDirtyChange?: (dirty: boolean) => void;
+  /** {path, nonce} from the command palette to open a file in the Code tab. */
+  openSignal?: { path: string; nonce: number } | null;
 }) {
   const t = useT();
   // SSR-safe: render the default on the server + first client render, then
@@ -50,6 +56,12 @@ export function EditorPanel({
   useEffect(() => {
     setTab(loadTab());
   }, []);
+
+  // A palette file-open jumps to the Code tab so the file is visible.
+  useEffect(() => {
+    if (openSignal) selectTab("code");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSignal?.nonce]);
 
   function selectTab(v: string) {
     const next = (TABS as string[]).includes(v) ? (v as TabValue) : "code";
@@ -85,7 +97,14 @@ export function EditorPanel({
       </div>
 
       <TabsContent value="code" className="m-0 min-h-0 flex-1 overflow-hidden p-0">
-        <CodePanel projectId={projectId} files={files} onRefresh={onRefresh} loading={loading} />
+        <CodePanel
+          projectId={projectId}
+          files={files}
+          onRefresh={onRefresh}
+          loading={loading}
+          onDirtyChange={onDirtyChange}
+          openSignal={openSignal}
+        />
       </TabsContent>
       <TabsContent value="scene" className="m-0 min-h-0 flex-1 overflow-hidden p-0">
         <ScenePanel projectId={projectId} files={files} onSaved={onRefresh} />

@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { DeleteConfirm } from "@/components/delete-confirm";
 import {
   createConversation,
   deleteConversation,
@@ -76,6 +77,9 @@ export function ConversationList({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
+  // The conversation queued for deletion → drives the DeleteConfirm dialog
+  // (replaces the native window.confirm with the on-brand dialog, Batch 4).
+  const [pendingDelete, setPendingDelete] = useState<ConversationDTO | null>(null);
   const skipBlurRef = useRef(false);
 
   const title = useCallback(
@@ -112,9 +116,8 @@ export function ConversationList({
     }
   }
 
-  async function onDelete(id: string) {
+  async function doDelete(id: string) {
     if (deletingId) return;
-    if (typeof window !== "undefined" && !window.confirm(t("conversations.deleteConfirm"))) return;
     setDeletingId(id);
     try {
       await deleteConversation(id);
@@ -125,6 +128,7 @@ export function ConversationList({
       }
     } catch (e) {
       toast.error(t("conversations.deleteFailed", { error: e instanceof Error ? e.message : String(e) }));
+      throw e; // keep the confirm dialog open on failure
     } finally {
       setDeletingId(null);
     }
@@ -267,7 +271,7 @@ export function ConversationList({
             </DropdownMenuItem>
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
-              onSelect={() => void onDelete(c.id)}
+              onSelect={() => setPendingDelete(c)}
             >
               <Trash2 />
               {t("conversations.deleteChat")}
@@ -332,6 +336,15 @@ export function ConversationList({
           )}
         </div>
       </ScrollArea>
+
+      <DeleteConfirm
+        open={pendingDelete !== null}
+        onOpenChange={(o) => !o && setPendingDelete(null)}
+        name={pendingDelete ? title(pendingDelete) : ""}
+        onConfirm={async () => {
+          if (pendingDelete) await doDelete(pendingDelete.id);
+        }}
+      />
     </div>
   );
 }

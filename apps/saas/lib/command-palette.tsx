@@ -19,7 +19,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -140,3 +139,24 @@ export const GROUP_LABEL_KEYS: Record<CommandGroup, TKey> = {
 
 /** Stable group render order. */
 export const GROUP_ORDER: CommandGroup[] = ["navigate", "project", "files", "preferences"];
+
+/**
+ * The build page's PublishButton lives in the page header (server-rendered),
+ * out of the workspace's React tree. The ⌘K "Publish" command dispatches this
+ * window event; the button listens for it and runs its own publish handler. A
+ * window event is the lightest cross-tree bridge (no portal / context plumbing
+ * through a Server Component boundary).
+ */
+export const PUBLISH_EVENT = "ogf:publish";
+
+/** Fire the publish request (no-op in non-browser contexts). */
+export function requestPublish(): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(PUBLISH_EVENT));
+}
+
+/** Window event the build chat listens for to focus its composer (⌘K command). */
+export const FOCUS_CHAT_EVENT = "ogf:focus-chat";
+
+export function requestFocusChat(): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(FOCUS_CHAT_EVENT));
+}

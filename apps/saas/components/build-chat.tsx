@@ -48,6 +48,7 @@ import {
   type MessageDTO,
 } from "@/lib/conversations/client";
 import { formatFormAnswers } from "@/lib/agent/forms";
+import { FOCUS_CHAT_EVENT } from "@/lib/command-palette";
 import type { QuestionForm } from "@/lib/agent/events";
 
 type TFn = (key: TKey, vars?: Record<string, string | number>) => string;
@@ -144,6 +145,8 @@ export function BuildChat({
   conversationId,
   onFilesChanged,
   onConversationCreated,
+  onModelChange,
+  onDriverChange,
 }: {
   projectId: string;
   /** When set, binds to a specific conversation; else the latest one. */
@@ -151,6 +154,10 @@ export function BuildChat({
   onFilesChanged: () => void;
   /** Fired when a run creates a brand-new conversation (so the list refreshes). */
   onConversationCreated?: (id: string) => void;
+  /** Reports the active build-model id (Batch 4 status bar). */
+  onModelChange?: (id: string) => void;
+  /** Reports the live run driver (sandbox/storage/model) once a run starts. */
+  onDriverChange?: (driver: { model: string; sandbox: string; storage: string } | null) => void;
 }) {
   const t = useT();
   const [turns, setTurns] = useState<UiTurn[]>([]);
@@ -170,17 +177,33 @@ export function BuildChat({
     () => MODEL_OPTIONS.find((m) => m.enabled)?.id ?? "deepseek-chat",
   );
   useEffect(() => {
-    setModelState(readDefaultModel());
-  }, []);
-  const setModel = useCallback((id: string) => {
+    const id = readDefaultModel();
     setModelState(id);
-    writeDefaultModel(id);
-  }, []);
+    onModelChange?.(id);
+  }, [onModelChange]);
+  const setModel = useCallback(
+    (id: string) => {
+      setModelState(id);
+      writeDefaultModel(id);
+      onModelChange?.(id);
+    },
+    [onModelChange],
+  );
 
   const conversationIdRef = useRef<string | null>(conversationId ?? null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dragDepthRef = useRef(0);
+
+  // ⌘K "Focus chat" command → focus the composer textarea.
+  useEffect(() => {
+    function onFocus() {
+      textareaRef.current?.focus();
+    }
+    window.addEventListener(FOCUS_CHAT_EVENT, onFocus);
+    return () => window.removeEventListener(FOCUS_CHAT_EVENT, onFocus);
+  }, []);
 
   // Auto-scroll the transcript as turns / events stream in.
   useEffect(() => {
@@ -359,6 +382,7 @@ export function BuildChat({
         switch (ev.type) {
           case "run_start":
             setMeta(ev.driver);
+            onDriverChange?.(ev.driver);
             if (ev.conversationId) {
               const isNew = conversationIdRef.current === null;
               conversationIdRef.current = ev.conversationId;
@@ -384,7 +408,7 @@ export function BuildChat({
         }
       }
     },
-    [prompt, running, uploading, refPaths, projectId, model, appendEventToLastTurn, finalizeLastTurn, onFilesChanged, onConversationCreated, t],
+    [prompt, running, uploading, refPaths, projectId, model, appendEventToLastTurn, finalizeLastTurn, onFilesChanged, onConversationCreated, onDriverChange, t],
   );
 
   const onSubmitForm = useCallback(
@@ -521,6 +545,7 @@ export function BuildChat({
           )}
 
           <textarea
+            ref={textareaRef}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={onKey}

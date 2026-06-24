@@ -247,6 +247,13 @@ function FileViewer({
 
   const dirty = isText && content !== original;
 
+  // Surface dirty state to the parent (status bar + nav guard). Reset to clean
+  // on unmount so a closed/switched file never leaves a stale dirty flag.
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
+  }, [dirty, onDirtyChange]);
+
   const save = useCallback(async () => {
     if (!dirty || saving) return;
     setSaving(true);
@@ -354,11 +361,17 @@ export function CodePanel({
   files,
   onRefresh,
   loading,
+  onDirtyChange,
+  openSignal,
 }: {
   projectId: string;
   files: string[];
   onRefresh: () => void;
   loading?: boolean;
+  /** Bubbles the active editor's dirty state up to the workspace status bar. */
+  onDirtyChange?: (dirty: boolean) => void;
+  /** A {path, nonce} the command palette bumps to open/focus a file here. */
+  openSignal?: { path: string; nonce: number } | null;
 }) {
   const t = useT();
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
@@ -367,6 +380,19 @@ export function CodePanel({
   const [activePath, setActivePath] = useState<string | null>(null);
 
   const tree = useMemo(() => buildFileTree(files), [files]);
+
+  // Open / focus a file when the palette requests it (nonce changes per request).
+  useEffect(() => {
+    if (!openSignal) return;
+    const name = openSignal.path.split("/").pop() ?? openSignal.path;
+    setTabs((prev) =>
+      prev.some((tb) => tb.relPath === openSignal.path)
+        ? prev
+        : [...prev, { relPath: openSignal.path, name, fileKind: fileKindOf(openSignal.path) }],
+    );
+    setActivePath(openSignal.path);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSignal?.nonce]);
 
   // Prune tabs whose file no longer exists (e.g. an agent run deleted it).
   useEffect(() => {
@@ -521,7 +547,12 @@ export function CodePanel({
 
         <div className="min-h-0 flex-1">
           {activeTab ? (
-            <FileViewer key={activeTab.relPath} projectId={projectId} file={activeTab} />
+            <FileViewer
+              key={activeTab.relPath}
+              projectId={projectId}
+              file={activeTab}
+              onDirtyChange={onDirtyChange}
+            />
           ) : (
             <div className="grid h-full place-items-center p-6 text-sm text-muted-foreground">
               {hasFiles ? t("code.selectFile") : t("code.empty")}

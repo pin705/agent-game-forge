@@ -1,13 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { History, MessageSquare } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FileCode, History, MessageSquare, Rocket, Upload } from "lucide-react";
 import { BuildChat } from "@/components/build-chat";
 import { ConversationList } from "@/components/conversation-list";
 import { EditorPanel } from "@/components/editor-panel";
 import { PlayPane } from "@/components/play-pane";
+import { useRouter } from "next/navigation";
+import { StatusBar } from "@/components/status-bar";
+import { UnsavedChangesModal } from "@/components/unsaved-changes-modal";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
+import { NAV_GUARD_EVENT, type NavGuardDetail } from "@/lib/nav-guard";
+import {
+  requestFocusChat,
+  requestPublish,
+  useRegisterCommands,
+  type Command,
+} from "@/lib/command-palette";
 
 /**
  * Resizable 3-pane builder shell: chat (left) · live preview (center) · code
@@ -51,10 +61,24 @@ function loadCols(): ColWidths {
   return { chat: CHAT_DEFAULT, code: CODE_DEFAULT };
 }
 
-export function BuildWorkspace({ projectId }: { projectId: string }) {
+export function BuildWorkspace({
+  projectId,
+  projectName = "",
+}: {
+  projectId: string;
+  projectName?: string;
+}) {
   const t = useT();
   const [files, setFiles] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  // Batch 4 status-bar / palette signals.
+  const [modelId, setModelId] = useState<string | null>(null);
+  const [driver, setDriver] = useState<{ model: string; sandbox: string; storage: string } | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [openSignal, setOpenSignal] = useState<{ path: string; nonce: number } | null>(null);
+  // Unsaved-changes nav guard (Batch 4): pending in-app navigation target.
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const router = useRouter();
   // Start at defaults for SSR determinism; hydrate persisted widths after mount.
   const [cols, setCols] = useState<ColWidths>({ chat: CHAT_DEFAULT, code: CODE_DEFAULT });
   // Chat history (Batch 2): which conversation the chat is bound to, whether the
@@ -96,7 +120,67 @@ export function BuildWorkspace({ projectId }: { projectId: string }) {
     refresh();
   }, [refresh]);
 
+  // Native guard: warn on tab close / reload / external nav while edits are dirty.
+  useEffect(() => {
+    if (!dirty) return;
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty]);
+
+  // In-app guard: the header's Dashboard link routes through requestGuardedNav.
+  // Clean → navigate immediately; dirty → confirm via UnsavedChangesModal.
+  useEffect(() => {
+    function onNav(e: Event) {
+      const href = (e as CustomEvent<NavGuardDetail>).detail?.href;
+      if (!href) return;
+      if (dirty) setPendingHref(href);
+      else router.push(href);
+    }
+    window.addEventListener(NAV_GUARD_EVENT, onNav as EventListener);
+    return () => window.removeEventListener(NAV_GUARD_EVENT, onNav as EventListener);
+  }, [dirty, router]);
+
   const hasGame = files.includes("index.html");
+
+  // ── ⌘K project-scoped commands (only while the build page is mounted) ──────
+  const openFileInCode = useCallback((path: string) => {
+    setOpenSignal({ path, nonce: Date.now() });
+  }, []);
+
+  const projectCommands = useMemo<Command[]>(() => {
+    const base: Command[] = [
+      {
+        id: "project.publish",
+        group: "project",
+        label: t("palette.cmd.publish"),
+        icon: <Rocket />,
+        run: requestPublish,
+      },
+      {
+        id: "project.focusChat",
+        group: "project",
+        label: t("palette.cmd.focusChat"),
+        icon: <Upload />,
+        run: requestFocusChat,
+      },
+    ];
+    // One "open file" command per project file (jumps to the Code tab).
+    const fileCmds: Command[] = files.map((path) => ({
+      id: `file:${path}`,
+      group: "files",
+      label: t("palette.cmd.openFile", { name: path }),
+      icon: <FileCode />,
+      keywords: path,
+      run: () => openFileInCode(path),
+    }));
+    return [...base, ...fileCmds];
+  }, [t, files, openFileInCode]);
+
+  useRegisterCommands(`build:${projectId}`, projectCommands);
 
   // ── Column resize (pointer drag) ──────────────────────────────────────
   const dragRef = useRef<{ edge: "chat" | "code"; startX: number; startW: number } | null>(null);
@@ -152,6 +236,7 @@ export function BuildWorkspace({ projectId }: { projectId: string }) {
   };
 
   return (
+    <div className="flex min-h-0 flex-1 flex-col">
     <div
       className="grid min-h-0 flex-1"
       style={{ gridTemplateColumns: `${cols.chat}px 6px 1fr 6px ${cols.code}px` }}
@@ -181,6 +266,8 @@ export function BuildWorkspace({ projectId }: { projectId: string }) {
             conversationId={conversationId}
             onFilesChanged={refresh}
             onConversationCreated={onConversationCreated}
+            onModelChange={setModelId}
+            onDriverChange={setDriver}
           />
         </div>
 
@@ -218,8 +305,30 @@ export function BuildWorkspace({ projectId }: { projectId: string }) {
 
       {/* Tabbed editor (Code | Scene | Data | Assets) */}
       <section className="flex min-h-0 flex-col overflow-hidden">
-        <EditorPanel projectId={projectId} files={files} onRefresh={refresh} loading={loading} />
+        <EditorPanel
+          projectId={projectId}
+          files={files}
+          onRefresh={refresh}
+          loading={loading}
+          onDirtyChange={setDirty}
+          openSignal={openSignal}
+        />
       </section>
+    </div>
+
+      {/* Slim builder status bar (Batch 4) */}
+      <StatusBar projectName={projectName} modelId={modelId} driver={driver} dirty={dirty} />
+
+      <UnsavedChangesModal
+        open={pendingHref !== null}
+        onOpenChange={(o) => !o && setPendingHref(null)}
+        fileName={t("tab.code")}
+        onDiscard={() => {
+          const href = pendingHref;
+          setPendingHref(null);
+          if (href) router.push(href);
+        }}
+      />
     </div>
   );
 }

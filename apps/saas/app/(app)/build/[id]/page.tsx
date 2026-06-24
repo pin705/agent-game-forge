@@ -1,14 +1,13 @@
-import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getPublishState, resolveSiteOrigin } from "@/lib/publish/core";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { BuildWorkspace } from "@/components/build-workspace";
 import { PublishButton } from "@/components/publish-button";
 import { RemixButton } from "@/components/remix-button";
+import { DashboardBackButton } from "@/components/dashboard-back-button";
 
 export const dynamic = "force-dynamic";
 
@@ -50,12 +49,7 @@ export default async function BuildPage({ params }: { params: Promise<{ id: stri
     <div className="flex h-[calc(100svh-3rem)] flex-col">
       {/* Builder sub-header */}
       <div className="flex items-center gap-3 border-b px-4 py-2">
-        <Button asChild variant="ghost" size="sm">
-          <Link href="/dashboard">
-            <ArrowLeft />
-            Dashboard
-          </Link>
-        </Button>
+        <DashboardBackButton />
         <Separator orientation="vertical" className="h-5" />
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{project.name}</p>
@@ -80,7 +74,7 @@ export default async function BuildPage({ params }: { params: Promise<{ id: stri
         </div>
       </div>
 
-      <BuildWorkspace projectId={id} />
+      <BuildWorkspace projectId={id} projectName={project.name} />
     </div>
   );
 }

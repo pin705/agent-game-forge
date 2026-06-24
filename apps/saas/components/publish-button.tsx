@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Check,
   Copy,
@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
+import { PUBLISH_EVENT } from "@/lib/command-palette";
 
 type PublishState = {
   isPublished: boolean;
@@ -49,6 +50,7 @@ export function PublishButton({
     setBusy(true);
     try {
       const res = await fetch(`/api/projects/${projectId}/publish`, { method: "POST" });
+      // (listener wiring below re-uses this same handler for the ⌘K command)
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error ?? "Couldn't publish.");
@@ -89,6 +91,16 @@ export function PublishButton({
       setTimeout(() => setCopied(false), 1500);
     });
   }, [state.url]);
+
+  // ⌘K "Publish" command → run the publish handler (only when not already
+  // published, so the command is a safe no-op on an already-shared project).
+  useEffect(() => {
+    function onRequest() {
+      if (!busy && !state.isPublished) void publish();
+    }
+    window.addEventListener(PUBLISH_EVENT, onRequest);
+    return () => window.removeEventListener(PUBLISH_EVENT, onRequest);
+  }, [busy, state.isPublished, publish]);
 
   // ── Not published: a single Publish button ──
   if (!state.isPublished) {
