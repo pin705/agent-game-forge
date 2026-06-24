@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Upload, Play, Layers, Image as ImageIcon, Code2, Database, Flame, MoreVertical } from 'lucide-react';
+import { ArrowLeft, Upload, Play, Layers, Image as ImageIcon, Code2, Database, MoreVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -21,6 +21,8 @@ import { CodePanel } from '@/components/CodePanel';
 import { DataTab } from '@/components/DataTab';
 import { ConversationList } from '@/components/ConversationList';
 import { SettingsButton } from '@/components/SettingsDialog';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { GameIcon } from '@/components/GameThumb';
 import { StatusBar } from '@/components/StatusBar';
 import { PendingChangesModal } from '@/components/PendingChangesModal';
 import { PackReviewModal } from '@/components/PackReviewModal';
@@ -56,9 +58,7 @@ export function Build() {
             <ArrowLeft />
           </Link>
         </Button>
-        <span className="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground">
-          <Flame className="size-4" />
-        </span>
+        <GameIcon path={project?.path} name={project?.name} />
         <div className="font-medium">{project?.name ?? t('common.loading')}</div>
         {project ? (
           <Badge variant="secondary" className="capitalize">
@@ -69,6 +69,7 @@ export function Build() {
         <Badge variant="outline" className="text-emerald-500">
           {t('build.free')}
         </Badge>
+        <ThemeToggle />
         <SettingsButton />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

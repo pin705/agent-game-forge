@@ -16,6 +16,7 @@ import {
 import { RenameDialog } from '@/components/RenameDialog';
 import { DeleteConfirm } from '@/components/DeleteConfirm';
 import { SettingsButton } from '@/components/SettingsDialog';
+import { GameCover } from '@/components/GameThumb';
 import { OpenProjectDialog } from '@/components/OpenProjectDialog';
 import { fetchProjects, projectId, type Project } from '@/lib/api';
 import { useT, type TKey } from '@/lib/i18n';
@@ -95,9 +96,7 @@ export function Dashboard() {
               return (
                 <Card key={p.path} className="overflow-hidden">
                   <Link to={`/build/${id}`} className="block">
-                    <div className="flex h-28 items-center justify-center bg-gradient-to-br from-primary/20 to-emerald-500/10">
-                      <Gamepad2 className="size-8 text-primary/70" />
-                    </div>
+                    <GameCover path={p.path} className="h-28" />
                   </Link>
                   <div className="p-4">
                     <div className="flex items-start justify-between gap-2">

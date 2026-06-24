@@ -384,13 +384,9 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
       <ScrollArea ref={scrollRef} className="min-h-0 flex-1">
         <div className="space-y-4 p-4">
           {turns.length === 0 ? (
-            <div className="flex flex-col items-center gap-4 py-16 text-center">
-              <span className="brand-title brand-title-large" aria-label="Agent Game Forge">
-                <span className="brand-agent">Agent</span>
-                <span className="brand-game">Game</span>
-                <span className="brand-forge">Forge</span>
-              </span>
-              <p className="max-w-xs text-sm text-muted-foreground">{t('chat.empty')}</p>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Sparkles className="size-4 shrink-0" />
+              {t('chat.empty')}
             </div>
           ) : null}
 

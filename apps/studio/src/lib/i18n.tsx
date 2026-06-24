@@ -53,6 +53,7 @@ const en = {
   // ── App shell / brand ──
   'app.brand': 'Forge',
   'app.settings': 'Settings',
+  'app.theme': 'Toggle light / dark',
   'app.language': 'Language',
   'app.language.en': 'English',
   'app.language.vi': 'Tiếng Việt',
@@ -459,6 +460,7 @@ const vi: Record<TKey, string> = {
   // ── App shell / brand ──
   'app.brand': 'Forge',
   'app.settings': 'Cài đặt',
+  'app.theme': 'Chuyển sáng / tối',
   'app.language': 'Ngôn ngữ',
   'app.language.en': 'English',
   'app.language.vi': 'Tiếng Việt',
