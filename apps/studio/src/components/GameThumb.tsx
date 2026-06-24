@@ -1,15 +1,44 @@
 import { useEffect, useState } from 'react';
 import { Gamepad2 } from 'lucide-react';
-import { listAssets, assetUrl } from '@/lib/assets';
+import { assetUrl, type FileNode } from '@/lib/assets';
 import { cn } from '@/lib/utils';
 
 // Asset names that read as a game's "face" — preferred over an arbitrary
 // first sprite when building a thumbnail.
-const PREFER = /(icon|logo|cover|title|hero|player|character|avatar|banner)/i;
+const PREFER = /(icon|logo|cover|title|hero|player|character|avatar|banner|splash|menu)/i;
 
-/** Resolve a representative image for a project: a name-matched asset if one
- *  exists, else the first image under assets/**. Returns null while loading
- *  or when the project has no usable image. */
+/** Collect every image file's POSIX relPath in the project tree. */
+function collectImages(node: FileNode | null): string[] {
+  const out: string[] = [];
+  const walk = (n: FileNode) => {
+    if (n.kind === 'file') {
+      if (n.fileKind === 'image') out.push(n.relPath.replace(/\\/g, '/'));
+    } else {
+      for (const c of n.children ?? []) walk(c);
+    }
+  };
+  if (node) walk(node);
+  return out;
+}
+
+/** Pick the most "thumbnail-worthy" image: name-matched first, then images
+ *  under assets/, then the shallowest path. Reference uploads / .ogf
+ *  internals are excluded so they never become a cover. */
+function pickThumb(images: string[]): string | null {
+  const candidates = images.filter((p) => !/(^|\/)(\.ogf|refs)(\/|$)/i.test(p) && !p.startsWith('.'));
+  if (candidates.length === 0) return null;
+  const score = (p: string): number => {
+    let s = -p.split('/').length; // shallower paths rank higher
+    if (PREFER.test(p)) s += 100;
+    if (p.startsWith('assets/')) s += 10;
+    return s;
+  };
+  return [...candidates].sort((a, b) => score(b) - score(a))[0];
+}
+
+/** Resolve a representative image for a project by scanning the whole file
+ *  tree (not just assets/**), so games that keep art anywhere still get a
+ *  cover. Returns null while loading or when no usable image exists. */
 function useGameThumb(path: string | undefined): { src: string | null; failed: boolean } {
   const [src, setSrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -22,16 +51,16 @@ function useGameThumb(path: string | undefined): { src: string | null; failed: b
       setFailed(true);
       return;
     }
-    listAssets(path)
-      .then((assets) => {
+    fetch(`/api/files/tree?projectPath=${encodeURIComponent(path)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((data: { tree?: FileNode }) => {
         if (cancelled) return;
-        const imgs = assets.filter((a) => a.mediaKind === 'image');
-        if (imgs.length === 0) {
+        const pick = pickThumb(collectImages(data.tree ?? null));
+        if (!pick) {
           setFailed(true);
           return;
         }
-        const pick = imgs.find((a) => PREFER.test(a.relPath)) ?? imgs[0];
-        setSrc(assetUrl(path, pick.relPath));
+        setSrc(assetUrl(path, pick));
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
