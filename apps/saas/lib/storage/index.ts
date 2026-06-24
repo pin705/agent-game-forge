@@ -1,5 +1,6 @@
 import type { Storage } from "./types";
 import { LocalStorage } from "./local";
+import { R2Storage } from "./r2";
 
 export type { Storage, ProjectFile } from "./types";
 
@@ -21,13 +22,10 @@ function r2Configured(): boolean {
  */
 export function getStorage(): Storage {
   if (cached) return cached;
-  if (r2Configured()) {
-    // Lazy require so the local path never pulls the S3 SDK at module load.
-    const { R2Storage } = require("./r2") as typeof import("./r2");
-    cached = new R2Storage();
-  } else {
-    cached = new LocalStorage();
-  }
+  // Constructing R2Storage only reads env; the S3 SDK is imported lazily inside
+  // its methods, so no network/SDK load happens at module import or for the
+  // local path.
+  cached = r2Configured() ? new R2Storage() : new LocalStorage();
   return cached;
 }
 

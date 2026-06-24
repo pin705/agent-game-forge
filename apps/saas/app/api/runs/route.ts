@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { runAgent } from "@/lib/agent/run";
 import type { RunEvent } from "@/lib/agent/events";
+import { creditFloor, readBalance } from "@/lib/billing/credits";
 
 // The agent loop shells out + touches the filesystem — it must run on Node.
 export const runtime = "nodejs";
@@ -55,6 +56,23 @@ export async function POST(req: NextRequest) {
       .eq("id", projectId)
       .maybeSingle();
     if (!project) return Response.json({ error: "project_not_found" }, { status: 404 });
+
+    // Credit gate (§5 guardrail): refuse the run if the balance is below the
+    // floor. 402 Payment Required so the UI can surface a top-up prompt.
+    // Skipped entirely in local-dev (no Supabase) so the loop stays testable.
+    const floor = creditFloor();
+    const balance = await readBalance(userId);
+    if (balance !== null && balance < floor) {
+      return Response.json(
+        {
+          error: "out_of_credits",
+          message: "Out of credits — top up to continue.",
+          balance,
+          floor,
+        },
+        { status: 402 },
+      );
+    }
   }
 
   const encoder = new TextEncoder();

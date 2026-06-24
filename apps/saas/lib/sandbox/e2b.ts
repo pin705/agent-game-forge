@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- the E2B SDK is an
+   optional prod-only dependency with no bundled types in this app; the adapter
+   intentionally types it loosely and never loads it on the local path. */
 import type { ExecOptions, ExecResult, Sandbox, SandboxFactory, SandboxFile } from "./types";
 
 const MAX_OUTPUT = 200_000;

@@ -49,7 +49,9 @@ export function modelDriverName(): "deepseek" | "mock" {
 
 export class DeepSeekModel implements Model {
   readonly name: string;
-  private clientPromise: Promise<any> | null = null;
+  // `openai` is imported dynamically (prod path only), so the client type is
+  // not available statically here — typed via the dynamic import below.
+  private clientPromise: Promise<import("openai").default> | null = null;
   private toolSchemas: unknown[];
 
   constructor(toolSchemas: unknown[]) {
@@ -90,21 +92,25 @@ export class DeepSeekModel implements Model {
 
     const res = await client.chat.completions.create({
       model: this.name,
-      messages: wire,
-      tools: this.toolSchemas,
+      // Our message + tool shapes are wire-compatible with the OpenAI SDK but
+      // not structurally identical to its param types; cast at the boundary.
+      messages: wire as Parameters<typeof client.chat.completions.create>[0]["messages"],
+      tools: this.toolSchemas as Parameters<typeof client.chat.completions.create>[0]["tools"],
       tool_choice: "auto",
     });
 
     const choice = res.choices[0];
     const rawCalls = choice.message.tool_calls ?? [];
-    const toolCalls: ToolCall[] = rawCalls.map((tc: any) => {
+    const toolCalls: ToolCall[] = rawCalls.map((tc) => {
+      // The union includes non-function tool calls; we only emit function tools.
+      const fn = "function" in tc ? tc.function : { name: "", arguments: "" };
       let parsed: Record<string, unknown> = {};
       try {
-        parsed = tc.function.arguments ? JSON.parse(tc.function.arguments) : {};
+        parsed = fn.arguments ? JSON.parse(fn.arguments) : {};
       } catch {
         parsed = {};
       }
-      return { id: tc.id, name: tc.function.name, arguments: parsed };
+      return { id: tc.id, name: fn.name, arguments: parsed };
     });
 
     return {
@@ -218,7 +224,8 @@ frame();
     ];
   }
 
-  async complete(_messages: ChatMessage[]): Promise<ModelResponse> {
+  async complete(messages: ChatMessage[]): Promise<ModelResponse> {
+    void messages; // deterministic: the mock ignores conversation state.
     const entry = this.script[Math.min(this.step, this.script.length - 1)];
     this.step += 1;
     const toolCalls: ToolCall[] = entry.toolCalls.map((tc, i) => ({

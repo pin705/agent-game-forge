@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
+  Coins,
   FileText,
   Loader2,
   Send,
@@ -24,6 +25,7 @@ type RunEvent =
   | { type: "question"; id: string; payload: Record<string, unknown> }
   | { type: "step"; index: number; inputTokens: number; outputTokens: number }
   | { type: "done"; inputTokens: number; outputTokens: number; steps: number; files: string[] }
+  | { type: "charge"; credits: number; balanceAfter: number | null }
   | { type: "error"; message: string };
 
 type LogLine =
@@ -33,6 +35,7 @@ type LogLine =
   | { kind: "shell"; cmd: string; code: number }
   | { kind: "file"; path: string }
   | { kind: "done"; inputTokens: number; outputTokens: number; steps: number }
+  | { kind: "charge"; credits: number; balanceAfter: number | null }
   | { kind: "error"; text: string };
 
 export function BuildChat({
@@ -78,7 +81,13 @@ export function BuildChat({
       });
       if (!res.ok || !res.body) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
-        push({ kind: "error", text: err.error ?? "run failed" });
+        // 402: out of credits — surface the clear top-up message (P3 adds the
+        // actual top-up flow).
+        const text =
+          res.status === 402
+            ? err.message ?? "Out of credits — top up to continue."
+            : err.message ?? err.error ?? "run failed";
+        push({ kind: "error", text });
         setRunning(false);
         return;
       }
@@ -136,6 +145,9 @@ export function BuildChat({
             steps: ev.steps,
           });
           onFilesChanged();
+          break;
+        case "charge":
+          push({ kind: "charge", credits: ev.credits, balanceAfter: ev.balanceAfter });
           break;
         case "error":
           push({ kind: "error", text: ev.message });
@@ -248,6 +260,18 @@ function LogRow({ line }: { line: LogLine }) {
           Done · {line.steps} steps · {line.inputTokens + line.outputTokens} tokens
           <span className="opacity-70">
             ({line.inputTokens} in / {line.outputTokens} out)
+          </span>
+        </div>
+      );
+    case "charge":
+      return (
+        <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground tabular-nums">
+          <Coins className="size-3.5" />
+          <span>
+            &minus;{line.credits} {line.credits === 1 ? "credit" : "credits"}
+            {line.balanceAfter !== null && (
+              <span className="opacity-70"> · balance {line.balanceAfter}</span>
+            )}
           </span>
         </div>
       );

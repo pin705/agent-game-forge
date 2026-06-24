@@ -13,4 +13,5 @@ export type RunEvent =
   | { type: "question"; id: string; payload: Record<string, unknown> }
   | { type: "step"; index: number; inputTokens: number; outputTokens: number }
   | { type: "done"; inputTokens: number; outputTokens: number; steps: number; files: string[] }
+  | { type: "charge"; credits: number; balanceAfter: number | null }
   | { type: "error"; message: string };

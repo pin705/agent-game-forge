@@ -3,6 +3,7 @@ import { getStorage, storageDriverName } from "@/lib/storage";
 import type { RunEvent } from "./events";
 import { runLoop, modelDriverName } from "./loop";
 import { copyAgentTools } from "./agent-tools";
+import { chargeRun } from "@/lib/billing/credits";
 
 export type RunResult = {
   runId: string;
@@ -10,6 +11,10 @@ export type RunResult = {
   outputTokens: number;
   steps: number;
   files: string[];
+  /** Count of image-gen tool calls (0 today; image_gen deferred, §3). */
+  images: number;
+  /** Wall time the sandbox was alive, in milliseconds (metering, §5). */
+  sandboxMs: number;
 };
 
 /**
@@ -33,6 +38,9 @@ export async function* runAgent(args: {
   userId?: string;
 }): AsyncGenerator<RunEvent, RunResult, void> {
   const storage = getStorage();
+  // Mark the wall clock just before the sandbox spins up — sandbox_ms is the
+  // billable compute window (hydrate → loop → push → teardown).
+  const sandboxStart = Date.now();
   const sandbox = await getSandbox();
   const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const model = modelDriverName();
@@ -52,7 +60,17 @@ export async function* runAgent(args: {
     driver: { sandbox: sandboxDriverName(), storage: storageDriverName(), model },
   };
 
-  let result: RunResult = { runId, inputTokens: 0, outputTokens: 0, steps: 0, files: [] };
+  let result: RunResult = {
+    runId,
+    inputTokens: 0,
+    outputTokens: 0,
+    steps: 0,
+    files: [],
+    images: 0,
+    sandboxMs: 0,
+  };
+  // Count image-gen tool calls as we forward loop events (metering, §5). 0 today.
+  let images = 0;
 
   try {
     // (a) hydrate: project files + the agent-tools (so run_shell can invoke them).
@@ -64,6 +82,7 @@ export async function* runAgent(args: {
     const loop = runLoop({ sandbox, prompt: args.prompt });
     let next = await loop.next();
     while (!next.done) {
+      if (next.value.type === "tool_call" && next.value.name === "image_gen") images += 1;
       yield next.value;
       next = await loop.next();
     }
@@ -80,6 +99,8 @@ export async function* runAgent(args: {
       outputTokens: totals.outputTokens,
       steps: totals.steps,
       files: projectFiles.map((f) => f.path).sort(),
+      images,
+      sandboxMs: Date.now() - sandboxStart,
     };
 
     yield {
@@ -90,10 +111,24 @@ export async function* runAgent(args: {
       files: result.files,
     };
 
-    await persist?.finish("succeeded", result);
+    // (c2) Meter + charge: compute credits and, when Supabase is configured,
+    // settle the ledger atomically. Local dev computes + logs without crashing.
+    const charge = await chargeRun({
+      dbRunId: persist?.dbRunId ?? null,
+      userId: args.userId,
+      usage: {
+        model,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        images: result.images,
+        sandboxMs: result.sandboxMs,
+      },
+    });
+    yield { type: "charge", credits: charge.credits, balanceAfter: charge.balanceAfter };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     yield { type: "error", message };
+    result.sandboxMs = Date.now() - sandboxStart;
     await persist?.finish("failed", result);
   } finally {
     // (d) tear down.
@@ -108,6 +143,9 @@ export async function* runAgent(args: {
 /* -------------------------------------------------------------------------- */
 
 type PersistHandle = {
+  /** The runs.id created in Supabase — passed to record_run_charge on success. */
+  dbRunId: string;
+  /** Mark a run failed (the success path settles via record_run_charge). */
   finish(status: "succeeded" | "failed", r: RunResult): Promise<void>;
 };
 
@@ -141,7 +179,10 @@ async function maybeCreateRunRow(args: {
     if (!dbRunId) return null;
 
     return {
+      dbRunId,
       async finish(status, r) {
+        // Success is settled atomically by record_run_charge (status + metering
+        // + ledger). This path only records terminal failure metering.
         try {
           await supabase
             .from("runs")
@@ -149,6 +190,8 @@ async function maybeCreateRunRow(args: {
               status,
               input_tokens: r.inputTokens,
               output_tokens: r.outputTokens,
+              images: r.images,
+              sandbox_ms: r.sandboxMs,
             })
             .eq("id", dbRunId);
         } catch {

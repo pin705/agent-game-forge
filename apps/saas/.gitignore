@@ -9,6 +9,10 @@ next-env.d.ts
 # Env — never commit real secrets. .env.local is local placeholders only.
 .env*.local
 
+# Local-driver data (LocalStorage project files + LocalSandbox workspaces).
+# Created at runtime by the dev drivers; never commit.
+/.data/
+
 # Logs / misc
 *.log
 .DS_Store
