@@ -46,8 +46,9 @@ const check = (label, ok) => {
 const eq = (label, got, want) =>
   check(`${label} (got ${JSON.stringify(got)})`, got === want);
 
-/** Minimal NextRequest-ish stub: the routes only read `.nextUrl.origin`. */
-const makeReq = (origin = "http://localhost:7640") => ({ nextUrl: { origin } });
+/** Minimal NextRequest-ish stub: the routes read `.nextUrl.origin` and (play
+ *  route) `.nextUrl.searchParams`. Use a real URL so both are present. */
+const makeReq = (origin = "http://localhost:7640") => ({ nextUrl: new URL(origin) });
 /** Build the `ctx` the route handlers expect (params is a Promise). */
 const ctx = (obj) => ({ params: Promise.resolve(obj) });
 
@@ -157,7 +158,7 @@ let remixedId;
   check("remix is not published (new project, not shared)", true);
 }
 
-// ── (f) play_count increments on an index load (not per asset) ──────────────
+// ── (f) play_count increments on an index load (not per asset, not preview) ─
 console.log("\n--- (f) play_count increments on index load only ---");
 {
   const { getPublishState } = await import("../lib/publish/core.ts");
@@ -168,9 +169,11 @@ console.log("\n--- (f) play_count increments on index load only ---");
   await playRoute.GET(makeReq(), ctx({ slug }));
   // An asset load → +0.
   await playRoute.GET(makeReq(), ctx({ slug, path: ["game.js"] }));
+  // A GALLERY PREVIEW load (?preview=1) → +0 (P5: thumbnails must not inflate plays).
+  await playRoute.GET(makeReq("http://localhost:7640/?preview=1"), ctx({ slug }));
 
   const after = (await getPublishState(projectId, "http://localhost:7640")).playCount;
-  eq("play_count increased by exactly 2 (asset load didn't count)", after - before, 2);
+  eq("play_count increased by exactly 2 (asset + preview loads didn't count)", after - before, 2);
 }
 
 // ── unpublish → play route 404s ─────────────────────────────────────────────

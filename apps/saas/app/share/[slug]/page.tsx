@@ -33,7 +33,7 @@ export default async function SharePage({ params }: { params: Promise<{ slug: st
         </div>
         <div className="flex items-center gap-2">
           <Button asChild size="sm" variant="ghost">
-            <a href={`/play/${slug}`} target="_blank" rel="noreferrer">
+            <a href={`/play/${slug}/`} target="_blank" rel="noreferrer">
               <ExternalLink />
               Fullscreen
             </a>
@@ -45,7 +45,7 @@ export default async function SharePage({ params }: { params: Promise<{ slug: st
       {/* The published game, served from storage at /play/<slug>. */}
       <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
         <iframe
-          src={`/play/${slug}`}
+          src={`/play/${slug}/`}
           title={project.name}
           className="block h-[70svh] w-full"
           // Sandbox the embedded game: allow it to run scripts + same-origin (it

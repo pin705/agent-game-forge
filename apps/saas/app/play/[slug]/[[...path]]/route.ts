@@ -28,8 +28,9 @@ export async function GET(
 ) {
   const { slug, path } = await ctx.params;
   // The gallery embeds each game in a thumbnail iframe with `?preview=1`; those
-  // loads must NOT inflate play_count (only real plays count).
-  const isPreview = req.nextUrl.searchParams.get("preview") === "1";
+  // loads must NOT inflate play_count (only real plays count). Read defensively
+  // so a minimal request (e.g. the integration test stub) never crashes here.
+  const isPreview = req.nextUrl?.searchParams?.get("preview") === "1";
 
   const result = await serveProjectFile(slug, path);
 

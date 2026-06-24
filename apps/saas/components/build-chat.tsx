@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Check,
   CheckCircle2,
+  ChevronDown,
   Coins,
+  Cpu,
   FileText,
   Loader2,
   Send,
@@ -13,6 +16,15 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { MODEL_OPTIONS, modelOption } from "@/lib/agent/catalog";
 
 /** Mirror of lib/agent/events.ts RunEvent (kept local so the client has no server import). */
 type RunEvent =
@@ -50,6 +62,10 @@ export function BuildChat({
   const [log, setLog] = useState<LogLine[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const [meta, setMeta] = useState<{ model: string; sandbox: string; storage: string } | null>(null);
+  // Selected model id (P5). Default to the first ENABLED catalog option.
+  const [model, setModel] = useState<string>(
+    () => MODEL_OPTIONS.find((m) => m.enabled)?.id ?? "deepseek-chat",
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -77,7 +93,7 @@ export function BuildChat({
       const res = await fetch("/api/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, prompt: p }),
+        body: JSON.stringify({ projectId, prompt: p, model }),
       });
       if (!res.ok || !res.body) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -154,7 +170,7 @@ export function BuildChat({
           break;
       }
     }
-  }, [prompt, running, projectId, push, onFilesChanged]);
+  }, [prompt, running, projectId, model, push, onFilesChanged]);
 
   return (
     <div className="flex h-full flex-col">
@@ -187,6 +203,11 @@ export function BuildChat({
       </ScrollArea>
 
       <div className="border-t p-3">
+        {/* Model picker (P5) — pick the build model; premium tiers are shown but
+            disabled ("coming soon"). The choice is sent with the run + priced. */}
+        <div className="mb-2 flex items-center gap-2">
+          <ModelPicker value={model} onChange={setModel} disabled={running} />
+        </div>
         <div className="flex items-end gap-2 rounded-lg border border-input bg-background px-3 py-2 shadow-sm">
           <textarea
             value={prompt}
@@ -208,6 +229,66 @@ export function BuildChat({
         </div>
       </div>
     </div>
+  );
+}
+
+/** Compact model selector for the composer. Enabled options are selectable;
+ *  premium tiers render disabled with a "coming soon" hint (never faked). */
+function ModelPicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  disabled?: boolean;
+}) {
+  const selected = modelOption(value) ?? MODEL_OPTIONS[0];
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        disabled={disabled}
+        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+      >
+        <Cpu className="size-3.5" />
+        <span className="font-medium text-foreground/80">{selected.label}</span>
+        <span className="opacity-70" title="Rough relative credit weighting">
+          ~{selected.creditWeight}×
+        </span>
+        <ChevronDown className="size-3 opacity-70" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-64">
+        <DropdownMenuLabel className="text-muted-foreground">Build model</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {MODEL_OPTIONS.map((m) => (
+          <DropdownMenuItem
+            key={m.id}
+            disabled={!m.enabled}
+            onSelect={(e) => {
+              if (!m.enabled) {
+                e.preventDefault();
+                return;
+              }
+              onChange(m.id);
+            }}
+            className="flex items-start gap-2"
+          >
+            <Check
+              className={
+                m.id === value && m.enabled ? "mt-0.5 size-3.5 opacity-100" : "mt-0.5 size-3.5 opacity-0"
+              }
+            />
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center justify-between gap-2">
+                <span className="font-medium">{m.label}</span>
+                <span className="text-[10px] tabular-nums text-muted-foreground">~{m.creditWeight}×</span>
+              </span>
+              <span className="block text-xs text-muted-foreground">{m.hint}</span>
+            </span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

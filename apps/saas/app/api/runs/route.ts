@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        const gen = runAgent({ projectId, prompt, userId });
+        const gen = runAgent({ projectId, prompt, userId, model: requestedModel });
         let next = await gen.next();
         while (!next.done) {
           controller.enqueue(encoder.encode(sse(next.value)));

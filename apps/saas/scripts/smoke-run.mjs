@@ -10,7 +10,9 @@
  *   (b) expected files (index.html, game.js, data/level.json) exist in LocalStorage,
  *   (c) events streamed (run_start … done),
  *   (d) token counts were recorded,
- *   (e) run_shell executed a real shell command (python agent-tool) end-to-end.
+ *   (e) run_shell executed a real shell command (python agent-tool) end-to-end,
+ *   (f) the SELECTED model id (P5 multi-model) is plumbed prompt → run → pricing:
+ *       it appears on run_start AND is what the run charge is priced against.
  */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -28,6 +30,12 @@ process.env.OGF_DATA_DIR = dataDir;
 // Import after env is set so the factories read the right values.
 const { runAgent } = await import("../lib/agent/run.ts");
 const { getStorage } = await import("../lib/storage/index.ts");
+const { creditsForRun } = await import("../lib/billing/pricing.ts");
+
+// P5: pick a NON-default working model id so we can prove the selection is
+// plumbed all the way to the run + pricing (default would also pass but wouldn't
+// prove the param actually flows).
+const SELECTED_MODEL = "deepseek-v4-flash";
 
 let pass = true;
 const check = (label, ok) => {
@@ -44,6 +52,7 @@ console.log(`\n=== P1 smoke run (data dir: ${dataDir}) ===\n`);
 const gen = runAgent({
   projectId,
   prompt: "Build a tiny canvas platformer: a player on two platforms, data-driven.",
+  model: SELECTED_MODEL,
 });
 let next = await gen.next();
 while (!next.done) {
@@ -88,6 +97,42 @@ check("agent-tools NOT leaked into project storage", !stored.some((p) => p.start
 
 // (d) token counts recorded
 check(`token counts recorded (in=${result.inputTokens} out=${result.outputTokens})`, result.inputTokens > 0 && result.outputTokens > 0);
+
+// (f) selected model id plumbed prompt → run → pricing
+const runStart = events.find((e) => e.type === "run_start");
+check(`run_start carries the SELECTED model id (${runStart?.model})`, runStart?.model === SELECTED_MODEL);
+
+const charge = events.find((e) => e.type === "charge");
+check("charge event present", !!charge);
+// The run was priced against the SELECTED model's rate (not the default tier).
+// Recompute the expected credits with the selected id and compare to what was
+// charged — proving the chosen id reached the pricing layer.
+const expectedCredits = creditsForRun({
+  model: SELECTED_MODEL,
+  inputTokens: result.inputTokens,
+  outputTokens: result.outputTokens,
+  images: result.images,
+  sandboxMs: result.sandboxMs,
+});
+check(
+  `run priced against selected model (charged ${charge?.credits}, expected ${expectedCredits} for ${SELECTED_MODEL})`,
+  charge?.credits === expectedCredits,
+);
+// Sanity: pricing is genuinely model-sensitive — the selected flash tier costs
+// less (raw USD) than the default chat tier for the SAME usage, proving the
+// chosen id (not a hardcoded default) drives the rate lookup.
+{
+  const { rawCostUSD } = await import("../lib/billing/pricing.ts");
+  const usage = {
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens,
+    images: result.images,
+    sandboxMs: result.sandboxMs,
+  };
+  const flashCost = rawCostUSD({ ...usage, model: SELECTED_MODEL });
+  const chatCost = rawCostUSD({ ...usage, model: "deepseek-chat" });
+  check(`flash raw cost < chat raw cost (${flashCost.toFixed(6)} < ${chatCost.toFixed(6)})`, flashCost < chatCost);
+}
 
 await rm(dataDir, { recursive: true, force: true });
 
