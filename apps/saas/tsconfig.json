@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+
+      // --- Monorepo React-types pin (see scripts/fix-react-dedupe.mjs) ---
+      // The React-18 sibling apps cause npm to sometimes hoist @types/react@18
+      // to the repo root, next to hoisted deps like @radix-ui/react-slot. When
+      // that happens, the slot's component types carry React-18 CSSProperties
+      // while this app uses React-19 types → a "two @types/react copies"
+      // compile error in our shadcn primitives. Forcing every `react` type
+      // import to resolve against THIS workspace's React-19 @types makes the
+      // type-check deterministic regardless of how npm hoists. (No-op when npm
+      // already hoists React 19 to the root.) These map TYPES only; runtime
+      // `react` is resolved by Node/webpack as usual.
+      "react": ["./node_modules/@types/react"],
+      "react-dom": ["./node_modules/@types/react-dom"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"],
+      "react/jsx-dev-runtime": ["./node_modules/@types/react/jsx-dev-runtime"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}

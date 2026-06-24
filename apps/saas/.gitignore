@@ -1,0 +1,15 @@
+# Next.js
+/.next/
+/out/
+next-env.d.ts
+
+# Dependencies (managed at the monorepo root)
+/node_modules/
+
+# Env — never commit real secrets. .env.local is local placeholders only.
+.env*.local
+
+# Logs / misc
+*.log
+.DS_Store
+*.tsbuildinfo
