@@ -1,6 +1,5 @@
 import { type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { LanguageToggle } from '@/components/LanguageToggle';
 
 export function AppShell({ children, right }: { children: ReactNode; right?: ReactNode }) {
   return (
@@ -20,7 +19,6 @@ export function AppShell({ children, right }: { children: ReactNode; right?: Rea
           </span>
         </Link>
         <div className="flex-1" />
-        <LanguageToggle />
         {right}
         <div className="size-8 rounded-full bg-gradient-to-br from-primary to-emerald-400" aria-hidden />
       </header>

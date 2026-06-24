@@ -1,0 +1,30 @@
+{
+  "id": "level_2",
+  "grid_subtype": "puzzle",
+  "cellSize": 68,
+  "cellLegend": {
+    "0": "empty", "1": "wall", "2": "floor", "3": "goal",
+    "4": "hazard", "5": "spawn"
+  },
+  "grid": [
+    [1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 2, 2, 2, 2, 2, 2, 2, 1],
+    [1, 2, 3, 2, 2, 2, 3, 2, 1],
+    [1, 2, 2, 2, 5, 2, 2, 2, 1],
+    [1, 2, 2, 2, 2, 2, 2, 2, 1],
+    [1, 2, 2, 2, 2, 2, 2, 2, 1],
+    [1, 2, 2, 2, 3, 2, 2, 2, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1]
+  ],
+  "entities": [
+    { "id": "player_1", "type": "player", "gridX": 4, "gridY": 3,
+      "facing": "down", "isWalkable": false, "isPushable": false, "sizeFactor": 0.7 },
+    { "id": "box_1", "type": "box", "gridX": 3, "gridY": 4,
+      "isWalkable": false, "isPushable": true, "sizeFactor": 0.82 },
+    { "id": "box_2", "type": "box", "gridX": 5, "gridY": 4,
+      "isWalkable": false, "isPushable": true, "sizeFactor": 0.82 },
+    { "id": "box_3", "type": "box", "gridX": 4, "gridY": 5,
+      "isWalkable": false, "isPushable": true, "sizeFactor": 0.82 }
+  ],
+  "win": { "kind": "boxes_on_goals" }
+}

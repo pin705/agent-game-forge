@@ -22,12 +22,15 @@ function drawErrorOverlay(err, label) {
 
 function startNewRun() {
   resetRunState();
+  var pc = CONFIG.player;
+  var spawn = (state.level && state.level.playerSpawn) || { x: 1600, y: 1600 };
   state.player = {
-    x: 1600, y: 1600, w: 32, h: 32,
-    hp: 10, maxHp: 10, speed: 140, invuln: 0,
+    x: spawn.x, y: spawn.y, w: pc.radius * 2, h: pc.radius * 2,
+    hp: pc.maxHp, maxHp: pc.maxHp, speed: pc.speed, invuln: 0,
     xp: 0, level: 1, weapons: ["wand"]
   };
   _weaponTimer = 0;
+  WEAPON_COOLDOWN = CONFIG.weapon.cooldown;
   state.mode = "playing";
 }
 
@@ -53,9 +56,10 @@ function updatePlayerMovement(dt) {
   p.x += dx * p.speed * dt;
   p.y += dy * p.speed * dt;
   if (state.level) {
+    var r = CONFIG.player.radius;
     var aw = state.level.arena.width, ah = state.level.arena.height;
-    p.x = Math.max(20, Math.min(aw - 20, p.x));
-    p.y = Math.max(20, Math.min(ah - 20, p.y));
+    p.x = Math.max(r, Math.min(aw - r, p.x));
+    p.y = Math.max(r, Math.min(ah - r, p.y));
   }
   if (p.invuln > 0) p.invuln -= dt;
 }
@@ -96,6 +100,12 @@ async function loadLevel(id) {
   state.sceneId = id;
 }
 
+var CONFIG = null;
+async function loadConfig() {
+  var res = await fetch("data/arena-config.json");
+  CONFIG = await res.json();
+}
+
 async function boot() {
   initDom();
   initInput();
@@ -104,6 +114,7 @@ async function boot() {
   window.addEventListener("error", function(e) { drawErrorOverlay(e.error || e.message, "Error"); });
   window.addEventListener("unhandledrejection", function(e) { drawErrorOverlay(e.reason, "Async error"); });
   await loadStrings();
+  await loadConfig();
   await loadLevel("arena");
   state.mode = GAME.startMode;
   requestAnimationFrame(frame);
@@ -123,6 +134,7 @@ function frame(nowMs) {
     updateScene(sdt);
     updateParticles(dt);
     updateJuice(dt);
+    tickMusic(dt);
     renderFrame();
     drawJuice(dom.ctx);
     drawMobileControls(dom.ctx);

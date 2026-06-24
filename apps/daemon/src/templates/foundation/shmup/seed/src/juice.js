@@ -41,69 +41,64 @@ const ease = {
 // --- Tweens — animate numeric props over time ------------------------------
 // tween(target, {prop: toValue, ...}, durSeconds, easeName?, onDone?)
 // e.g. tween(door, { y: door.y - 64 }, 0.4, "outBack")
-function tween(target, props, dur, easeName, onDone) {
-  easeName = easeName || "outQuad";
-  (state.tweens = state.tweens || []).push({
-    target: target,
+function tween(target, props, dur, easeName = "outQuad", onDone) {
+  (state.tweens ??= []).push({
+    target,
     dur: Math.max(0.0001, dur),
     t: 0,
     ease: ease[easeName] || ease.outQuad,
-    onDone: onDone,
-    from: Object.fromEntries(Object.keys(props).map((k) => [k, target[k] !== undefined ? target[k] : 0])),
+    onDone,
+    from: Object.fromEntries(Object.keys(props).map((k) => [k, target[k] ?? 0])),
     to: props,
   });
 }
 function updateTweens(dt) {
-  var tw = (state.tweens = state.tweens || []);
-  for (var i = 0; i < tw.length; i++) {
-    var a = tw[i];
+  const tw = (state.tweens ??= []);
+  for (const a of tw) {
     a.t = Math.min(1, a.t + dt / a.dur);
-    var e = a.ease(a.t);
-    for (var k in a.to) a.target[k] = a.from[k] + (a.to[k] - a.from[k]) * e;
+    const e = a.ease(a.t);
+    for (const k in a.to) a.target[k] = a.from[k] + (a.to[k] - a.from[k]) * e;
     if (a.t >= 1 && a.onDone) a.onDone();
   }
-  state.tweens = tw.filter(function(a) { return a.t < 1; });
+  state.tweens = tw.filter((a) => a.t < 1);
 }
 
 // --- Floating text — damage numbers, "+1 block", pickups -------------------
 // floater(text, x, y, opts?). x,y are in the space you draw HUD/scene; for a
 // camera-offset world pass screen coords (sx(x), sy(y)). Combat reads better
 // when crits/heals get their own color + bigger size.
-function floater(text, x, y, opts) {
-  opts = opts || {};
-  (state.floaters = state.floaters || []).push({
+function floater(text, x, y, opts = {}) {
+  (state.floaters ??= []).push({
     text: String(text),
-    x: x,
-    y: y,
-    vy: opts.vy !== undefined ? opts.vy : -46,
-    life: opts.life !== undefined ? opts.life : 0.9,
-    maxLife: opts.life !== undefined ? opts.life : 0.9,
-    color: opts.color !== undefined ? opts.color : "#ffffff",
-    size: (opts.size !== undefined ? opts.size : 18) * comboMul(),
-    drift: (Math.random() * 2 - 1) * (opts.drift !== undefined ? opts.drift : 12),
+    x,
+    y,
+    vy: opts.vy ?? -46,
+    life: opts.life ?? 0.9,
+    maxLife: opts.life ?? 0.9,
+    color: opts.color ?? "#ffffff",
+    size: (opts.size ?? 18) * comboMul(),
+    drift: (Math.random() * 2 - 1) * (opts.drift ?? 12),
   });
 }
 function updateFloaters(dt) {
-  var fl = (state.floaters = state.floaters || []);
-  for (var i = 0; i < fl.length; i++) {
-    var f = fl[i];
+  const fl = (state.floaters ??= []);
+  for (const f of fl) {
     f.life -= dt;
     f.y += f.vy * dt;
     f.x += f.drift * dt;
     f.vy += 34 * dt; // gentle gravity so they arc
   }
-  state.floaters = fl.filter(function(f) { return f.life > 0; });
+  state.floaters = fl.filter((f) => f.life > 0);
 }
 function drawFloaters(ctx) {
-  var fl = state.floaters || [];
+  const fl = state.floaters ?? [];
   if (!fl.length) return;
   ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  for (var i = 0; i < fl.length; i++) {
-    var f = fl[i];
+  for (const f of fl) {
     ctx.globalAlpha = Math.min(1, f.life / (f.maxLife * 0.5));
-    ctx.font = "bold " + Math.round(f.size) + "px system-ui, sans-serif";
+    ctx.font = `bold ${Math.round(f.size)}px system-ui, sans-serif`;
     ctx.lineWidth = 3;
     ctx.strokeStyle = "rgba(0,0,0,0.6)";
     ctx.strokeText(f.text, f.x, f.y);
@@ -118,40 +113,38 @@ function drawFloaters(ctx) {
 // loop must zero GAMEPLAY dt while state.hitstop > 0 (FX + render keep running):
 //   const sdt = state.hitstop > 0 ? 0 : dt;  updateScene(sdt);  updateJuice(dt);
 function hitstop(sec) {
-  state.hitstop = Math.max(state.hitstop || 0, sec);
+  state.hitstop = Math.max(state.hitstop ?? 0, sec);
 }
 
 // --- Motion trails — ghost images for dashes & fast projectiles ------------
 // ghost(x, y, img, opts?). Drop several along a dash (stagger by frame) for a
 // streak. img may be null → a soft colored blob (good for magic/projectiles).
-function ghost(x, y, img, opts) {
-  opts = opts || {};
-  (state.trails = state.trails || []).push({
-    x: x,
-    y: y,
-    img: img || null,
-    w: opts.w !== undefined ? opts.w : 32,
-    h: opts.h !== undefined ? opts.h : 32,
-    life: opts.life !== undefined ? opts.life : 0.25,
-    maxLife: opts.life !== undefined ? opts.life : 0.25,
-    color: opts.color !== undefined ? opts.color : "rgba(120,180,255,0.5)",
-    scale: opts.scale !== undefined ? opts.scale : 1,
-    endScale: opts.endScale !== undefined ? opts.endScale : 1.25,
+function ghost(x, y, img, opts = {}) {
+  (state.trails ??= []).push({
+    x,
+    y,
+    img: img ?? null,
+    w: opts.w ?? 32,
+    h: opts.h ?? 32,
+    life: opts.life ?? 0.25,
+    maxLife: opts.life ?? 0.25,
+    color: opts.color ?? "rgba(120,180,255,0.5)",
+    scale: opts.scale ?? 1,
+    endScale: opts.endScale ?? 1.25,
   });
 }
 function updateTrails(dt) {
-  var tr = (state.trails = state.trails || []);
-  for (var i = 0; i < tr.length; i++) tr[i].life -= dt;
-  state.trails = tr.filter(function(g) { return g.life > 0; });
+  const tr = (state.trails ??= []);
+  for (const g of tr) g.life -= dt;
+  state.trails = tr.filter((g) => g.life > 0);
 }
 function drawTrails(ctx) {
-  var tr = state.trails || [];
+  const tr = state.trails ?? [];
   if (!tr.length) return;
   ctx.save();
-  for (var i = 0; i < tr.length; i++) {
-    var g = tr[i];
-    var k = g.life / g.maxLife; // 1 → 0
-    var s = g.scale + (g.endScale - g.scale) * (1 - k);
+  for (const g of tr) {
+    const k = g.life / g.maxLife; // 1 → 0
+    const s = g.scale + (g.endScale - g.scale) * (1 - k);
     ctx.globalAlpha = k * 0.6;
     if (g.img) {
       ctx.drawImage(g.img, g.x - (g.w * s) / 2, g.y - (g.h * s) / 2, g.w * s, g.h * s);
@@ -168,16 +161,15 @@ function drawTrails(ctx) {
 // --- Combo escalation — a 5-hit chain should FEEL bigger than a 1-hit -------
 // bumpCombo() on each chained hit; comboMul() scales shake/particles/floater so
 // feedback grows with the streak. Resets after `window` seconds of no hits.
-function bumpCombo(window) {
-  window = window !== undefined ? window : 1.2;
-  state.combo = (state.combo || 0) + 1;
+function bumpCombo(window = 1.2) {
+  state.combo = (state.combo ?? 0) + 1;
   state.comboT = window;
 }
 function comboMul() {
-  return 1 + Math.min(state.combo || 0, 8) * 0.12; // 1.0 → 1.96 at 8+ hits
+  return 1 + Math.min(state.combo ?? 0, 8) * 0.12; // 1.0 → 1.96 at 8+ hits
 }
 function updateCombo(dt) {
-  if ((state.comboT || 0) > 0) {
+  if ((state.comboT ?? 0) > 0) {
     state.comboT -= dt;
     if (state.comboT <= 0) state.combo = 0;
   }
@@ -186,8 +178,7 @@ function updateCombo(dt) {
 // --- Hurt flash — white-out a sprite the moment it's hit --------------------
 // In render: const a = hurtFlash(enemy.hurtTimer); if (a) draw a white overlay
 // (globalAlpha=a + 'lighter') over the sprite. Pairs with enemy.hurtTimer.
-function hurtFlash(timer, dur) {
-  dur = dur !== undefined ? dur : 0.18;
+function hurtFlash(timer, dur = 0.18) {
   return timer > 0 ? Math.min(1, timer / dur) * 0.8 : 0;
 }
 

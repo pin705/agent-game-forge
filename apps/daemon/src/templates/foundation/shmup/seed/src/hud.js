@@ -1,20 +1,43 @@
+// Drawn HUD — score, lives (as ship pips), wave, combo. No DOM, all Canvas2D.
 function drawHud(ctx) {
-  var p = state.player;
-  if (!p) return;
+  ctx.save();
+  ctx.textBaseline = "top";
 
-  // top-left stat panel: rounded translucent body
-  softShape(ctx, 16, 14, 220, 70, 12, "rgba(8,12,22,0.72)", {
-    shadowBlur: 14, highlight: false, stroke: "rgba(74,248,239,0.18)", lineWidth: 1
-  });
-  // HP as a gradient pill bar
-  gradientBar(ctx, 28, 28, 184, 14, Math.max(0, p.hp / p.maxHp), "#ff5d5d", "#ff9a3f", "rgba(0,0,0,0.5)");
-  crispText(ctx, t("hp", { hp: p.hp, max: p.maxHp }), 32, 39, "bold 11px system-ui, sans-serif", "#fff", "left");
-  crispText(ctx, t("lives", { n: p.lives }), 28, 70, "bold 14px system-ui, sans-serif", COLORS.gold, "left");
+  // score
+  ctx.fillStyle = COLORS.text;
+  ctx.font = "bold 26px system-ui, sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("SCORE " + String(state.score).padStart(6, "0"), 24, 20);
 
-  // top-right score panel
-  var scoreStr = t("score", { s: state.score });
-  softShape(ctx, VIEW.w - 196, 14, 180, 40, 12, "rgba(8,12,22,0.72)", {
-    shadowBlur: 14, highlight: false, stroke: "rgba(74,248,239,0.18)", lineWidth: 1
-  });
-  crispText(ctx, scoreStr, VIEW.w - 106, 40, "bold 20px system-ui, sans-serif", COLORS.text, "center");
+  // wave (center-top)
+  ctx.textAlign = "center";
+  ctx.fillStyle = COLORS.muted;
+  ctx.font = "20px system-ui, sans-serif";
+  ctx.fillText("WAVE " + state.wave, VIEW.w / 2, 24);
+
+  // lives as little ship pips (top-right)
+  ctx.textAlign = "right";
+  ctx.fillText("LIVES", VIEW.w - 24, 24);
+  for (let i = 0; i < state.lives; i += 1) {
+    drawPip(ctx, VIEW.w - 110 - i * 30, 30);
+  }
+
+  // combo (under score) when chaining
+  if ((state.combo || 0) >= 2) {
+    ctx.textAlign = "left";
+    ctx.fillStyle = COLORS.gold;
+    ctx.font = "bold 22px system-ui, sans-serif";
+    ctx.fillText(state.combo + "x COMBO", 24, 54);
+  }
+  ctx.restore();
+}
+
+function drawPip(ctx, x, y) {
+  ctx.fillStyle = COLORS.ship;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 8);
+  ctx.lineTo(x + 8, y + 7);
+  ctx.lineTo(x - 8, y + 7);
+  ctx.closePath();
+  ctx.fill();
 }

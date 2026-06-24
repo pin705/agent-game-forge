@@ -1,0 +1,38 @@
+{
+  "id": "td_level",
+  "name": "Guandu Pass",
+  "grid": { "cellSize": 64, "cols": 20, "rows": 11 },
+  "startingGold": 200,
+  "startingLives": 20,
+  "path": {
+    "id": "main_road",
+    "points": [
+      { "x": -40,  "y": 160 },
+      { "x": 360,  "y": 160 },
+      { "x": 360,  "y": 416 },
+      { "x": 760,  "y": 416 },
+      { "x": 760,  "y": 224 },
+      { "x": 1080, "y": 224 },
+      { "x": 1080, "y": 560 },
+      { "x": 1320, "y": 560 }
+    ]
+  },
+  "towers": [
+    { "id": "arrow",  "name": "Arrow",  "cost": 40, "range": 150, "damage": 7,  "fireRate": 1.6, "color": "#6fcf6f", "projColor": "#eaffea", "projSpeed": 620 },
+    { "id": "cannon", "name": "Cannon", "cost": 75, "range": 130, "damage": 22, "fireRate": 0.7, "color": "#e0a14a", "projColor": "#ffd98a", "projSpeed": 420, "splashRadius": 56 },
+    { "id": "frost",  "name": "Frost",  "cost": 60, "range": 140, "damage": 4,  "fireRate": 1.1, "color": "#5fb6e6", "projColor": "#cdf0ff", "projSpeed": 520, "slowMul": 0.5, "slowDuration": 1.6 }
+  ],
+  "waves": [
+    { "id": "w1", "delay": 1.5, "groups": [ { "type": "scout", "count": 8,  "hp": 22,  "speed": 70, "interval": 0.85 } ] },
+    { "id": "w2", "delay": 4.0, "groups": [ { "type": "scout", "count": 12, "hp": 30,  "speed": 78, "interval": 0.65 } ] },
+    { "id": "w3", "delay": 4.5, "groups": [
+        { "type": "scout", "count": 10, "hp": 36,  "speed": 82, "interval": 0.6 },
+        { "type": "brute", "count": 3,  "hp": 160, "speed": 44, "interval": 1.6 }
+      ] },
+    { "id": "w4", "delay": 5.0, "groups": [
+        { "type": "scout", "count": 14, "hp": 48,  "speed": 90, "interval": 0.5 },
+        { "type": "brute", "count": 5,  "hp": 220, "speed": 48, "interval": 1.4 }
+      ] },
+    { "id": "w5", "delay": 6.0, "groups": [ { "type": "warlord", "count": 1, "hp": 1600, "speed": 40, "interval": 0 } ] }
+  ]
+}

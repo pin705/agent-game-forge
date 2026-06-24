@@ -1,18 +1,32 @@
 function startBattle(enemyId) {
   resetBattle();
-  state.player = { hp: 30, maxHp: 30, block: 0, color: COLORS.playerColor };
-  const enemyDef = (state.enemies || []).find(function(e) { return e.id === enemyId; }) || { id: "slime", name: "Slime", hp: 20, maxHp: 20, damage: 5, color: COLORS.enemyColor };
-  state.enemy = { id: enemyDef.id, name: enemyDef.name, hp: enemyDef.hp, maxHp: enemyDef.maxHp, damage: enemyDef.damage, color: enemyDef.color, block: 0, intent: computeIntent(enemyDef) };
+  const enc = getEncounter();
+  const ps = enc.player || { hp: 30, maxHp: 30, startingEnergy: 3, handSize: 5 };
+  state.maxEnergy = ps.startingEnergy || 3;
+  state.handSize = ps.handSize || 5;
+  state.player = { hp: ps.hp, maxHp: ps.maxHp, block: 0, color: COLORS.playerColor };
+  const def = findEnemyDef(enemyId);
+  state.enemy = {
+    id: def.id, name: def.name, hp: def.hp, maxHp: def.maxHp,
+    color: def.color || COLORS.enemyColor, block: 0,
+    moves: (def.moves && def.moves.length) ? def.moves : [{ action: "attack", value: 5 }],
+    moveIdx: 0,
+    intent: null
+  };
+  state.enemy.intent = computeIntent(state.enemy);
   state.deck = shuffleDeck(buildStarterDeck());
-  drawCards(5);
+  drawCards(state.handSize);
   state.energy = state.maxEnergy;
   state.turn = "player";
   state.battleOver = false;
   state.screen = "battle";
 }
 
-function computeIntent(enemyDef) {
-  return { action: "attack", value: enemyDef.damage || 5 };
+// Scripted-intent telegraph: cycle through the enemy's move list (OpenGame
+// EnemyBattleConfig pattern) so the player can SEE the next action and plan blocks.
+function computeIntent(enemy) {
+  const moves = enemy.moves || [{ action: "attack", value: 5 }];
+  return moves[enemy.moveIdx % moves.length];
 }
 
 function playCard(card) {
@@ -24,6 +38,12 @@ function playCard(card) {
   state.energy -= card.cost;
   // Remove from hand
   const idx = state.hand.indexOf(card);
+  // Play flourish: the card name rises + fades from where the card sat (juice.md).
+  if (idx !== -1) {
+    const r = cardRect(idx, state.hand.length);
+    floater(card.name, r.x + CARD_W / 2, r.y, { color: cardColor(card.type), size: 16, vy: -70, life: 0.7 });
+    burstParticles(r.x + CARD_W / 2, r.y + 20, 6, cardColor(card.type));
+  }
   if (idx !== -1) state.hand.splice(idx, 1);
   state.discard.push(card.id);
 
@@ -42,6 +62,11 @@ function playCard(card) {
     burstParticles(860, 300, 6, COLORS.enemyColor);
     playSfx("hit");
     if (e.hp <= 0) {
+      e.hp = 0;
+      // Death juice: a big burst + heavier freeze-frame on the kill.
+      hitstop(0.14);
+      screenshake(10, 0.25);
+      burstParticles(850, 270, 28, e.color || COLORS.enemyColor);
       state.battleOver = true;
       state.mode = "result";
       tween(state, { runScore: state.runScore + 100 }, 0.5, "outBack");
@@ -72,7 +97,7 @@ function endPlayerTurn() {
 function resolveEnemyTurn() {
   const e = state.enemy;
   const p = state.player;
-  const intent = e.intent;
+  const intent = e.intent || { action: "attack", value: 5 };
 
   if (intent.action === "attack") {
     const dmg = Math.max(0, intent.value - (p.block || 0));
@@ -82,19 +107,28 @@ function resolveEnemyTurn() {
     screenshake(5, 0.12);
     floater('-' + dmg, 400, 260, { color: COLORS.hp, size: 22 });
     burstParticles(400, 300, 5, COLORS.hp);
+    playSfx("hit");
     if (p.hp <= 0) {
+      p.hp = 0;
+      hitstop(0.14);
+      screenshake(10, 0.25);
+      burstParticles(400, 240, 28, COLORS.hp);
       state.mode = "gameover";
       state.screen = "gameover";
       state.battleOver = true;
       return;
     }
+  } else if (intent.action === "block") {
+    e.block = (e.block || 0) + intent.value;
+    floater('+' + intent.value + ' block', 850, 260, { color: COLORS.block, size: 18 });
+    playSfx("block");
   }
 
-  // Reset block, draw new hand, restore energy
-  p.block = 0;
-  e.block = 0;
+  // Advance to next scripted move + telegraph it; reset player block, refill, redraw.
+  e.moveIdx = (e.moveIdx || 0) + 1;
   e.intent = computeIntent(e);
+  p.block = 0;
   state.energy = state.maxEnergy;
-  drawCards(5);
+  drawCards(state.handSize || 5);
   state.turn = "player";
 }

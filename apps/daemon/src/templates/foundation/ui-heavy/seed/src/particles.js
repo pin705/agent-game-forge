@@ -26,7 +26,9 @@ function updateParticles(dt) {
     p.vy += 320 * dt;
   }
   state.particles = state.particles.filter((p) => p.life > 0);
-  if (state.camera.shakeT > 0) {
+  // Decay shake toward 0 so impacts settle smoothly instead of snapping off.
+  if (state.camera.shake > 0) {
+    state.camera.shake = Math.max(0, state.camera.shake - dt * 60);
     state.camera.shakeT -= dt;
     if (state.camera.shakeT <= 0) state.camera.shake = 0;
   }

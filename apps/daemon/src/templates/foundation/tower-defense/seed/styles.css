@@ -13,7 +13,7 @@ body {
   display: grid;
   place-items: center;
   min-height: 100vh;
-  min-height: 100dvh; /* mobile: exclude browser chrome from the viewport height */
+  min-height: 100dvh;
   overflow: hidden;
   font-family: system-ui, sans-serif;
 }
@@ -22,16 +22,16 @@ main {
   width: min(100vw, 1280px);
   max-height: 100dvh;
   aspect-ratio: 16 / 9;
-  background: #120d0b;
+  background: #10130f;
 }
 
 canvas {
   display: block;
   width: 100%;
   height: 100%;
-  background: #120d0b;
-  image-rendering: pixelated;
-  touch-action: none;            /* taps build/select; no scroll/zoom/double-tap */
+  background: #10130f;
+  cursor: crosshair;
+  touch-action: none;
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;

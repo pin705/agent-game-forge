@@ -1,13 +1,20 @@
 function renderFrame() {
   const ctx = dom.ctx;
   ctx.clearRect(0, 0, VIEW.w, VIEW.h);
-  if (state.mode === "loading") { drawLoading(ctx); return; }
-  if (state.mode === "title" || state.screen === "title") { drawTitle(ctx); return; }
-  if (state.mode === "gameover" || state.screen === "gameover") { drawGameOver(ctx); return; }
-  if (state.mode === "result") { drawResult(ctx); return; }
+  // Screen-shake: offset the whole frame by a decaying random jitter (juice.md).
+  ctx.save();
+  const shake = state.camera.shake || 0;
+  if (shake > 0) {
+    ctx.translate((Math.random() * 2 - 1) * shake, (Math.random() * 2 - 1) * shake);
+  }
+  if (state.mode === "loading") { drawLoading(ctx); ctx.restore(); return; }
+  if (state.mode === "title" || state.screen === "title") { drawTitle(ctx); ctx.restore(); return; }
+  if (state.mode === "gameover" || state.screen === "gameover") { drawGameOver(ctx); ctx.restore(); return; }
+  if (state.mode === "result") { drawResult(ctx); ctx.restore(); return; }
   drawBattleScreen(ctx);
   drawParticles(ctx);
   drawHud(ctx);
+  ctx.restore();
 }
 
 function verticalBackdrop(ctx, top, bottom) {
@@ -70,8 +77,14 @@ function drawBattleScreen(ctx) {
     gradientBar(ctx, 760, 155, 180, 10, Math.max(0, e.hp / e.maxHp), "#ff5d5d", "#ffd23f", COLORS.hpBack);
     crispText(ctx, t("enemyName", { name: (e.name || "Enemy"), hp: e.hp, max: e.maxHp }), 760, 150, "bold 14px system-ui, sans-serif", COLORS.text, "left");
     if (e.block > 0) crispText(ctx, t("enemyBlock", { block: e.block }), 920, 150, "bold 14px system-ui, sans-serif", COLORS.block, "left");
-    // Intent label
-    crispText(ctx, t("intent", { value: (e.intent ? e.intent.value : t("intentUnknown")) }), 760, 400, "12px system-ui, sans-serif", COLORS.muted, "left");
+    // Intent telegraph — show the enemy's upcoming move so the player can plan blocks.
+    if (e.intent) {
+      const isAtk = e.intent.action === "attack";
+      const label = t(isAtk ? "intentAttack" : "intentBlock", { value: e.intent.value });
+      crispText(ctx, label, 760, 400, "bold 13px system-ui, sans-serif", isAtk ? COLORS.hp : COLORS.block, "left");
+    } else {
+      crispText(ctx, t("intentUnknown"), 760, 400, "12px system-ui, sans-serif", COLORS.muted, "left");
+    }
   }
 
   // Player (left side) — rect 340,160,120x160 unchanged

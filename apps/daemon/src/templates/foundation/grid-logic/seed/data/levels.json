@@ -1,1 +1,3 @@
-{ "levels": [{ "id": "level_1", "file": "data/level_1.json", "name": "Shadow Dungeon 1" }] }
+{
+  "levels": ["level_1", "level_2"]
+}

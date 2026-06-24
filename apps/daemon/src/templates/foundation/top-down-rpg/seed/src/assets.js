@@ -19,6 +19,28 @@ async function loadImageSafe(src) {
   }
 }
 
+// Asset-free fallback so the game RENDERS before art exists (and never crashes
+// drawImage on a missing sprite). Returns a canvas (a valid drawImage source)
+// with a key-derived color + label; sliceable as a 2x2 sheet. Real art replaces it.
+function makeFallbackImage(key) {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const g = c.getContext("2d");
+  let h = 0;
+  for (let i = 0; i < key.length; i += 1) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  g.fillStyle = `hsl(${h % 360}, 42%, 40%)`;
+  g.fillRect(0, 0, 256, 256);
+  g.strokeStyle = "rgba(255,255,255,0.3)";
+  g.lineWidth = 4;
+  g.strokeRect(4, 4, 248, 248);
+  g.fillStyle = "rgba(255,255,255,0.85)";
+  g.font = "bold 20px monospace";
+  g.textAlign = "center";
+  g.fillText(String(key).slice(0, 14), 128, 134);
+  return c;
+}
+
 async function loadJSON(src) {
   const response = await fetch(src);
   if (!response.ok) throw new Error(`Could not load ${src}`);
@@ -75,7 +97,7 @@ async function loadAssets() {
   await Promise.all([
     ...Object.entries(imagePaths).map(async ([key, src]) => {
       const img = await loadImageSafe(src);
-      if (img) images[key] = img;
+      images[key] = img || makeFallbackImage(key);
     }),
   ]);
 
@@ -97,7 +119,7 @@ async function loadAssets() {
     [...propSrcs].map(async (src) => {
       if (images[src]) return;
       const img = await loadImageSafe(src);
-      if (img) images[src] = img;
+      images[src] = img || makeFallbackImage(src);
     }),
   );
 }

@@ -1,186 +1,193 @@
-var _stars = [];
-function initStars() {
-  _stars = [];
-  for (var i = 0; i < 120; i++) {
-    // tier: 0 far/dim, 1 mid, 2 near/bright — gives parallax depth
-    var tier = i % 3;
-    _stars.push({
-      x: PLAY_X + Math.random() * PLAY_W,
-      y: Math.random() * VIEW.h,
-      size: tier === 2 ? Math.random() * 1.4 + 1.4 : tier === 1 ? Math.random() * 1 + 0.9 : Math.random() * 0.8 + 0.4,
-      speed: tier === 2 ? 120 + Math.random() * 90 : tier === 1 ? 70 + Math.random() * 50 : 30 + Math.random() * 30,
-      tier: tier
-    });
-  }
-}
-
+// All drawing — Canvas2D primitives only, ZERO external assets.
 function renderFrame() {
-  var ctx = dom.ctx;
-  ctx.clearRect(0, 0, VIEW.w, VIEW.h);
-  if (state.mode === "loading") { drawLoading(ctx); return; }
-  if (state.mode === "title")   { drawTitle(ctx); return; }
-  if (state.mode === "gameover") { drawGameOver(ctx); return; }
+  const ctx = dom.ctx;
   drawBackground(ctx);
-  drawEnemyBulletsCanvas(ctx);
-  drawPlayerBulletsCanvas(ctx);
-  drawEnemiesCanvas(ctx);
-  drawPlayerCanvas(ctx);
-  drawParticles(ctx);
-  drawHud(ctx);
-  if (state.mode === "paused") {
-    ctx.fillStyle = "rgba(5,7,15,0.62)"; ctx.fillRect(0,0,VIEW.w,VIEW.h);
-    crispText(ctx, t("paused"), VIEW.w/2, VIEW.h/2, "bold 40px system-ui, sans-serif", COLORS.text, "center");
-  }
-}
+  if (state.mode === "loading") { drawLoading(ctx); return; }
+  if (state.mode === "title") { drawStars(ctx); drawTitle(ctx); return; }
 
-function drawLoading(ctx) {
-  ctx.fillStyle = COLORS.ink; ctx.fillRect(0,0,VIEW.w,VIEW.h);
-  crispText(ctx, t("loading"), VIEW.w/2, VIEW.h/2, "24px system-ui, sans-serif", COLORS.text, "center");
-}
-
-function _verticalBackdrop(ctx, top, bottom) {
-  var g = ctx.createLinearGradient(0, 0, 0, VIEW.h);
-  g.addColorStop(0, top); g.addColorStop(1, bottom);
-  ctx.fillStyle = g; ctx.fillRect(0, 0, VIEW.w, VIEW.h);
-}
-
-function drawTitle(ctx) {
-  _verticalBackdrop(ctx, "#0e1a38", "#05070f");
-  vignette(ctx, VIEW.w, VIEW.h, "rgba(74,248,239,0.05)", "rgba(0,0,0,0.62)");
-  var pulse = 1 + Math.sin(state.time * 2) * 0.03;
+  // screen shake: jitter the world layer (particles.js ticks shakeT)
   ctx.save();
-  ctx.translate(VIEW.w / 2, 240);
-  ctx.scale(pulse, pulse);
-  crispText(ctx, t("title"), 0, 0, "bold 58px system-ui, sans-serif", COLORS.gold, "center");
+  if (state.camera.shake > 0) {
+    const s = state.camera.shake;
+    ctx.translate((Math.random() * 2 - 1) * s, (Math.random() * 2 - 1) * s);
+  }
+  drawStars(ctx);
+  drawEnemies(ctx);
+  drawBulletList(ctx, state.enemyBullets);
+  drawPlayer(ctx);
+  drawBulletList(ctx, state.playerBullets);
+  drawParticles(ctx);
   ctx.restore();
-  crispText(ctx, t("tagline"), VIEW.w/2, 300, "20px system-ui, sans-serif", COLORS.text, "center");
-  if (Math.floor(state.titleBlink * 2) % 2 === 0)
-    crispText(ctx, t("start"), VIEW.w/2, 388, "18px system-ui, sans-serif", COLORS.muted, "center");
-}
 
-function drawGameOver(ctx) {
-  _verticalBackdrop(ctx, "#2a0f12", "#080507");
-  vignette(ctx, VIEW.w, VIEW.h, "rgba(217,54,43,0.06)", "rgba(0,0,0,0.7)");
-  crispText(ctx, t("gameOver"), VIEW.w/2, 278, "bold 56px system-ui, sans-serif", COLORS.hp, "center");
-  crispText(ctx, t("result", { s: state.score }), VIEW.w/2, 340, "22px system-ui, sans-serif", COLORS.text, "center");
-  if (Math.floor(state.titleBlink * 2) % 2 === 0)
-    crispText(ctx, t("retry"), VIEW.w/2, 402, "18px system-ui, sans-serif", COLORS.muted, "center");
+  drawHud(ctx);
+  if (state.mode === "paused") drawPaused(ctx);
+  if (state.mode === "gameover") drawGameOver(ctx);
 }
 
 function drawBackground(ctx) {
-  // Deep-space vertical gradient for the play field
-  var g = ctx.createLinearGradient(0, 0, 0, VIEW.h);
-  g.addColorStop(0, "#0a1228"); g.addColorStop(1, "#05070f");
-  ctx.fillStyle = g;
-  ctx.fillRect(PLAY_X, 0, PLAY_W, VIEW.h);
-  // Darker gradient side panels so the play field pops
-  var sg = ctx.createLinearGradient(0, 0, 0, VIEW.h);
-  sg.addColorStop(0, "#060912"); sg.addColorStop(1, "#02030a");
-  ctx.fillStyle = sg;
-  ctx.fillRect(0, 0, PLAY_X, VIEW.h);
-  ctx.fillRect(PLAY_X + PLAY_W, 0, VIEW.w - PLAY_X - PLAY_W, VIEW.h);
-  // Scroll stars as soft glowing dots in brightness tiers (far/mid/near)
-  for (var i = 0; i < _stars.length; i++) {
-    var s = _stars[i];
-    s.y += s.speed * 0.016;
-    if (s.y > VIEW.h + 4) { s.y = -4; s.x = PLAY_X + Math.random() * PLAY_W; }
-    if (s.tier === 2) {
-      glowDot(ctx, s.x, s.y, s.size, "rgba(200,230,255,0.95)", 6);
-    } else if (s.tier === 1) {
-      ctx.fillStyle = "rgba(180,210,245,0.55)";
-      ctx.fillRect(s.x, s.y, s.size, s.size);
-    } else {
-      ctx.fillStyle = "rgba(150,180,220,0.30)";
-      ctx.fillRect(s.x, s.y, s.size, s.size);
-    }
-  }
-  // Subtle ambience over the whole viewport
-  vignette(ctx, VIEW.w, VIEW.h, "rgba(40,90,180,0.04)", "rgba(0,0,0,0.55)");
+  const grad = ctx.createLinearGradient(0, 0, 0, VIEW.h);
+  grad.addColorStop(0, COLORS.ink);
+  grad.addColorStop(1, COLORS.inkLow);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, VIEW.w, VIEW.h);
 }
 
-function drawPlayerCanvas(ctx) {
-  var p = state.player;
-  if (!p) return;
-  var flicker = p.invuln > 0 && Math.floor(state.time * 18) % 2 === 0;
-  if (flicker) return;
-  var cx = p.x + p.w / 2;
-  // Cyan glow bloom beneath the ship
-  glowDot(ctx, cx, p.y + p.h * 0.55, p.w * 0.32, "rgba(74,248,239,0.45)", 22);
-  // Ship body: gradient-filled triangle with cyan glow + bright outline
+function drawLoading(ctx) {
+  ctx.fillStyle = COLORS.text;
+  ctx.font = "24px monospace";
+  ctx.textAlign = "center";
+  ctx.fillText("Loading…", VIEW.w / 2, VIEW.h / 2);
+  ctx.textAlign = "left";
+}
+
+function drawTitle(ctx) {
   ctx.save();
-  ctx.shadowColor = "rgba(74,248,239,0.7)";
-  ctx.shadowBlur = 14;
-  var bg = ctx.createLinearGradient(0, p.y, 0, p.y + p.h);
-  bg.addColorStop(0, "#bffaf6");
-  bg.addColorStop(0.5, "#4af8ef");
-  bg.addColorStop(1, "#1390a6");
-  ctx.fillStyle = bg;
+  ctx.fillStyle = "rgba(5,6,15,0.5)";
+  ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+  ctx.textAlign = "center";
+  ctx.fillStyle = COLORS.ship;
+  ctx.font = "bold 72px system-ui, sans-serif";
+  ctx.fillText(GAME.title, VIEW.w / 2, 250);
+  ctx.fillStyle = COLORS.muted;
+  ctx.font = "22px system-ui, sans-serif";
+  ctx.fillText(GAME.tagline, VIEW.w / 2, 300);
+
+  // a preview ship so the title screen shows the asset-free craft
+  drawShipShape(ctx, VIEW.w / 2, 420, 46, COLORS.ship, COLORS.shipEdge, false);
+
+  if (Math.floor(state.titleBlink * 2) % 2 === 0) {
+    ctx.fillStyle = COLORS.text;
+    ctx.font = "24px system-ui, sans-serif";
+    ctx.fillText("Press ENTER / SPACE to launch", VIEW.w / 2, 540);
+  }
+  ctx.fillStyle = COLORS.muted;
+  ctx.font = "16px system-ui, sans-serif";
+  ctx.fillText("Arrows / WASD move  •  Space / J fire  •  P pause", VIEW.w / 2, 590);
+  ctx.restore();
+}
+
+// --- Ship sprite: an upward-pointing triangle + cockpit + thruster flame ------
+function drawShipShape(ctx, cx, cy, size, body, edge, thrust) {
+  const h = size;
+  const w = size * 0.85;
+  ctx.save();
+  if (thrust) {
+    const fl = 0.6 + Math.random() * 0.5;
+    ctx.fillStyle = COLORS.thrust;
+    ctx.beginPath();
+    ctx.moveTo(cx - w * 0.22, cy + h * 0.42);
+    ctx.lineTo(cx, cy + h * 0.42 + h * 0.5 * fl);
+    ctx.lineTo(cx + w * 0.22, cy + h * 0.42);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.fillStyle = body;
   ctx.beginPath();
-  ctx.moveTo(cx, p.y);
-  ctx.lineTo(p.x, p.y + p.h);
-  ctx.lineTo(p.x + p.w, p.y + p.h);
+  ctx.moveTo(cx, cy - h * 0.55);          // nose
+  ctx.lineTo(cx + w * 0.5, cy + h * 0.42); // right wing
+  ctx.lineTo(cx + w * 0.18, cy + h * 0.42);
+  ctx.lineTo(cx, cy + h * 0.2);
+  ctx.lineTo(cx - w * 0.18, cy + h * 0.42);
+  ctx.lineTo(cx - w * 0.5, cy + h * 0.42); // left wing
   ctx.closePath();
   ctx.fill();
-  ctx.restore();
-  ctx.save();
-  ctx.lineJoin = "round";
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = "rgba(225,255,253,0.7)";
-  ctx.beginPath();
-  ctx.moveTo(cx, p.y);
-  ctx.lineTo(p.x, p.y + p.h);
-  ctx.lineTo(p.x + p.w, p.y + p.h);
-  ctx.closePath();
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = 2;
   ctx.stroke();
+  // cockpit
+  ctx.fillStyle = edge;
+  ctx.beginPath();
+  ctx.arc(cx, cy - h * 0.12, size * 0.12, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
-  // Cockpit spark
-  glowDot(ctx, cx, p.y + p.h * 0.45, 2.5, "#eafffe", 8);
 }
 
-function drawEnemiesCanvas(ctx) {
-  for (var i = 0; i < state.enemies.length; i++) {
-    var e = state.enemies[i];
+function drawPlayer(ctx) {
+  const p = state.player;
+  if (!p) return;
+  // i-frame flicker
+  if (p.invuln > 0 && Math.floor(state.time * 20) % 2 === 0) return;
+  drawShipShape(ctx, p.x, p.y, p.h, COLORS.ship, COLORS.shipEdge, true);
+}
+
+// --- Enemy sprite: an inverted (downward) chevron, hurt-flash on hit ----------
+function drawEnemies(ctx) {
+  for (const e of state.enemies) {
     if (!e.alive) continue;
-    softShape(ctx, e.x, e.y, e.w, e.h, 7, COLORS.enemyColor, {
-      gradTop: "#ff9a5a", gradBottom: "#b32a22", glow: "rgba(232,64,64,0.5)", glowBlur: 12,
-      stroke: "rgba(0,0,0,0.35)", lineWidth: 1, shadowBlur: 8, highlight: false
-    });
-    // menacing eyes
-    ctx.fillStyle = "rgba(30,8,8,0.85)";
-    ctx.fillRect(e.x + e.w * 0.24 - 2, e.y + e.h * 0.34, 4, 4);
-    ctx.fillRect(e.x + e.w * 0.76 - 2, e.y + e.h * 0.34, 4, 4);
-    if (e.hp < e.maxHp) {
-      gradientBar(ctx, e.x, e.y - 8, e.w, 4, e.hp / e.maxHp, "#ff5d5d", "#ffd23f", "rgba(0,0,0,0.55)");
+    const s = e.h;
+    const w = s * 0.9;
+    ctx.save();
+    ctx.fillStyle = e.color;
+    ctx.beginPath();
+    ctx.moveTo(e.x, e.y + s * 0.55);            // nose points down
+    ctx.lineTo(e.x + w * 0.5, e.y - s * 0.42);
+    ctx.lineTo(e.x + w * 0.16, e.y - s * 0.42);
+    ctx.lineTo(e.x, e.y - s * 0.18);
+    ctx.lineTo(e.x - w * 0.16, e.y - s * 0.42);
+    ctx.lineTo(e.x - w * 0.5, e.y - s * 0.42);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = COLORS.enemyEdge;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    const a = hurtFlash(e.hurt); // juice.js — white-out on hit
+    if (a) {
+      ctx.globalAlpha = a;
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// Particle draw lives here (particles.js is copied verbatim from the side-scroll
+// seed, which renders particles in its own render.js — so the seed owns this).
+function drawParticles(ctx) {
+  ctx.save();
+  for (const p of state.particles) {
+    ctx.globalAlpha = clamp(p.life / p.maxLife, 0, 1);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawBulletList(ctx, list) {
+  ctx.save();
+  for (const b of list) {
+    if (!b.alive) continue;
+    ctx.fillStyle = b.color;
+    if (b.side === "player") {
+      ctx.fillRect(b.x - b.r * 0.5, b.y - b.r * 1.4, b.r, b.r * 2.8);
+    } else {
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
+  ctx.restore();
 }
 
-function drawPlayerBulletsCanvas(ctx) {
-  if (!_playerBullets) return;
-  var bullets = _playerBullets.alive();
-  for (var i = 0; i < bullets.length; i++) {
-    var b = bullets[i];
-    var bx = b.x + b.w / 2;
-    var by = b.y + b.h / 2;
-    // short vertical streak behind the bolt, aligned to velocity
-    var vlen = Math.hypot(b.vx || 0, b.vy || -1) || 1;
-    var tx = bx - ((b.vx || 0) / vlen) * 14;
-    var ty = by - ((b.vy || -1) / vlen) * 14;
-    ctx.save();
-    ctx.strokeStyle = "rgba(150,235,255,0.5)";
-    ctx.lineWidth = Math.max(2, b.w * 0.7);
-    ctx.lineCap = "round";
-    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(bx, by); ctx.stroke();
-    ctx.restore();
-    glowDot(ctx, bx, by, Math.max(2.5, b.w * 0.6), "#eafdff", 12);
-  }
+function drawPaused(ctx) {
+  overlayText(ctx, "PAUSED", "Press P to resume");
 }
 
-function drawEnemyBulletsCanvas(ctx) {
-  if (!_enemyBullets) return;
-  var bullets = _enemyBullets.alive();
-  for (var i = 0; i < bullets.length; i++) {
-    var b = bullets[i];
-    glowDot(ctx, b.x + b.w / 2, b.y + b.h / 2, Math.max(2.5, b.w * 0.6), "#ff7a3c", 11);
-  }
+function drawGameOver(ctx) {
+  overlayText(ctx, "GAME OVER", "Score " + state.score + "  •  Press ENTER to retry");
+}
+
+function overlayText(ctx, big, small) {
+  ctx.save();
+  ctx.fillStyle = "rgba(5,6,15,0.65)";
+  ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+  ctx.textAlign = "center";
+  ctx.fillStyle = COLORS.text;
+  ctx.font = "bold 64px system-ui, sans-serif";
+  ctx.fillText(big, VIEW.w / 2, VIEW.h / 2 - 10);
+  ctx.fillStyle = COLORS.muted;
+  ctx.font = "22px system-ui, sans-serif";
+  ctx.fillText(small, VIEW.w / 2, VIEW.h / 2 + 40);
+  ctx.restore();
 }

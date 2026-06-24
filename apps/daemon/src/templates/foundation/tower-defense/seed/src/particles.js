@@ -1,43 +1,40 @@
-function spawnParticle(x, y, opts) {
-  var o = opts || {};
+// particles.js — burst particles + screenshake. Same API as the side-scroll
+// seed (spawnParticle / burstParticles / updateParticles / screenshake); the
+// asset-coupled cfg("hud") defaults are inlined here so this seed stays
+// asset-free. Load after state.js. Shares global `state` + COLORS.
+const PARTICLE = Object.freeze({ sparkSpeed: 110, sparkLife: 0.4 });
+
+function spawnParticle(x, y, opts = {}) {
   state.particles.push({
-    x: x,
-    y: y,
-    vx: o.vx !== undefined ? o.vx : (Math.random() * 2 - 1) * 90,
-    vy: o.vy !== undefined ? o.vy : -Math.random() * 90,
-    life: o.life !== undefined ? o.life : 0.35,
-    maxLife: o.life !== undefined ? o.life : 0.35,
-    size: o.size !== undefined ? o.size : 3,
-    color: o.color !== undefined ? o.color : COLORS.gold
+    x,
+    y,
+    vx: opts.vx ?? (Math.random() * 2 - 1) * PARTICLE.sparkSpeed,
+    vy: opts.vy ?? -Math.random() * PARTICLE.sparkSpeed,
+    life: opts.life ?? PARTICLE.sparkLife,
+    maxLife: opts.life ?? PARTICLE.sparkLife,
+    size: opts.size ?? 3,
+    color: opts.color ?? COLORS.gold
   });
 }
 
 function burstParticles(x, y, count, color) {
-  for (var i = 0; i < count; i++) {
-    spawnParticle(x, y, { color: color, vx: (Math.random() * 2 - 1) * 150, vy: -40 - Math.random() * 160 });
+  for (let i = 0; i < count; i += 1) {
+    spawnParticle(x, y, { color, vx: (Math.random() * 2 - 1) * 150, vy: -40 - Math.random() * 160 });
   }
 }
 
 function updateParticles(dt) {
-  for (var i = 0; i < state.particles.length; i++) {
-    var p = state.particles[i];
+  for (const p of state.particles) {
     p.life -= dt;
     p.x += p.vx * dt;
     p.y += p.vy * dt;
     p.vy += 320 * dt;
   }
-  state.particles = state.particles.filter(function(p) { return p.life > 0; });
-}
-
-function drawParticles(ctx) {
-  for (var i = 0; i < state.particles.length; i++) {
-    var p = state.particles[i];
-    var alpha = Math.max(0, p.life / p.maxLife);
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = p.color;
-    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  state.particles = state.particles.filter((p) => p.life > 0);
+  if (state.camera.shakeT > 0) {
+    state.camera.shakeT -= dt;
+    if (state.camera.shakeT <= 0) state.camera.shake = 0;
   }
-  ctx.globalAlpha = 1;
 }
 
 function screenshake(amount, seconds) {

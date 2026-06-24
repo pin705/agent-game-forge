@@ -1,14 +1,8 @@
 // juice.js — the game-feel layer (vanilla, zero deps). Global-script style:
-// shares `state`. Load AFTER state.js, BEFORE entity files. This is the studio's
-// reusable polish core (the vanilla answer to OpenGame's ScreenEffectHelper).
-//
-// It provides what particles.js + screenshake() do NOT: easing curves, tweens,
-// floating damage numbers, hit-stop (freeze-frame), motion trails, and combo
-// escalation. Mandated by .ogf/conventions/juice.md — every game wires
-// updateJuice(dt) + drawJuice(ctx) into its loop and reaches for these on every
-// hit / death / pickup so the game FEELS alive instead of merely correct.
-//
-// All helpers guard their state with `??=` so they are robust to load order.
+// shares `state`. Load AFTER state.js, BEFORE subsystem files. Mandated by
+// conventions/juice.md — every game wires updateJuice(dt) + drawJuice(ctx) into
+// its loop and reaches for these on every hit / death / pickup so the game FEELS
+// alive instead of merely correct. All helpers guard state with `??=`.
 
 // --- Easing (t in 0..1 → eased 0..1) ---------------------------------------
 const ease = {
@@ -18,17 +12,14 @@ const ease = {
   inOutQuad: (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2),
   outCubic: (t) => 1 - Math.pow(1 - t, 3),
   inOutCubic: (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2),
-  // overshoot — great for pop-in UI, ability wind-ups
   outBack: (t) => {
     const c1 = 1.70158, c3 = c1 + 1;
     return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
   },
-  // springy — selection cursors, reward pops
   outElastic: (t) => {
     const c4 = (2 * Math.PI) / 3;
     return t === 0 ? 0 : t === 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
   },
-  // bouncy — landings, drops
   outBounce: (t) => {
     const n1 = 7.5625, d1 = 2.75;
     if (t < 1 / d1) return n1 * t * t;
@@ -39,8 +30,6 @@ const ease = {
 };
 
 // --- Tweens — animate numeric props over time ------------------------------
-// tween(target, {prop: toValue, ...}, durSeconds, easeName?, onDone?)
-// e.g. tween(door, { y: door.y - 64 }, 0.4, "outBack")
 function tween(target, props, dur, easeName = "outQuad", onDone) {
   (state.tweens ??= []).push({
     target,
@@ -63,10 +52,7 @@ function updateTweens(dt) {
   state.tweens = tw.filter((a) => a.t < 1);
 }
 
-// --- Floating text — damage numbers, "+1 block", pickups -------------------
-// floater(text, x, y, opts?). x,y are in the space you draw HUD/scene; for a
-// camera-offset world pass screen coords (sx(x), sy(y)). Combat reads better
-// when crits/heals get their own color + bigger size.
+// --- Floating text — damage numbers, "+gold", pickups ----------------------
 function floater(text, x, y, opts = {}) {
   (state.floaters ??= []).push({
     text: String(text),
@@ -86,7 +72,7 @@ function updateFloaters(dt) {
     f.life -= dt;
     f.y += f.vy * dt;
     f.x += f.drift * dt;
-    f.vy += 34 * dt; // gentle gravity so they arc
+    f.vy += 34 * dt;
   }
   state.floaters = fl.filter((f) => f.life > 0);
 }
@@ -108,17 +94,12 @@ function drawFloaters(ctx) {
   ctx.restore();
 }
 
-// --- Hit-stop — the freeze-frame that gives impacts weight ------------------
-// Call hitstop(0.05) on a solid hit, hitstop(0.12) on a kill/special. The frame
-// loop must zero GAMEPLAY dt while state.hitstop > 0 (FX + render keep running):
-//   const sdt = state.hitstop > 0 ? 0 : dt;  updateScene(sdt);  updateJuice(dt);
+// --- Hit-stop — freeze-frame that gives impacts weight ----------------------
 function hitstop(sec) {
   state.hitstop = Math.max(state.hitstop ?? 0, sec);
 }
 
-// --- Motion trails — ghost images for dashes & fast projectiles ------------
-// ghost(x, y, img, opts?). Drop several along a dash (stagger by frame) for a
-// streak. img may be null → a soft colored blob (good for magic/projectiles).
+// --- Motion trails — ghost images for fast projectiles ----------------------
 function ghost(x, y, img, opts = {}) {
   (state.trails ??= []).push({
     x,
@@ -143,7 +124,7 @@ function drawTrails(ctx) {
   if (!tr.length) return;
   ctx.save();
   for (const g of tr) {
-    const k = g.life / g.maxLife; // 1 → 0
+    const k = g.life / g.maxLife;
     const s = g.scale + (g.endScale - g.scale) * (1 - k);
     ctx.globalAlpha = k * 0.6;
     if (g.img) {
@@ -158,15 +139,13 @@ function drawTrails(ctx) {
   ctx.restore();
 }
 
-// --- Combo escalation — a 5-hit chain should FEEL bigger than a 1-hit -------
-// bumpCombo() on each chained hit; comboMul() scales shake/particles/floater so
-// feedback grows with the streak. Resets after `window` seconds of no hits.
+// --- Combo escalation -------------------------------------------------------
 function bumpCombo(window = 1.2) {
   state.combo = (state.combo ?? 0) + 1;
   state.comboT = window;
 }
 function comboMul() {
-  return 1 + Math.min(state.combo ?? 0, 8) * 0.12; // 1.0 → 1.96 at 8+ hits
+  return 1 + Math.min(state.combo ?? 0, 8) * 0.12;
 }
 function updateCombo(dt) {
   if ((state.comboT ?? 0) > 0) {
@@ -175,14 +154,12 @@ function updateCombo(dt) {
   }
 }
 
-// --- Hurt flash — white-out a sprite the moment it's hit --------------------
-// In render: const a = hurtFlash(enemy.hurtTimer); if (a) draw a white overlay
-// (globalAlpha=a + 'lighter') over the sprite. Pairs with enemy.hurtTimer.
+// --- Hurt flash -------------------------------------------------------------
 function hurtFlash(timer, dur = 0.18) {
   return timer > 0 ? Math.min(1, timer / dur) * 0.8 : 0;
 }
 
-// --- Lifecycle — call these from your frame loop ----------------------------
+// --- Lifecycle --------------------------------------------------------------
 function updateJuice(dt) {
   updateTweens(dt);
   updateFloaters(dt);

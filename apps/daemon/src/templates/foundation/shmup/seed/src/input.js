@@ -10,10 +10,8 @@ const KEY_BINDINGS = {
   right: ["ArrowRight", "KeyD"],
   up: ["ArrowUp", "KeyW"],
   down: ["ArrowDown", "KeyS"],
-  jump: ["Space", "KeyK"],
-  attack: ["KeyJ", "KeyX"],
-  interact: ["KeyE", "Enter"],
-  start: ["Enter", "NumpadEnter"],
+  fire: ["Space", "KeyJ", "KeyK"],
+  start: ["Enter", "NumpadEnter", "Space"],
   pause: ["Escape", "KeyP"]
 };
 
@@ -23,7 +21,6 @@ function initInput() {
       event.preventDefault();
     }
     input.keys.add(event.code);
-    ensureAudio();
   });
   window.addEventListener("keyup", (event) => input.keys.delete(event.code));
   window.addEventListener("gamepadconnected", (event) => {
@@ -37,35 +34,31 @@ function initInput() {
 function updateInput() {
   input.prev = input.actions;
   const gp = getGamepadState();
-  if (typeof updateMobileAxis === "function") updateMobileAxis();
-  const tc = (typeof TOUCH !== "undefined") ? TOUCH : null;
-  // A right-half tap is the universal "action": confirm a menu AND act in-game.
-  const tapActs = { start: true, interact: true, jump: true, attack: true };
   const next = {};
   for (const name of Object.keys(KEY_BINDINGS)) {
-    next[name] = KEY_BINDINGS[name].some((key) => input.keys.has(key)) || Boolean(gp[name])
-      || (tc && Boolean(tc[name])) || (tc && tc.start && tapActs[name]);
+    next[name] = KEY_BINDINGS[name].some((key) => input.keys.has(key)) || Boolean(gp[name]);
   }
-  const axis = (next.right ? 1 : 0) - (next.left ? 1 : 0);
-  next.x = gp.x !== 0 ? gp.x : (tc && tc.x ? tc.x : axis);
+  // analog/dpad axes → -1..1 for both axes (player moves 4-dir)
+  next.ax = (gp.x !== 0 ? gp.x : 0) || ((next.right ? 1 : 0) - (next.left ? 1 : 0));
+  next.ay = (gp.y !== 0 ? gp.y : 0) || ((next.down ? 1 : 0) - (next.up ? 1 : 0));
   input.actions = next;
 }
 
 function getGamepadState() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   const pad = input.gamepadIndex != null ? pads[input.gamepadIndex] : Array.from(pads).find(Boolean);
-  if (!pad) return { x: 0 };
+  if (!pad) return { x: 0, y: 0 };
   const axisX = Math.abs(pad.axes[0] || 0) > 0.25 ? pad.axes[0] : 0;
+  const axisY = Math.abs(pad.axes[1] || 0) > 0.25 ? pad.axes[1] : 0;
   return {
     x: axisX,
+    y: axisY,
     left: axisX < -0.25 || pad.buttons[14]?.pressed,
     right: axisX > 0.25 || pad.buttons[15]?.pressed,
-    up: (pad.axes[1] || 0) < -0.5 || pad.buttons[12]?.pressed,
-    down: (pad.axes[1] || 0) > 0.5 || pad.buttons[13]?.pressed,
-    jump: pad.buttons[0]?.pressed,
-    attack: pad.buttons[2]?.pressed || pad.buttons[1]?.pressed,
-    interact: pad.buttons[3]?.pressed,
-    start: pad.buttons[9]?.pressed,
+    up: axisY < -0.25 || pad.buttons[12]?.pressed,
+    down: axisY > 0.25 || pad.buttons[13]?.pressed,
+    fire: pad.buttons[0]?.pressed || pad.buttons[2]?.pressed,
+    start: pad.buttons[9]?.pressed || pad.buttons[0]?.pressed,
     pause: pad.buttons[8]?.pressed
   };
 }

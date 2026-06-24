@@ -1,1 +1,5 @@
-{ "levels": [{ "id": "guandu_pass", "file": "data/guandu_pass.json", "name": "Guandu Pass" }] }
+{
+  "levels": [
+    { "id": "td_level", "name": "Guandu Pass", "file": "data/td-config.json" }
+  ]
+}

@@ -58,6 +58,14 @@ async function loadCatalogs() {
   } catch (e) {
     // fallback to inline enemy defs
   }
+  try {
+    const encResp = await fetch('data/encounter.json');
+    if (encResp.ok) {
+      state.encounter = await encResp.json();
+    }
+  } catch (e) {
+    // fallback to BUILTIN encounter
+  }
 }
 
 async function boot() {

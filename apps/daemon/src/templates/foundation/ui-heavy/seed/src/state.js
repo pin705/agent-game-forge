@@ -12,6 +12,7 @@ const state = {
   discard: [],       // discard pile (card ids)
   energy: 3,
   maxEnergy: 3,
+  handSize: 5,
   turn: "player",    // player | enemy | resolve
   resolveQueue: [],  // animations/effects queued
   battleOver: false,
@@ -21,6 +22,7 @@ const state = {
   // Cards catalog (loaded from data)
   cardDefs: [],
   enemies: [],       // enemy catalog
+  encounter: null,   // encounter def (player hp, starting deck, enemy moves)
   // Juice
   particles: [],
   floaters: [],

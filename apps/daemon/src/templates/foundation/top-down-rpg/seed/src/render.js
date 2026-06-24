@@ -6,7 +6,14 @@ function spriteFrame(sheet, cols, rows, index) {
   return { sx: col * cellW, sy: row * cellH, sw: cellW, sh: cellH };
 }
 
+// Any image lookup returns a real drawable: the loaded sprite, or a cached
+// key-derived fallback canvas — so no drawImage ever sees null pre-art.
+function imgOf(key) {
+  return images[key] || (images[key] = makeFallbackImage(key));
+}
+
 function drawSheetFrame(sheet, cols, rows, index, x, y, mapHeight, alpha = 1, tint = null) {
+  if (!sheet) sheet = imgOf("_sheet");
   const frame = spriteFrame(sheet, cols, rows, index);
   const screenH = mapHeight * CAMERA.scale;
   const screenW = screenH * (frame.sw / frame.sh);
@@ -34,6 +41,7 @@ function drawMapProp(prop) {
 }
 
 function drawFullSheetFrame(sheet, cols, rows, index, x, y, mapHeight, alpha = 1) {
+  if (!sheet) sheet = imgOf("_sheet");
   const frame = spriteFrame(sheet, cols, rows, index);
   const screenH = (mapHeight / MAP.h) * VIEW.h;
   const screenW = screenH * (frame.sw / frame.sh);
@@ -68,7 +76,7 @@ function drawFullShadow(x, y, w, h, alpha = 0.28) {
 
 function drawOverworld(now) {
   updateCamera();
-  ctx.drawImage(images[currentSceneMapKey()], CAMERA.x, CAMERA.y, CAMERA.w, CAMERA.h, 0, 0, VIEW.w, VIEW.h);
+  ctx.drawImage(imgOf(currentSceneMapKey()), CAMERA.x, CAMERA.y, CAMERA.w, CAMERA.h, 0, 0, VIEW.w, VIEW.h);
 
   const renderables = [];
   const props = collisionMaps[state.scene]?.props ?? [];
@@ -225,7 +233,7 @@ function roundRect(x, y, w, h, r) {
 }
 
 function drawBattle(now) {
-  ctx.drawImage(images.battleBg, 0, 0, VIEW.w, VIEW.h);
+  ctx.drawImage(imgOf("battleBg"), 0, 0, VIEW.w, VIEW.h);
   ctx.save();
   ctx.fillStyle = "rgba(10, 11, 10, 0.2)";
   ctx.fillRect(0, 0, VIEW.w, VIEW.h);
@@ -287,7 +295,7 @@ function drawEffect(effect) {
 }
 
 function drawChoose() {
-  ctx.drawImage(images.map, 0, 0, VIEW.w, VIEW.h);
+  ctx.drawImage(imgOf("map"), 0, 0, VIEW.w, VIEW.h);
   ctx.save();
   ctx.fillStyle = "rgba(10, 11, 10, 0.48)";
   ctx.fillRect(0, 0, VIEW.w, VIEW.h);

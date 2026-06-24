@@ -25,7 +25,6 @@ import { StatusBar } from '@/components/StatusBar';
 import { PendingChangesModal } from '@/components/PendingChangesModal';
 import { PackReviewModal } from '@/components/PackReviewModal';
 import { ImportCodexSessionModal } from '@/components/ImportCodexSessionModal';
-import { LanguageToggle } from '@/components/LanguageToggle';
 import { useT } from '@/lib/i18n';
 
 export function Build() {
@@ -70,7 +69,6 @@ export function Build() {
         <Badge variant="outline" className="text-emerald-500">
           {t('build.free')}
         </Badge>
-        <LanguageToggle />
         <SettingsButton />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

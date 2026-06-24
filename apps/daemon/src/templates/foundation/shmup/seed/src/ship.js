@@ -1,40 +1,66 @@
+// Player ship — 4-dir movement clamped to a sub-rectangle, fixed upward auto-fire,
+// lives + i-frames on hit. Tuning from data/shmup-config.json `player`.
 function createPlayer() {
+  const c = cfg("player");
   return {
-    x: PLAY_X + PLAY_W/2 - 20, y: PLAYER_BOUNDS.y + PLAYER_BOUNDS.h - 60,
-    w: 40, h: 40, hp: 5, maxHp: 5, lives: 3, speed: 320,
-    shootTimer: 0, shootCooldown: 0.18, invuln: 0
+    x: VIEW.w / 2,
+    y: VIEW.h - 120,
+    w: c.size ?? 40,
+    h: c.size ?? 40,
+    speed: c.speed ?? 420,
+    hitboxR: c.hitboxR ?? 7,   // tiny center hitbox → grazing feel (bullet-patterns recipe)
+    fireCooldown: c.fireCooldown ?? 0.14,
+    fireTimer: 0,
+    invuln: 0
+  };
+}
+
+function playerBounds() {
+  const b = cfg("player").bounds || {};
+  return {
+    x: b.x ?? 40,
+    y: b.y ?? 80,
+    w: b.w ?? (VIEW.w - 80),
+    h: b.h ?? (VIEW.h - 120)
   };
 }
 
 function updateShip(dt) {
-  var p = state.player;
+  const p = state.player;
   if (!p) return;
-  // Movement
-  var dx = 0, dy = 0;
-  if (isHeld("left"))  dx -= 1;
-  if (isHeld("right")) dx += 1;
-  if (isHeld("up"))    dy -= 1;
-  if (isHeld("down"))  dy += 1;
-  p.x = Math.max(PLAYER_BOUNDS.x, Math.min(PLAYER_BOUNDS.x + PLAYER_BOUNDS.w - p.w, p.x + dx * p.speed * dt));
-  p.y = Math.max(PLAYER_BOUNDS.y, Math.min(PLAYER_BOUNDS.y + PLAYER_BOUNDS.h - p.h, p.y + dy * p.speed * dt));
-  // Auto-fire
-  p.shootTimer -= dt;
-  if (p.shootTimer <= 0) {
-    p.shootTimer = p.shootCooldown;
-    if (_playerBullets) {
-      var b = _playerBullets.get();
-      if (b) { b.alive = true; b.x = p.x + p.w/2 - 3; b.y = p.y - 10; b.vy = -600; b.dmg = 1; }
-    }
+  if (p.invuln > 0) p.invuln = Math.max(0, p.invuln - dt);
+
+  const ax = clamp(input.actions.ax || 0, -1, 1);
+  const ay = clamp(input.actions.ay || 0, -1, 1);
+  p.x += ax * p.speed * dt;
+  p.y += ay * p.speed * dt;
+
+  const b = playerBounds();
+  p.x = clamp(p.x, b.x, b.x + b.w);
+  p.y = clamp(p.y, b.y, b.y + b.h);
+
+  // auto-fire upward on cooldown (also fires while holding fire — same path)
+  p.fireTimer -= dt;
+  if (p.fireTimer <= 0) {
+    p.fireTimer = p.fireCooldown;
+    const def = bulletDef("player_main");
+    emit("player", def, p.x, p.y - p.h / 2, { x: 0, y: -1 });
   }
-  if (p.invuln > 0) p.invuln -= dt;
 }
 
-function damagePlayer(amount) {
-  var p = state.player;
+function damagePlayer() {
+  const p = state.player;
   if (!p || p.invuln > 0) return;
-  p.hp -= amount;
-  p.invuln = 1.5;
-  screenshake(5, 0.15);
-  floater("-" + amount, p.x + p.w/2, p.y, { color: "#d93" });
-  if (p.hp <= 0) state.mode = "gameover";
+  state.lives -= 1;
+  p.invuln = cfg("player").iframes ?? 1.6;
+  // juice: shake + freeze-frame + a hot flash burst (conventions/juice.md player-hit)
+  screenshake(16, 0.4);
+  hitstop(0.12);
+  burstParticles(p.x, p.y, 22, COLORS.ship);
+  floater("-1", p.x, p.y - 30, { color: COLORS.hp, size: 24 });
+  state.combo = 0;
+  if (state.lives <= 0) {
+    state.lives = 0;
+    state.mode = "gameover";
+  }
 }

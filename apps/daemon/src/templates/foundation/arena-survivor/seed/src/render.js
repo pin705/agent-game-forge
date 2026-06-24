@@ -117,6 +117,17 @@ function drawEnemiesOnCanvas(ctx) {
     softShape(ctx, s.x - e.w / 2, s.y - e.h / 2, e.w, e.h, 7, e.color, {
       gradTop: "#ff7a6e", gradBottom: e.color, glow: "rgba(220,70,60,0.5)", glowBlur: 12, stroke: "rgba(0,0,0,0.35)", lineWidth: 1, highlight: false
     });
+    var flash = hurtFlash(e.hurtTimer || 0);
+    if (flash > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = flash;
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, e.w / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
     ctx.fillStyle = "rgba(20,8,8,0.85)";
     ctx.fillRect(s.x - e.w * 0.22, s.y - e.h * 0.12, 4, 4);
     ctx.fillRect(s.x + e.w * 0.22 - 4, s.y - e.h * 0.12, 4, 4);

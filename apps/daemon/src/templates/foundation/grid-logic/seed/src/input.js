@@ -1,3 +1,7 @@
+// input.js — discrete grid input. One PRESS = one intent (no held-key repeat):
+// wasPressed() is true only on the edge, so an arrow held down does not auto-step.
+// Mirrors the side-scroll seed's edge-detect model (keys Set + prev/actions diff).
+
 const input = {
   keys: new Set(),
   prev: {},
@@ -10,20 +14,18 @@ const KEY_BINDINGS = {
   right: ["ArrowRight", "KeyD"],
   up: ["ArrowUp", "KeyW"],
   down: ["ArrowDown", "KeyS"],
-  jump: ["Space", "KeyK"],
-  attack: ["KeyJ", "KeyX"],
-  interact: ["KeyE", "Enter"],
-  start: ["Enter", "NumpadEnter"],
+  undo: ["KeyZ", "Backspace"],
+  reset: ["KeyR"],
+  start: ["Enter", "NumpadEnter", "Space"],
   pause: ["Escape", "KeyP"]
 };
 
 function initInput() {
   window.addEventListener("keydown", (event) => {
-    if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) {
+    if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Backspace"].includes(event.code)) {
       event.preventDefault();
     }
     input.keys.add(event.code);
-    ensureAudio();
   });
   window.addEventListener("keyup", (event) => input.keys.delete(event.code));
   window.addEventListener("gamepadconnected", (event) => {
@@ -37,41 +39,28 @@ function initInput() {
 function updateInput() {
   input.prev = input.actions;
   const gp = getGamepadState();
-  if (typeof updateMobileAxis === "function") updateMobileAxis();
-  const tc = (typeof TOUCH !== "undefined") ? TOUCH : null;
-  // A right-half tap is the universal "action": confirm a menu AND act in-game.
-  const tapActs = { start: true, interact: true, jump: true, attack: true };
   const next = {};
   for (const name of Object.keys(KEY_BINDINGS)) {
-    next[name] = KEY_BINDINGS[name].some((key) => input.keys.has(key)) || Boolean(gp[name])
-      || (tc && Boolean(tc[name])) || (tc && tc.start && tapActs[name]);
+    next[name] = KEY_BINDINGS[name].some((key) => input.keys.has(key)) || Boolean(gp[name]);
   }
-  const axis = (next.right ? 1 : 0) - (next.left ? 1 : 0);
-  next.x = gp.x !== 0 ? gp.x : (tc && tc.x ? tc.x : axis);
   input.actions = next;
 }
 
 function getGamepadState() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   const pad = input.gamepadIndex != null ? pads[input.gamepadIndex] : Array.from(pads).find(Boolean);
-  if (!pad) return { x: 0 };
-  const axisX = Math.abs(pad.axes[0] || 0) > 0.25 ? pad.axes[0] : 0;
+  if (!pad) return {};
+  const ax = pad.axes[0] || 0, ay = pad.axes[1] || 0;
   return {
-    x: axisX,
-    left: axisX < -0.25 || pad.buttons[14]?.pressed,
-    right: axisX > 0.25 || pad.buttons[15]?.pressed,
-    up: (pad.axes[1] || 0) < -0.5 || pad.buttons[12]?.pressed,
-    down: (pad.axes[1] || 0) > 0.5 || pad.buttons[13]?.pressed,
-    jump: pad.buttons[0]?.pressed,
-    attack: pad.buttons[2]?.pressed || pad.buttons[1]?.pressed,
-    interact: pad.buttons[3]?.pressed,
-    start: pad.buttons[9]?.pressed,
+    left: ax < -0.5 || pad.buttons[14]?.pressed,
+    right: ax > 0.5 || pad.buttons[15]?.pressed,
+    up: ay < -0.5 || pad.buttons[12]?.pressed,
+    down: ay > 0.5 || pad.buttons[13]?.pressed,
+    undo: pad.buttons[1]?.pressed,
+    reset: pad.buttons[3]?.pressed,
+    start: pad.buttons[9]?.pressed || pad.buttons[0]?.pressed,
     pause: pad.buttons[8]?.pressed
   };
-}
-
-function isHeld(action) {
-  return Boolean(input.actions[action]);
 }
 
 function wasPressed(action) {

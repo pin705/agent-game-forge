@@ -8,9 +8,30 @@ const BUILTIN_CARDS = [
   { id: "armor",     name: "Iron Shell",type: "block",  cost: 1, value: 8,   text: "Gain 8 block." }
 ];
 
-// Build starting deck: 4× strike + 4× defend + 1× first_aid
+// Fallback encounter if data/encounter.json fails to load.
+const BUILTIN_ENCOUNTER = {
+  player: { hp: 30, maxHp: 30, startingEnergy: 3, handSize: 5 },
+  startingDeck: ["strike","strike","strike","strike","defend","defend","defend","defend","first_aid"],
+  enemies: [
+    { id: "slime", name: "Slime", hp: 20, maxHp: 20, color: "#40c840",
+      moves: [{ action: "attack", value: 5 }, { action: "attack", value: 5 }, { action: "block", value: 6 }] },
+    { id: "golem", name: "Golem", hp: 35, maxHp: 35, color: "#808040",
+      moves: [{ action: "attack", value: 8 }, { action: "block", value: 8 }, { action: "attack", value: 10 }] }
+  ]
+};
+
+function getEncounter() {
+  return state.encounter || BUILTIN_ENCOUNTER;
+}
+
+function findEnemyDef(enemyId) {
+  const enc = getEncounter();
+  return (enc.enemies || []).find(function(e) { return e.id === enemyId; }) || enc.enemies[0];
+}
+
+// Build starting deck from encounter data (with a hardcoded fallback).
 function buildStarterDeck() {
-  return ["strike","strike","strike","strike","defend","defend","defend","defend","first_aid"];
+  return getEncounter().startingDeck.slice();
 }
 
 function shuffleDeck(deck) {

@@ -1,0 +1,37 @@
+{
+  "_doc": "Tuning for the arena-survivor seed. Plain JSON, data-driven — change balance here without touching code. player: movement + survivability. weapon: auto-fire cadence/damage/reach. spawn: wave pacing + alive cap. xp: level curve + pickup magnet.",
+  "player": {
+    "speed": 140,
+    "maxHp": 10,
+    "radius": 16,
+    "iFrames": 1.0,
+    "contactDamage": 1,
+    "contactRange": 24
+  },
+  "weapon": {
+    "cooldown": 1.2,
+    "damage": 5,
+    "range": 9999,
+    "projectileSpeed": 420,
+    "projectileLife": 2.0,
+    "hitRadius": 20
+  },
+  "spawn": {
+    "baseInterval": 1.5,
+    "minInterval": 0.3,
+    "rampPerSecond": 0.01,
+    "maxAlive": 200,
+    "ringMargin": 80,
+    "enemySpeedMin": 70,
+    "enemySpeedSpread": 40,
+    "enemyHpPer30s": 1
+  },
+  "xp": {
+    "base": 20,
+    "perLevel": 15,
+    "magnetRadius": 180,
+    "magnetSpeed": 500,
+    "collectRadius": 20,
+    "orbValue": 1
+  }
+}

@@ -371,7 +371,7 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
 
   return (
     <div className="flex min-h-0 flex-col">
-      <div className="flex items-center gap-2.5 border-b px-4 py-3">
+      <div className="flex items-center gap-2.5 border-b border-border/60 px-3 py-2">
         <span className="text-xs text-muted-foreground">{t('chat.title')}</span>
         {running ? (
           <Badge variant="secondary" className="ml-auto gap-1">
@@ -413,8 +413,8 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
         </div>
       </ScrollArea>
 
-      <div className="border-t p-3">
-        <div className="flex items-end gap-2">
+      <div className="border-t border-border/60 p-2.5">
+        <div className="flex items-end gap-1.5">
           <Textarea
             value={prompt}
             onChange={(e) => {
@@ -426,15 +426,15 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
             onKeyDown={onKey}
             rows={1}
             placeholder={t('chat.placeholder')}
-            className="max-h-40 min-h-[40px] resize-none"
+            className="max-h-40 min-h-[34px] resize-none py-1.5 text-[13px]"
           />
           {running ? (
-            <Button size="icon" variant="secondary" onClick={() => void stop()} title={t('chat.stop')}>
-              <Square />
+            <Button size="icon" variant="secondary" className="size-8 shrink-0" onClick={() => void stop()} title={t('chat.stop')}>
+              <Square className="size-3.5" />
             </Button>
           ) : (
-            <Button size="icon" onClick={() => void send()} disabled={!prompt.trim()} title={t('chat.send')}>
-              <Send />
+            <Button size="icon" className="size-8 shrink-0" onClick={() => void send()} disabled={!prompt.trim()} title={t('chat.send')}>
+              <Send className="size-3.5" />
             </Button>
           )}
         </div>
@@ -462,7 +462,7 @@ function TurnView({
     <div className="space-y-2.5">
       {/* User message — right-aligned, solid high-contrast bubble with tail */}
       <div className="flex justify-end">
-        <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-[14px_14px_4px_14px] bg-foreground px-3.5 py-2.5 text-sm leading-snug text-background">
+        <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-[11px_11px_3px_11px] bg-foreground px-3 py-1.5 text-[13px] leading-snug text-background">
           {turn.userText}
         </div>
       </div>
@@ -553,11 +553,11 @@ function ToolCard({ family, items, streaming }: { family: ToolFamily; items: Too
       : [];
 
   return (
-    <div className={cn('overflow-hidden rounded-lg border bg-card/60', anyError && 'border-destructive/40')}>
+    <div className={cn('overflow-hidden rounded-md bg-muted/40', anyError && 'bg-destructive/10')}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-accent/40"
+        className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs hover:bg-accent/40"
       >
         <span className={cn('grid size-[18px] shrink-0 place-items-center rounded', familyChip(family))}>
           {running ? <Loader2 className="size-3 animate-spin" /> : <Icon className="size-3" />}
@@ -601,11 +601,11 @@ function ToolCard({ family, items, streaming }: { family: ToolFamily; items: Too
                   {it.output !== undefined ? (
                     <pre
                       className={cn(
-                        'max-h-56 overflow-auto whitespace-pre-wrap break-words rounded bg-background p-2 font-mono text-[11px] leading-relaxed',
+                        'max-h-44 overflow-auto whitespace-pre-wrap break-words rounded bg-background/60 p-2 font-mono text-[11px] leading-relaxed',
                         it.isError && 'text-destructive',
                       )}
                     >
-                      {clamp(it.output, 4000)}
+                      {clamp(it.output, 1600)}
                     </pre>
                   ) : running ? (
                     <div className="text-[11px] text-primary">{t('chat.running')}</div>

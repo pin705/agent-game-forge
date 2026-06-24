@@ -1,0 +1,11 @@
+{
+  "firstWaveDelay": 1.0,
+  "waves": [
+    { "id": "w1", "enemyType": "scout",  "formation": "line",    "count": 6, "spacing": 90, "path": "sine",     "amp": 140, "period": 2.6, "gap": 4.0, "trickle": 14 },
+    { "id": "w2", "enemyType": "scout",  "formation": "v_shape", "count": 7, "spacing": 70, "path": "straight", "amp": 0,   "gap": 4.5, "trickle": 10 },
+    { "id": "w3", "enemyType": "diver",  "formation": "line",    "count": 5, "spacing": 120, "path": "dive",    "amp": 0,   "gap": 4.0, "anchorX": -120 },
+    { "id": "w4", "enemyType": "gunner", "formation": "column",  "count": 4, "spacing": 80, "path": "swoop",    "amp": 220, "gap": 5.5, "anchorX": 200 },
+    { "id": "w5", "enemyType": "scout",  "formation": "line",    "count": 8, "spacing": 80, "path": "sine",     "amp": 200, "period": 2.0, "gap": 5.0, "trickle": 8 },
+    { "id": "w6", "enemyType": "turret", "formation": "line",    "count": 3, "spacing": 240, "path": "straight","amp": 0,   "gap": 6.0 }
+  ]
+}

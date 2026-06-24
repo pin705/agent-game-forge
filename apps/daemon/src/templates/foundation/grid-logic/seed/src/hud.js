@@ -1,32 +1,34 @@
+// hud.js — drawn HUD (no DOM): a top panel with move count + boxes-on-goal / total
+// + level number, and a controls hint along the bottom.
+
 function drawHud(ctx) {
-  var p = state.player;
+  ctx.save();
+  // top status bar
+  ctx.fillStyle = COLORS.panel;
+  ctx.fillRect(0, 0, VIEW.w, 46);
+  ctx.strokeStyle = COLORS.panelEdge;
+  ctx.beginPath();
+  ctx.moveTo(0, 46.5); ctx.lineTo(VIEW.w, 46.5);
+  ctx.stroke();
 
-  // Top-left translucent stat panel.
-  softShape(ctx, 16, 14, 244, 84, 12, "rgba(11,11,22,0.72)", {
-    shadowBlur: 14, highlight: false, stroke: "rgba(120,140,210,0.18)", lineWidth: 1
-  });
-  // HP pips: small rounded glowing capsules.
-  crispText(ctx, t("hp"), 30, 38, "bold 12px system-ui, sans-serif", COLORS.muted, "left");
-  var maxHp = p ? p.maxHp : 5;
-  for (var i = 0; i < maxHp; i++) {
-    var px = 56 + i * 16, py = 27;
-    if (p && i < p.hp) {
-      glowDot(ctx, px + 5, py + 5, 4, COLORS.hp, 8);
-      fillRoundRect(ctx, px, py, 11, 11, 4, "#ff5d5d");
-    } else {
-      fillRoundRect(ctx, px, py, 11, 11, 4, COLORS.hpBack);
-    }
-  }
-  crispText(ctx, t("stats", { m: state.moves, t: state.turn, s: state.score }), 30, 64, "bold 14px system-ui, sans-serif", COLORS.text, "left");
-  crispText(ctx, t("hint"), 30, 86, "12px system-ui, sans-serif", COLORS.muted, "left");
+  ctx.textAlign = "left";
+  ctx.font = "20px monospace";
+  ctx.fillStyle = COLORS.text;
+  ctx.fillText(`Level ${state.levelIndex + 1}/${state.levels.length}`, 24, 31);
 
-  // Top-right level-name chip.
-  if (state.level) {
-    var label = state.level.name || state.sceneId;
-    var cw = Math.max(96, label.length * 9 + 28);
-    softShape(ctx, VIEW.w - 16 - cw, 14, cw, 34, 12, "rgba(11,11,22,0.72)", {
-      shadowBlur: 14, highlight: false, stroke: "rgba(120,140,210,0.18)", lineWidth: 1
-    });
-    crispText(ctx, label, VIEW.w - 16 - cw / 2, 36, "bold 14px system-ui, sans-serif", COLORS.gold, "center");
-  }
+  ctx.textAlign = "center";
+  const allDone = state.boxesOnGoal === state.totalGoals && state.totalGoals > 0;
+  ctx.fillStyle = allDone ? COLORS.jade : COLORS.gold;
+  ctx.fillText(`Goals  ${state.boxesOnGoal} / ${state.totalGoals}`, VIEW.w / 2, 31);
+
+  ctx.textAlign = "right";
+  ctx.fillStyle = COLORS.text;
+  ctx.fillText(`Moves  ${state.moveCount}`, VIEW.w - 24, 31);
+
+  // controls hint
+  ctx.textAlign = "center";
+  ctx.font = "14px monospace";
+  ctx.fillStyle = COLORS.muted;
+  ctx.fillText("Arrows / WASD move    Z undo    R reset", VIEW.w / 2, VIEW.h - 18);
+  ctx.restore();
 }

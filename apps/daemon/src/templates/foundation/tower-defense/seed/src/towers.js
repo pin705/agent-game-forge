@@ -1,86 +1,112 @@
-function canAffordTower(type) {
-  var def = TOWER_TYPES[type];
-  return def && state.gold >= def.cost;
+// towers.js — placement (click empty grid cell), targeting (cache + refresh on
+// cooldown), firing. (recipes/towers-and-targeting.md). Shares global `state`.
+function cellKey(col, row) { return `${col},${row}`; }
+
+function towerTypeById(id) {
+  return state.config.towers.find((t) => t.id === id) || null;
+}
+function towerTypeByIndex(i) {
+  return state.config.towers[i] || state.config.towers[0];
 }
 
-function spotOccupied(spotId) {
-  for (var i = 0; i < state.towers.length; i++) {
-    if (state.towers[i].spotId === spotId) return true;
+// is this grid cell free to build on? (inside grid, not on path, not occupied)
+function isCellBuildable(col, row) {
+  const g = state.grid;
+  if (col < 0 || row < 0 || col >= g.cols || row >= g.rows) return false;
+  if (state.occupied[cellKey(col, row)]) return false;
+  return !cellOnPath(col, row);
+}
+
+// a cell is "on path" if the path polyline passes near its centre
+function cellOnPath(col, row) {
+  const cs = state.grid.cellSize;
+  const cx = col * cs + cs / 2;
+  const cy = row * cs + cs / 2;
+  const pts = state.path.points;
+  const thresh = cs * 0.55;
+  for (let i = 1; i < pts.length; i++) {
+    if (distToSegment(cx, cy, pts[i - 1], pts[i]) <= thresh) return true;
   }
   return false;
 }
 
-function placeTower(spotId, x, y) {
-  var type = state.selectedTowerType || "archer";
-  var def = TOWER_TYPES[type];
-  if (!def || state.gold < def.cost) return;
-  if (spotOccupied(spotId)) return;
-  state.gold -= def.cost;
-  state.towers.push({
-    spotId: spotId,
-    type: type,
-    x: x, y: y,
-    damage: def.damage,
-    range: def.range,
-    cooldown: def.cooldown,
-    cooldownTimer: 0,
-    color: def.color
-  });
-  floater("-$" + def.cost, x, y - 10, { color: COLORS.gold, size: 14 });
+function distToSegment(px, py, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 === 0 ? 0 : ((px - a.x) * dx + (py - a.y) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  const cx = a.x + dx * t, cy = a.y + dy * t;
+  return Math.hypot(px - cx, py - cy);
+}
+
+// Attempt to place the selected tower type at a grid cell. Returns true on
+// success. Rejects (with a floater) if can't afford or cell unbuildable.
+function tryPlaceTower(col, row) {
+  const type = towerTypeByIndex(state.selectedTowerType);
+  const cs = state.grid.cellSize;
+  const cx = col * cs + cs / 2;
+  const cy = row * cs + cs / 2;
+  if (!isCellBuildable(col, row)) {
+    floater("blocked", cx, cy - 10, { color: COLORS.bad, size: 14 });
+    return false;
+  }
+  if (!canAfford(type.cost)) {
+    floater("need gold", cx, cy - 10, { color: COLORS.bad, size: 14 });
+    return false;
+  }
+  spendGold(type.cost);
+  state.occupied[cellKey(col, row)] = true;
+  const tower = {
+    id: `t_${state.towerSeq++}`,
+    typeId: type.id,
+    col, row,
+    x: cx, y: cy,
+    range: type.range,
+    damage: type.damage,
+    fireRate: type.fireRate,
+    color: type.color,
+    cooldown: 0,
+    target: null,
+    angle: 0,
+    recoil: 0,    // tweened on fire
+    scale: 0.1    // tweened in on place
+  };
+  state.towers.push(tower);
+  // JUICE: place → outBack pop-in + a small sparkle
+  tween(tower, { scale: 1 }, 0.34, "outBack");
+  burstParticles(cx, cy, 8, type.color);
+  floater(`-${type.cost}`, cx, cy - 14, { color: COLORS.gold, size: 15 });
+  return true;
+}
+
+function inRange(t, e) {
+  return Math.hypot(e.x - t.x, e.y - t.y) <= t.range;
+}
+
+// default targeting: "first" — enemy furthest along the path (closest to exit)
+function acquireTarget(t) {
+  let best = null;
+  let bestProg = -1;
+  for (const e of state.enemies) {
+    if (e.dead || !inRange(t, e)) continue;
+    const prog = pathProgress(e);
+    if (prog > bestProg) { best = e; bestProg = prog; }
+  }
+  return best;
 }
 
 function updateTowers(dt) {
-  for (var ti = 0; ti < state.towers.length; ti++) {
-    var tower = state.towers[ti];
-    tower.cooldownTimer = Math.max(0, tower.cooldownTimer - dt);
-    if (tower.cooldownTimer > 0) continue;
-    // Find first enemy (highest t) in range
-    var best = null, bestT = -1;
-    for (var ei = 0; ei < state.enemies.length; ei++) {
-      var e = state.enemies[ei];
-      if (!e.alive) continue;
-      var cx = e.x + e.w / 2, cy = e.y + e.h / 2;
-      if (Math.hypot(cx - tower.x, cy - tower.y) <= tower.range && e.t > bestT) {
-        best = e; bestT = e.t;
-      }
-    }
-    if (best) {
-      tower.cooldownTimer = tower.cooldown;
-      var tcx = best.x + best.w / 2, tcy = best.y + best.h / 2;
-      state.projectiles.push({ alive: true, x: tower.x, y: tower.y, tx: tcx, ty: tcy, targetId: best.id, speed: 400, damage: tower.damage });
-    }
-  }
-}
+  for (const t of state.towers) {
+    t.cooldown -= dt;
+    if (t.recoil > 0) t.recoil = Math.max(0, t.recoil - dt * 6);
 
-function updateProjectiles(dt) {
-  for (var i = state.projectiles.length - 1; i >= 0; i--) {
-    var p = state.projectiles[i];
-    if (!p.alive) { state.projectiles.splice(i, 1); continue; }
-    var dx = p.tx - p.x, dy = p.ty - p.y;
-    var dist = Math.hypot(dx, dy);
-    if (dist < 8) {
-      // Hit
-      var target = null;
-      for (var j = 0; j < state.enemies.length; j++) {
-        if (state.enemies[j].id === p.targetId && state.enemies[j].alive) { target = state.enemies[j]; break; }
-      }
-      if (target) {
-        target.hp -= p.damage;
-        floater("-" + p.damage, p.x, p.y, { color: "#ffd23f", size: 14 });
-        hitstop(0.03);
-        bumpCombo();
-        if (target.hp <= 0) {
-          target.alive = false;
-          state.gold += target.reward;
-          burstParticles(p.x, p.y, 5, target.color);
-          floater("+$" + target.reward, p.x, p.y - 18, { color: COLORS.gold, size: 13 });
-        }
-      }
-      state.projectiles.splice(i, 1);
-    } else {
-      var spd = Math.min(p.speed * dt, dist);
-      p.x += (dx / dist) * spd;
-      p.y += (dy / dist) * spd;
+    if (t.target && (t.target.dead || !inRange(t, t.target))) t.target = null;
+    if (!t.target) t.target = acquireTarget(t);
+    if (t.target) t.angle = Math.atan2(t.target.y - t.y, t.target.x - t.x);
+
+    if (t.cooldown <= 0 && t.target) {
+      fireTower(t, t.target);
+      t.cooldown = 1 / t.fireRate;
     }
   }
 }
