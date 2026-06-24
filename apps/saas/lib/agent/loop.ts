@@ -10,6 +10,9 @@ export type LoopResult = {
   inputTokens: number;
   outputTokens: number;
   steps: number;
+  /** True when the loop stopped to collect a question-form answer (the agent
+   *  called emit_question_form). The run reports `done.status: awaiting_input`. */
+  awaitingInput: boolean;
 };
 
 /**
@@ -36,6 +39,7 @@ export async function* runLoop(args: {
   let inputTokens = 0;
   let outputTokens = 0;
   let steps = 0;
+  let awaitingInput = false;
 
   for (let i = 0; i < MAX_STEPS; i++) {
     const res = await model.complete(messages);
@@ -62,7 +66,7 @@ export async function* runLoop(args: {
 
     for (const call of res.toolCalls) {
       yield { type: "tool_call", id: call.id, name: call.name, args: call.arguments };
-      const { content, events } = await executeTool(args.sandbox, call.name, call.arguments);
+      const { content, events, awaitInput } = await executeTool(args.sandbox, call.name, call.arguments);
       for (const ev of events) yield ev;
       const ok = !content.startsWith("ERROR");
       yield {
@@ -73,10 +77,17 @@ export async function* runLoop(args: {
         summary: content.slice(0, 200),
       };
       messages.push({ role: "tool", tool_call_id: call.id, content });
+      if (awaitInput) {
+        // The agent asked a clarifying question — end the turn cleanly so the
+        // user can answer (the follow-up run resumes the loop with their reply).
+        awaitingInput = true;
+        break;
+      }
     }
+    if (awaitingInput) break;
   }
 
-  return { inputTokens, outputTokens, steps };
+  return { inputTokens, outputTokens, steps, awaitingInput };
 }
 
 export { modelDriverName };

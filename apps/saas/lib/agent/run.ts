@@ -5,6 +5,7 @@ import { runLoop, modelDriverName } from "./loop";
 import { resolveModelId } from "./model";
 import { copyAgentTools } from "./agent-tools";
 import { chargeRun } from "@/lib/billing/credits";
+import * as conversations from "@/lib/conversations/store";
 
 export type RunResult = {
   runId: string;
@@ -16,6 +17,9 @@ export type RunResult = {
   images: number;
   /** Wall time the sandbox was alive, in milliseconds (metering, §5). */
   sandboxMs: number;
+  /** The conversation this run was persisted to (created on demand). Null when
+   *  persistence is unavailable (no userId in prod). */
+  conversationId: string | null;
 };
 
 /**
@@ -41,6 +45,12 @@ export async function* runAgent(args: {
    *  falls back to the default when absent/disallowed. This id is recorded on
    *  the run and PRICED per-tier (pricing.ts keys by it). */
   model?: string;
+  /** Bind this run to an existing conversation; when absent, one is created for
+   *  the project (Batch 2 chat history). */
+  conversationId?: string;
+  /** Project-relative reference-image paths the user attached to this message
+   *  (Batch 2 attachments). Surfaced to the agent as context. */
+  refImagePaths?: string[];
 }): AsyncGenerator<RunEvent, RunResult, void> {
   const storage = getStorage();
   // Mark the wall clock just before the sandbox spins up — sandbox_ms is the
@@ -60,11 +70,54 @@ export async function* runAgent(args: {
     model: modelId,
   });
 
+  // ── Conversation + message persistence (Batch 2) ───────────────────────────
+  // Resolve (or create) the conversation, then persist the user prompt as a
+  // `messages` row. Best-effort: a persistence failure NEVER crashes the run.
+  let conversationId: string | null = args.conversationId ?? null;
+  try {
+    if (!conversationId) {
+      const conv = await conversations.createConversation(args.projectId, {
+        userId: args.userId,
+        title: args.prompt.slice(0, 60),
+      });
+      conversationId = conv?.id ?? null;
+    }
+    if (conversationId) {
+      await conversations.appendMessage({
+        conversationId,
+        role: "user",
+        content: args.prompt,
+        // Record the attached references on the user turn so they replay in history.
+        events: args.refImagePaths?.length
+          ? [{ type: "refs", paths: args.refImagePaths }]
+          : null,
+      });
+    }
+  } catch {
+    /* best-effort persistence — never crash the run */
+  }
+
+  // Reference images: surface their project-relative paths to the agent as
+  // context text. (DeepSeek's chat tier is text-only; the agent can read the
+  // files via read_file / list the refs prefix. This matches studio's intent:
+  // the agent KNOWS about the uploaded reference images.)
+  const effectivePrompt =
+    args.refImagePaths && args.refImagePaths.length
+      ? `${args.prompt}\n\n---\nReference images attached by the user (project-relative paths):\n${args.refImagePaths
+          .map((p) => `- ${p}`)
+          .join("\n")}\nInspect them with read_file if helpful.`
+      : args.prompt;
+
+  // Collect streamed events so the assistant turn can be persisted verbatim
+  // (the `events` jsonb column → replayed by the client to rebuild the turn).
+  const collected: RunEvent[] = [];
+
   yield {
     type: "run_start",
     runId,
     sandboxId: sandbox.id,
     model: modelId,
+    conversationId,
     driver: { sandbox: sandboxDriverName(), storage: storageDriverName(), model: driver },
   };
 
@@ -76,6 +129,7 @@ export async function* runAgent(args: {
     files: [],
     images: 0,
     sandboxMs: 0,
+    conversationId,
   };
   // Count image-gen tool calls as we forward loop events (metering, §5). 0 today.
   let images = 0;
@@ -86,11 +140,13 @@ export async function* runAgent(args: {
     if (existing.length) await sandbox.writeFiles(existing);
     await copyAgentTools(sandbox);
 
-    // (b) drive the loop, forwarding every event.
-    const loop = runLoop({ sandbox, prompt: args.prompt, modelId });
+    // (b) drive the loop, forwarding every event (and collecting them for the
+    //     persisted assistant turn).
+    const loop = runLoop({ sandbox, prompt: effectivePrompt, modelId });
     let next = await loop.next();
     while (!next.done) {
       if (next.value.type === "tool_call" && next.value.name === "image_gen") images += 1;
+      collected.push(next.value);
       yield next.value;
       next = await loop.next();
     }
@@ -109,15 +165,38 @@ export async function* runAgent(args: {
       files: projectFiles.map((f) => f.path).sort(),
       images,
       sandboxMs: Date.now() - sandboxStart,
+      conversationId,
     };
 
-    yield {
+    const doneEvent: RunEvent = {
       type: "done",
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
       steps: result.steps,
       files: result.files,
+      status: totals.awaitingInput ? "awaiting_input" : "complete",
     };
+    collected.push(doneEvent);
+    yield doneEvent;
+
+    // Persist the assistant turn: its final text + the full event stream (so the
+    // client can rebuild markdown, tool chips, and any question form on reload).
+    if (conversationId) {
+      const finalText = collected
+        .filter((e): e is Extract<RunEvent, { type: "text_delta" }> => e.type === "text_delta")
+        .map((e) => e.text)
+        .join("");
+      try {
+        await conversations.appendMessage({
+          conversationId,
+          role: "assistant",
+          content: finalText || null,
+          events: collected,
+        });
+      } catch {
+        /* best-effort */
+      }
+    }
 
     // (c2) Meter + charge: compute credits and, when Supabase is configured,
     // settle the ledger atomically. Local dev computes + logs without crashing.

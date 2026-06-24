@@ -164,7 +164,15 @@ export class MockModel implements Model {
    *  end-to-end even offline). Defaults to "mock-deepseek" when none is chosen. */
   readonly name: string;
   private step = 0;
-  private readonly script: Script;
+  private script: Script;
+  /** The build script (used after a question form is answered, or directly when
+   *  no clarification was requested). */
+  private readonly buildScript: Script;
+  /** A one-shot scripted question-form turn, played when the FIRST user prompt
+   *  asks for clarification (Batch 2: makes the question-form path testable
+   *  offline). After it's answered, the build script runs. */
+  private readonly questionScript: Script;
+  private questionAsked = false;
 
   constructor(modelId?: string) {
     // The mock ignores the id for BEHAVIOUR (deterministic script) but reports
@@ -209,7 +217,48 @@ frame();
       2,
     );
 
-    this.script = [
+    // A scripted single-turn question form. Played only when the user's prompt
+    // explicitly asks the agent to clarify (see complete()), so the normal build
+    // path stays deterministic for the existing smoke test.
+    this.questionScript = [
+      {
+        text: "Before I build, a couple of quick choices so it matches what you want.",
+        toolCalls: [
+          {
+            name: "emit_question_form",
+            arguments: {
+              id: "mock-clarify",
+              title: "A couple of quick questions",
+              intro: "These shape the starter build.",
+              submitLabel: "Build it",
+              fields: [
+                {
+                  key: "genre",
+                  label: "Game genre",
+                  type: "radio",
+                  required: true,
+                  options: [
+                    { value: "platformer", label: "Platformer", detail: "Jump across platforms" },
+                    { value: "shooter", label: "Top-down shooter" },
+                  ],
+                },
+                {
+                  key: "palette",
+                  label: "Color palette",
+                  type: "select",
+                  options: [
+                    { value: "warm", label: "Warm" },
+                    { value: "cool", label: "Cool" },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ];
+
+    this.buildScript = [
       {
         text: "Inspecting the project scaffold before building.",
         toolCalls: [{ name: "list_files", arguments: { glob: "**/*" } }],
@@ -246,12 +295,30 @@ frame();
         toolCalls: [],
       },
     ];
+
+    // Default to the build script; complete() may swap to the question script
+    // on the first turn if the prompt asks for clarification.
+    this.script = this.buildScript;
   }
 
   async complete(messages: ChatMessage[]): Promise<ModelResponse> {
-    void messages; // deterministic: the mock ignores conversation state.
+    // On the very first call, peek at the user prompt: if it asks the agent to
+    // clarify, play the one-shot question-form script instead of building. After
+    // the form is answered (the answers arrive as a follow-up user turn), fall
+    // back to the normal build script.
+    if (this.step === 0) {
+      const firstUser = messages.find((m) => m.role === "user");
+      const text = firstUser?.role === "user" ? firstUser.content : "";
+      // A follow-up run that carries form answers ALWAYS builds (never re-asks),
+      // even though the answer block mentions the form id.
+      const isAnswer = /^##\s*Form answers/im.test(text);
+      const wantsClarify = !isAnswer && /\bclarif|\bask\b|\bquestion/i.test(text);
+      this.script = wantsClarify && !this.questionAsked ? this.questionScript : this.buildScript;
+    }
     const entry = this.script[Math.min(this.step, this.script.length - 1)];
     this.step += 1;
+    // Once the question turn is delivered, mark it asked so it never replays.
+    if (this.script === this.questionScript) this.questionAsked = true;
     const toolCalls: ToolCall[] = entry.toolCalls.map((tc, i) => ({
       id: `mock-call-${this.step}-${i}`,
       name: tc.name,

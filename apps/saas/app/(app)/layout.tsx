@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { TopNav } from "@/components/top-nav";
+import { AppChrome } from "@/components/app-chrome";
 
 // Protected routes are always per-request (auth + user data).
 export const dynamic = "force-dynamic";
@@ -25,10 +26,14 @@ export default async function AppLayout({
     .maybeSingle();
   if (profile) credits = profile.credits_balance as number;
 
+  const email = user.email ?? null;
+
   return (
-    <div className="flex min-h-svh flex-col">
-      <TopNav email={user.email ?? "account"} credits={credits} />
-      <div className="flex-1">{children}</div>
-    </div>
+    <AppChrome email={email}>
+      <div className="flex min-h-svh flex-col">
+        <TopNav email={email ?? "account"} credits={credits} />
+        <div className="flex-1">{children}</div>
+      </div>
+    </AppChrome>
   );
 }

@@ -12,6 +12,16 @@ type CookiesToSet = { name: string; value: string; options: CookieOptions }[];
 const PROTECTED_PREFIXES = ["/dashboard", "/build", "/billing"];
 
 /**
+ * Carve-outs inside the protected prefixes that must NOT be bounced to /login
+ * at the edge. The draft-preview route (`/build/<id>/preview/...`) is the iframe
+ * source for the live game preview — it does its OWN owner-only authorization in
+ * the route handler (lib/editor/access.ts) and serves raw game bytes, so a blanket
+ * login redirect here would load the login page inside the preview frame instead
+ * of the game. Letting it through to the handler keeps the access check intact.
+ */
+const PROTECTED_EXEMPT = /^\/build\/[^/]+\/preview(?:\/|$)/;
+
+/**
  * Auth-only routes — an already-authenticated user hitting these is bounced to
  * the dashboard (no point showing login/signup when signed in).
  */
@@ -51,9 +61,9 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
-  const isProtected = PROTECTED_PREFIXES.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`),
-  );
+  const isProtected =
+    PROTECTED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`)) &&
+    !PROTECTED_EXEMPT.test(pathname);
 
   if (isProtected && !user) {
     const url = request.nextUrl.clone();

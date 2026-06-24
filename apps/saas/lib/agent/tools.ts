@@ -1,6 +1,7 @@
 import type { Sandbox } from "@/lib/sandbox";
 import { textFile } from "@/lib/sandbox";
 import type { RunEvent } from "./events";
+import { parseQuestionForm } from "./forms";
 
 /** OpenAI-compatible function-calling tool schemas (DeepSeek understands these). */
 export const TOOL_SCHEMAS = [
@@ -76,13 +77,43 @@ export const TOOL_SCHEMAS = [
     function: {
       name: "emit_question_form",
       description:
-        "Surface a structured clarifying question to the user. Use only when disambiguation is required before significant work.",
+        "Surface a structured clarifying question to the user. Use ONLY when disambiguation is genuinely required before significant work. The current turn ends after this so the user can answer; their answers arrive as the next message.",
       parameters: {
         type: "object",
         properties: {
-          id: { type: "string" },
+          id: { type: "string", description: "Stable form id" },
           title: { type: "string" },
-          fields: { type: "array", items: { type: "object" } },
+          intro: { type: "string", description: "Optional short context line" },
+          submitLabel: { type: "string" },
+          fields: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                key: { type: "string" },
+                label: { type: "string" },
+                type: {
+                  type: "string",
+                  enum: ["select", "radio", "checkbox", "text", "textarea"],
+                },
+                required: { type: "boolean" },
+                hint: { type: "string" },
+                placeholder: { type: "string" },
+                options: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      value: { type: "string" },
+                      label: { type: "string" },
+                      detail: { type: "string" },
+                    },
+                  },
+                },
+              },
+              required: ["key", "label", "type"],
+            },
+          },
         },
         required: ["id", "title"],
       },
@@ -90,7 +121,13 @@ export const TOOL_SCHEMAS = [
   },
 ];
 
-export type ToolResult = { content: string; events: RunEvent[] };
+export type ToolResult = {
+  content: string;
+  events: RunEvent[];
+  /** Set by `emit_question_form`: the loop should END the turn cleanly with an
+   *  `awaiting_input` status instead of feeding the result back for another step. */
+  awaitInput?: boolean;
+};
 
 /**
  * Execute one tool call against the sandbox. Returns the string fed back to
@@ -151,8 +188,21 @@ export async function executeTool(
         };
       }
       case "emit_question_form": {
-        events.push({ type: "question", id: String(args.id), payload: args });
-        return { content: `Question form '${args.id}' surfaced to the user. (P1: recorded as event.)`, events };
+        const form = parseQuestionForm(args);
+        if (!form) {
+          return {
+            content: "ERROR: emit_question_form requires at least `id` and `title`.",
+            events,
+          };
+        }
+        events.push({ type: "question", id: form.id, form });
+        // Signal the loop to end the turn cleanly: the user will answer and a
+        // follow-up run resumes the agent (no held-open SSE).
+        return {
+          content: `Question form '${form.id}' surfaced to the user; awaiting their answer.`,
+          events,
+          awaitInput: true,
+        };
       }
       default:
         return { content: `ERROR: unknown tool '${name}'`, events };

@@ -106,4 +106,12 @@ export class R2Storage implements Storage {
   async putProjectFiles(projectId: string, files: ProjectFile[]): Promise<void> {
     for (const f of files) await this.writeProjectFile(projectId, f.path, f.bytes);
   }
+
+  async deleteProjectFile(projectId: string, p: string): Promise<void> {
+    const { DeleteObjectCommand } = await import("@aws-sdk/client-s3");
+    const client = await this.client();
+    await client.send(
+      new DeleteObjectCommand({ Bucket: this.bucket, Key: this.prefix(projectId) + p }),
+    );
+  }
 }

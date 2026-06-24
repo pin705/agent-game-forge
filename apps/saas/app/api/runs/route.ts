@@ -29,7 +29,13 @@ function sse(event: RunEvent): string {
  *    allowed so the loop can be smoke-tested with zero accounts.
  */
 export async function POST(req: NextRequest) {
-  let body: { projectId?: string; prompt?: string; model?: string };
+  let body: {
+    projectId?: string;
+    prompt?: string;
+    model?: string;
+    conversationId?: string;
+    refImagePaths?: unknown;
+  };
   try {
     body = await req.json();
   } catch {
@@ -40,6 +46,10 @@ export async function POST(req: NextRequest) {
   if (!projectId || !prompt) {
     return Response.json({ error: "projectId and prompt are required" }, { status: 400 });
   }
+  const conversationId = typeof body.conversationId === "string" ? body.conversationId.trim() : undefined;
+  const refImagePaths = Array.isArray(body.refImagePaths)
+    ? body.refImagePaths.filter((p): p is string => typeof p === "string")
+    : undefined;
 
   // Optional model selection (P5). An explicit id MUST be an enabled catalog id
   // — premium tiers aren't wired, so we refuse them rather than fake a run. No
@@ -91,7 +101,14 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        const gen = runAgent({ projectId, prompt, userId, model: requestedModel });
+        const gen = runAgent({
+          projectId,
+          prompt,
+          userId,
+          model: requestedModel,
+          conversationId,
+          refImagePaths,
+        });
         let next = await gen.next();
         while (!next.done) {
           controller.enqueue(encoder.encode(sse(next.value)));

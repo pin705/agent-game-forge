@@ -73,4 +73,12 @@ export class LocalStorage implements Storage {
     // Write the raw bytes verbatim (no encoding).
     await fs.writeFile(full, bytes);
   }
+
+  async deleteProjectFile(projectId: string, p: string): Promise<void> {
+    try {
+      await fs.unlink(path.join(this.root(projectId), p));
+    } catch {
+      /* already gone — idempotent delete */
+    }
+  }
 }

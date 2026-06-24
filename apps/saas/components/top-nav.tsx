@@ -9,6 +9,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { TopNavActions } from "@/components/top-nav-actions";
+import { SettingsMenuItem } from "@/components/settings-menu-item";
 
 /**
  * App top nav: wordmark + user email with a sign-out dropdown.
@@ -48,6 +50,7 @@ export function TopNav({ email, credits }: { email: string; credits: number | nu
           )}
           <Plus className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
         </Link>
+        <TopNavActions />
         <DropdownMenu>
           <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-accent">
             <span className="max-w-[180px] truncate">{email}</span>
@@ -57,6 +60,8 @@ export function TopNav({ email, credits }: { email: string; credits: number | nu
             <DropdownMenuLabel className="truncate font-normal text-muted-foreground">
               {email}
             </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <SettingsMenuItem />
             <DropdownMenuSeparator />
             <form action={signOut}>
               {/* Server action sign-out; rendered as a menu item button. */}

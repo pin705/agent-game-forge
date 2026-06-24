@@ -49,4 +49,6 @@ export interface Storage {
   readProjectFileText(projectId: string, path: string): Promise<string | null>;
   /** Write a single file from raw bytes. */
   writeProjectFile(projectId: string, path: string, bytes: Uint8Array): Promise<void>;
+  /** Delete a single file. No-op if it doesn't exist (idempotent). */
+  deleteProjectFile(projectId: string, path: string): Promise<void>;
 }

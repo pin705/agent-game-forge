@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Toaster } from "@/components/ui/sonner";
+import { Providers } from "@/components/providers";
+import { themeScript } from "@/lib/theme";
 import "./globals.css";
 
 // Fonts are pure CSS stacks (--font-sans / --font-mono live in globals.css).
@@ -16,12 +18,18 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  // Light is the default theme (matches the studio's `:root`); `.dark` is
-  // opt-in. No theme provider in P0 — keep the shell dependency-light.
+  // Theme (Batch 4): light / dark / system, class-based on <html>. The inline
+  // script below runs BEFORE hydration so the `.dark` class is correct on the
+  // first paint — no flash, no SSR/client mismatch (see lib/theme.tsx).
+  // suppressHydrationWarning: the script legitimately mutates <html>'s class
+  // before React hydrates, which would otherwise warn.
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>
-        {children}
+        <Providers>{children}</Providers>
         <Toaster />
       </body>
     </html>
