@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Upload, Play, Layers, Image as ImageIcon, Code2, Database, MoreVertical, Sun, Moon, Settings, History, Package, Download, PanelLeftOpen } from 'lucide-react';
 import { toast } from 'sonner';
@@ -27,7 +27,42 @@ import { StatusBar } from '@/components/StatusBar';
 import { PendingChangesModal } from '@/components/PendingChangesModal';
 import { PackReviewModal } from '@/components/PackReviewModal';
 import { ImportCodexSessionModal } from '@/components/ImportCodexSessionModal';
+import { CommandPalette, type TabValue } from '@/components/CommandPalette';
 import { useT } from '@/lib/i18n';
+
+// Resizable workspace columns: [conversations, assistant]. Column 3 (workspace)
+// is the flexible `1fr` remainder. Widths persist to localStorage; the
+// conversations-collapse toggle overrides col 1 to a 44px rail.
+const COLS_LS_KEY = 'forge.cols';
+const CONV_MIN = 180;
+const CONV_MAX = 360;
+const CONV_DEFAULT = 210;
+const CHAT_MIN = 280;
+const CHAT_MAX = 560;
+const CHAT_DEFAULT = 360;
+const COLLAPSED_CONV = 44;
+
+type ColWidths = { conv: number; chat: number };
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n));
+}
+
+function loadCols(): ColWidths {
+  try {
+    const raw = localStorage.getItem(COLS_LS_KEY);
+    if (raw) {
+      const p = JSON.parse(raw) as Partial<ColWidths>;
+      return {
+        conv: clamp(Number(p.conv) || CONV_DEFAULT, CONV_MIN, CONV_MAX),
+        chat: clamp(Number(p.chat) || CHAT_DEFAULT, CHAT_MIN, CHAT_MAX),
+      };
+    }
+  } catch {
+    /* storage disabled / bad JSON — fall back to defaults */
+  }
+  return { conv: CONV_DEFAULT, chat: CHAT_DEFAULT };
+}
 
 export function Build() {
   const t = useT();
@@ -40,7 +75,81 @@ export function Build() {
   const [importOpen, setImportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [convOpen, setConvOpen] = useState<boolean>(() => localStorage.getItem('forge.convOpen') !== '0');
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [tab, setTab] = useState<TabValue>('play');
+  const [cols, setCols] = useState<ColWidths>(loadCols);
   const { theme, toggle: toggleTheme } = useTheme();
+
+  const publish = useCallback(
+    () => toast(t('common.comingSoon', { feature: t('build.publish') })),
+    [t],
+  );
+  // "New chat" = drop back to the latest/fresh conversation (Chat re-keys to
+  // 'latest' and replays the idea prompt), mirroring an empty selection.
+  const newChat = useCallback(() => setConversationId(null), []);
+
+  // --- Column resize (pointer drag) -------------------------------------
+  // Which divider is being dragged, plus the pointer/width origin captured at
+  // pointerdown so pointermove can compute deltas without per-move state reads.
+  const dragRef = useRef<{ edge: 'conv' | 'chat'; startX: number; startW: number } | null>(null);
+
+  const persistCols = useCallback((next: ColWidths) => {
+    try {
+      localStorage.setItem(COLS_LS_KEY, JSON.stringify(next));
+    } catch {
+      /* storage disabled — resize still applies for this session */
+    }
+  }, []);
+
+  useEffect(() => {
+    function onMove(e: PointerEvent) {
+      const d = dragRef.current;
+      if (!d) return;
+      const delta = e.clientX - d.startX;
+      setCols((prev) =>
+        d.edge === 'conv'
+          ? { ...prev, conv: clamp(d.startW + delta, CONV_MIN, CONV_MAX) }
+          : { ...prev, chat: clamp(d.startW + delta, CHAT_MIN, CHAT_MAX) },
+      );
+    }
+    function onUp() {
+      if (!dragRef.current) return;
+      dragRef.current = null;
+      document.body.style.removeProperty('cursor');
+      document.body.style.removeProperty('user-select');
+      setCols((cur) => {
+        persistCols(cur);
+        return cur;
+      });
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [persistCols]);
+
+  const startDrag = (edge: 'conv' | 'chat') => (e: React.PointerEvent) => {
+    // The conversations rail is fixed-width while collapsed — no resize there.
+    if (edge === 'conv' && !convOpen) return;
+    e.preventDefault();
+    dragRef.current = { edge, startX: e.clientX, startW: edge === 'conv' ? cols.conv : cols.chat };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  // ⌘K / Ctrl+K toggles the command palette.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const toggleConv = () =>
     setConvOpen((v) => {
@@ -105,7 +214,7 @@ export function Build() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button size="sm" onClick={() => toast(t('common.comingSoon', { feature: t('build.publish') }))}>
+        <Button size="sm" onClick={publish}>
           <Upload />
           {t('build.publish')}
         </Button>
@@ -113,7 +222,9 @@ export function Build() {
 
       <div
         className="grid min-h-0 flex-1"
-        style={{ gridTemplateColumns: `${convOpen ? '210px' : '44px'} 360px 1fr` }}
+        style={{
+          gridTemplateColumns: `${convOpen ? `${cols.conv}px` : `${COLLAPSED_CONV}px`} 6px ${cols.chat}px 6px 1fr`,
+        }}
       >
         {/* Conversations */}
         <div className="flex min-h-0 flex-col bg-muted/20">
@@ -141,8 +252,18 @@ export function Build() {
           ) : null}
         </div>
 
+        {/* Resize: conversations | assistant (disabled while collapsed) */}
+        <div
+          onPointerDown={startDrag('conv')}
+          className={`group relative border-r ${convOpen ? 'cursor-col-resize' : ''}`}
+          role="separator"
+          aria-orientation="vertical"
+        >
+          <div className="absolute inset-y-0 -left-px -right-px transition-colors group-hover:bg-border" />
+        </div>
+
         {/* Assistant */}
-        <div className="flex min-h-0 flex-col border-r">
+        <div className="flex min-h-0 flex-col">
           {project ? (
             <Chat
               key={conversationId ?? 'latest'}
@@ -155,9 +276,19 @@ export function Build() {
           )}
         </div>
 
+        {/* Resize: assistant | workspace */}
+        <div
+          onPointerDown={startDrag('chat')}
+          className="group relative cursor-col-resize border-r"
+          role="separator"
+          aria-orientation="vertical"
+        >
+          <div className="absolute inset-y-0 -left-px -right-px transition-colors group-hover:bg-border" />
+        </div>
+
         {/* Preview / Scene / Assets / Data / Code */}
         <div className="flex min-h-0 flex-col">
-          <Tabs defaultValue="play" className="flex min-h-0 flex-1 flex-col">
+          <Tabs value={tab} onValueChange={(v) => setTab(v as TabValue)} className="flex min-h-0 flex-1 flex-col">
             <div className="bg-muted/30 px-4 py-2">
               <TabsList>
                 <TabsTrigger value="play">
@@ -204,6 +335,16 @@ export function Build() {
       <StatusBar project={project} />
 
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        onSelectTab={setTab}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onNewChat={newChat}
+        onToggleTheme={toggleTheme}
+        onPublish={publish}
+      />
 
       {project ? (
         <>

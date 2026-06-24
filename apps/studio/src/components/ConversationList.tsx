@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, MessageSquare, Trash2, Loader2, PanelLeftClose, Search } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Plus, MessageSquare, Trash2, Loader2, PanelLeftClose, Search, MoreHorizontal, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import {
   fetchConversations,
@@ -11,6 +17,7 @@ import {
   removeConversation,
   type Conversation,
 } from '@/lib/files';
+import { renameConversation } from '@/lib/runs';
 import { useT } from '@/lib/i18n';
 
 interface ConversationListProps {
@@ -50,6 +57,14 @@ export function ConversationList({ projectPath, conversationId, onSelect, onColl
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
+  // Inline rename: which row is being edited, its draft text, and whether the
+  // PATCH is in flight. A ref flag lets us ignore the blur that fires when Esc
+  // cancels (and the double-commit when Enter is followed by blur).
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const skipBlurRef = useRef(false);
+
   const title = useCallback(
     (c: Conversation): string => (c.title && c.title.trim() ? c.title : t('conversations.untitled')),
     [t],
@@ -68,6 +83,7 @@ export function ConversationList({ projectPath, conversationId, onSelect, onColl
 
   useEffect(() => {
     setConversations(null);
+    setRenamingId(null);
     void reload();
   }, [reload]);
 
@@ -99,6 +115,43 @@ export function ConversationList({ projectPath, conversationId, onSelect, onColl
       toast.error(t('conversations.deleteFailed', { error: e instanceof Error ? e.message : String(e) }));
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  function startRename(c: Conversation) {
+    setRenamingId(c.id);
+    setDraft(c.title && c.title.trim() ? c.title : '');
+  }
+
+  function cancelRename() {
+    setRenamingId(null);
+    setDraft('');
+  }
+
+  async function commitRename(c: Conversation) {
+    if (savingId) return;
+    const next = draft.trim();
+    const current = c.title?.trim() ?? '';
+    // Nothing to do on empty or unchanged — just drop back to the static row.
+    if (!next || next === current) {
+      cancelRename();
+      return;
+    }
+    setSavingId(c.id);
+    try {
+      const updated = await renameConversation(c.id, next);
+      setConversations((prev) =>
+        prev ? prev.map((x) => (x.id === c.id ? { ...x, title: updated.title } : x)) : prev,
+      );
+      setRenamingId(null);
+      setDraft('');
+    } catch (e) {
+      // Revert: keep the static row with its original title; surface the error.
+      toast.error(t('rename.failed', { error: e instanceof Error ? e.message : String(e) }));
+      setRenamingId(null);
+      setDraft('');
+    } finally {
+      setSavingId(null);
     }
   }
 
@@ -135,6 +188,52 @@ export function ConversationList({ projectPath, conversationId, onSelect, onColl
 
   const renderRow = (c: Conversation) => {
     const active = c.id === conversationId;
+    const editing = renamingId === c.id;
+    const saving = savingId === c.id;
+
+    if (editing) {
+      return (
+        <div
+          key={c.id}
+          className={cn(
+            'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm',
+            active ? 'bg-muted text-foreground' : 'bg-muted/40',
+          )}
+        >
+          <MessageSquare className={cn('size-4 shrink-0', active ? 'text-primary' : 'text-muted-foreground')} />
+          <Input
+            autoFocus
+            value={draft}
+            disabled={saving}
+            aria-label={t('conversations.rename')}
+            className="h-7 min-w-0 flex-1 px-2 py-1"
+            onChange={(e) => setDraft(e.target.value)}
+            onFocus={(e) => e.currentTarget.select()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                skipBlurRef.current = true;
+                void commitRename(c);
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                skipBlurRef.current = true;
+                cancelRename();
+              }
+            }}
+            onBlur={() => {
+              // Enter/Esc already handled this edit — don't double-act on blur.
+              if (skipBlurRef.current) {
+                skipBlurRef.current = false;
+                return;
+              }
+              void commitRename(c);
+            }}
+          />
+          {saving ? <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" /> : null}
+        </div>
+      );
+    }
+
     return (
       <div
         key={c.id}
@@ -146,6 +245,7 @@ export function ConversationList({ projectPath, conversationId, onSelect, onColl
         <button
           type="button"
           onClick={() => onSelect(c.id)}
+          onDoubleClick={() => startRename(c)}
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
           title={title(c)}
         >
@@ -154,16 +254,32 @@ export function ConversationList({ projectPath, conversationId, onSelect, onColl
           />
           <span className="truncate">{title(c)}</span>
         </button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-6 shrink-0 text-muted-foreground opacity-0 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
-          title={t('conversations.deleteChat')}
-          disabled={deletingId === c.id}
-          onClick={() => void onDelete(c.id)}
-        >
-          {deletingId === c.id ? <Loader2 className="animate-spin" /> : <Trash2 />}
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6 shrink-0 text-muted-foreground opacity-0 focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+              title={t('common.rename')}
+              disabled={deletingId === c.id}
+            >
+              {deletingId === c.id ? <Loader2 className="animate-spin" /> : <MoreHorizontal />}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[8rem]">
+            <DropdownMenuItem onSelect={() => startRename(c)}>
+              <Pencil />
+              {t('common.rename')}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onSelect={() => void onDelete(c.id)}
+            >
+              <Trash2 />
+              {t('conversations.deleteChat')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     );
   };

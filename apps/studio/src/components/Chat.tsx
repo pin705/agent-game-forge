@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Square, Loader2, Pencil, Terminal, Image as ImageIcon, Sparkles, Wrench, AlertTriangle, ChevronRight, Check, ChevronDown } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
+import { Send, Square, Loader2, Pencil, Terminal, Image as ImageIcon, Sparkles, Wrench, AlertTriangle, ChevronRight, Check, ChevronDown, Paperclip, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -18,11 +19,13 @@ import {
   fetchConversations,
   formatFormAnswers,
   subscribeRun,
+  uploadRefImage,
   type AgentEvent,
   type QuestionForm,
   type QuestionFormAnswers,
   type ReasoningEffort,
 } from '@/lib/runs';
+import { assetUrl } from '@/lib/assets';
 import { QuestionFormCard } from '@/components/QuestionFormCard';
 import { Markdown } from '@/components/Markdown';
 import { useSettings } from '@/lib/settings';
@@ -30,6 +33,20 @@ import { REASONING_OPTIONS, shortModelLabel, useAgentModels } from '@/lib/models
 import { useT, type TKey } from '@/lib/i18n';
 
 type TFn = (key: TKey, vars?: Record<string, string | number>) => string;
+
+/** Cap on reference images attached to a single composer message (mirrors
+ *  Dropzone's MAX_REFS). */
+const MAX_REFS = 10;
+
+function isImageFile(f: File): boolean {
+  if (f.type.startsWith('image/')) return true;
+  return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.name);
+}
+
+/** Last path segment, for the thumbnail tooltip. */
+function refBasename(relPath: string): string {
+  return relPath.replace(/\\/g, '/').split('/').pop() || relPath;
+}
 
 // ---------------------------------------------------------------------------
 // Turn model + block builder (simplified port of apps/web/src/lib/blocks.ts).
@@ -202,6 +219,11 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submittedForms, setSubmittedForms] = useState<Set<string>>(() => new Set());
+  // Reference images attached to the *next* message — project-relative paths
+  // returned by uploadRefImage(). Cleared after each successful send().
+  const [refPaths, setRefPaths] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const { agentId, model, reasoning } = useSettings();
   const t = useT();
 
@@ -210,6 +232,10 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
   const runUnsubRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const autoSentRef = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Depth counter so nested dragenter/dragleave (over children) don't flicker
+  // the drag-over highlight off prematurely.
+  const dragDepthRef = useRef(0);
 
   const closeRunSub = useCallback(() => {
     if (runUnsubRef.current) {
@@ -217,6 +243,92 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
       runUnsubRef.current = null;
     }
   }, []);
+
+  // Upload dropped / picked image files to the project's ref store, appending
+  // the returned relPaths to the composer attachments (capped at MAX_REFS).
+  const addFiles = useCallback(
+    async (files: File[] | FileList) => {
+      if (!projectPath || uploading) return;
+
+      const images = Array.from(files).filter(isImageFile);
+      if (images.length === 0) {
+        toast.error(t('dropzone.dropFiles'));
+        return;
+      }
+
+      // Read remaining slots from the latest state (avoids a stale closure
+      // when several drops land in quick succession).
+      let slots = 0;
+      setRefPaths((current) => {
+        slots = MAX_REFS - current.length;
+        return current;
+      });
+      if (slots <= 0) {
+        toast.error(t('dropzone.limit', { max: MAX_REFS }));
+        return;
+      }
+      const accepted = images.slice(0, slots);
+
+      setUploading(true);
+      const added: string[] = [];
+      try {
+        for (const file of accepted) {
+          added.push(await uploadRefImage(projectPath, file));
+        }
+        setRefPaths((current) => [...current, ...added].slice(0, MAX_REFS));
+        toast.success(
+          added.length === 1 ? t('dropzone.refAdded') : t('dropzone.refsAdded', { n: added.length }),
+        );
+      } catch (err) {
+        toast.error(
+          t('dropzone.uploadFailed', { error: err instanceof Error ? err.message : String(err) }),
+        );
+      } finally {
+        setUploading(false);
+      }
+    },
+    [projectPath, uploading, t],
+  );
+
+  const removeRef = useCallback((relPath: string) => {
+    setRefPaths((current) => current.filter((p) => p !== relPath));
+  }, []);
+
+  // Drag-and-drop over the composer card. A depth counter keeps the highlight
+  // stable while the cursor moves across child nodes.
+  const onDragEnter = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      if (!projectPath) return;
+      if (!Array.from(e.dataTransfer?.types ?? []).includes('Files')) return;
+      e.preventDefault();
+      dragDepthRef.current += 1;
+      setDragOver(true);
+    },
+    [projectPath],
+  );
+  const onDragOver = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      if (!projectPath) return;
+      if (!Array.from(e.dataTransfer?.types ?? []).includes('Files')) return;
+      e.preventDefault();
+    },
+    [projectPath],
+  );
+  const onDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragOver(false);
+  }, []);
+  const onDrop = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      dragDepthRef.current = 0;
+      setDragOver(false);
+      if (!projectPath) return;
+      if (e.dataTransfer?.files?.length) void addFiles(e.dataTransfer.files);
+    },
+    [projectPath, addFiles],
+  );
 
   // Tear down the SSE stream on unmount.
   useEffect(() => () => closeRunSub(), [closeRunSub]);
@@ -278,8 +390,17 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
     async (overridePrompt?: string) => {
       const text = (overridePrompt ?? prompt).trim();
       if (!text || running || !projectPath) return;
+      // Don't fire a run while attachments are still uploading.
+      if (uploading) {
+        toast.error(t('dropzone.uploading'));
+        return;
+      }
+
+      // Snapshot + clear attachments so the next message starts fresh.
+      const refImagePaths = refPaths.length > 0 ? refPaths : undefined;
 
       setPrompt('');
+      setRefPaths([]);
       setError(null);
       setTurns((s) => [...s, { id: cryptoRandomId(), userText: text, events: [], status: 'streaming' }]);
       setRunning(true);
@@ -292,6 +413,7 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
           prompt: text,
           projectPath,
           conversationId: conversationIdRef.current ?? undefined,
+          refImagePaths,
         });
 
         if ('duplicate' in r) {
@@ -310,7 +432,7 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
         runIdRef.current = null;
       }
     },
-    [prompt, running, projectPath, agentId, model, reasoning, subscribeToRun, finalizeLastTurn],
+    [prompt, running, projectPath, uploading, refPaths, agentId, model, reasoning, subscribeToRun, finalizeLastTurn, t],
   );
 
   const onSubmitForm = useCallback(
@@ -417,7 +539,49 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
       </ScrollArea>
 
       <div className="shrink-0 p-3">
-        <div className="rounded-xl border bg-background px-3 py-2 shadow-sm transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25">
+        <div
+          onDragEnter={onDragEnter}
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          onDrop={onDrop}
+          className={cn(
+            'relative rounded-xl border bg-background px-3 py-2 shadow-sm transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25',
+            dragOver && 'border-ring/60 bg-accent/40 ring-2 ring-ring/30',
+          )}
+        >
+          {(refPaths.length > 0 || uploading) && (
+            <div className="mb-2 flex flex-wrap items-center gap-1.5">
+              {refPaths.map((relPath) => (
+                <div
+                  key={relPath}
+                  title={refBasename(relPath)}
+                  className="group relative size-11 shrink-0 overflow-hidden rounded-md border bg-muted/40"
+                >
+                  <img
+                    src={assetUrl(projectPath, relPath)}
+                    alt={refBasename(relPath)}
+                    loading="lazy"
+                    className="size-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeRef(relPath)}
+                    title={t('dropzone.remove')}
+                    aria-label={t('dropzone.remove')}
+                    className="absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full bg-foreground/70 text-background opacity-0 transition-opacity hover:bg-destructive group-hover:opacity-100"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
+              ))}
+              {uploading && (
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-md border border-dashed text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" />
+                </div>
+              )}
+            </div>
+          )}
+
           <Textarea
             value={prompt}
             onChange={(e) => {
@@ -432,18 +596,56 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
             className="max-h-40 min-h-[24px] w-full resize-none border-0 bg-transparent p-0 text-[13px] shadow-none focus-visible:ring-0"
           />
           <div className="mt-1.5 flex items-center gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!projectPath || uploading || refPaths.length >= MAX_REFS}
+              aria-label={t('dropzone.addReference')}
+              title={!projectPath ? t('dropzone.openProject') : t('dropzone.addReference')}
+            >
+              <Paperclip className="size-3.5" />
+            </Button>
             <ComposerControls />
             <span className="flex-1" />
+            {uploading ? (
+              <span className="mr-1 shrink-0 text-[11px] text-muted-foreground">{t('dropzone.uploading')}</span>
+            ) : null}
             {running ? (
               <Button size="icon" variant="ghost" className="size-7 shrink-0 text-muted-foreground hover:text-foreground" onClick={() => void stop()} title={t('chat.stop')}>
                 <Square className="size-3.5" />
               </Button>
             ) : (
-              <Button size="icon" className="size-7 shrink-0" onClick={() => void send()} disabled={!prompt.trim()} title={t('chat.send')}>
+              <Button
+                size="icon"
+                className="size-7 shrink-0"
+                onClick={() => void send()}
+                disabled={!prompt.trim() || uploading}
+                title={t('chat.send')}
+              >
                 <Send className="size-3.5" />
               </Button>
             )}
           </div>
+
+          {dragOver && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-accent/55 text-xs font-medium text-foreground">
+              {t('dropzone.dropImages')}
+            </div>
+          )}
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files) void addFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
         </div>
       </div>
     </div>

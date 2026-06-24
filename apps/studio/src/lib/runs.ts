@@ -159,6 +159,19 @@ export const createConversation = (
     body: JSON.stringify({ projectPath, agentId, title }),
   });
 
+/** Rename a conversation. Hits PATCH /api/conversations/:id which validates the
+ *  conversation exists and returns the updated row, so callers can reconcile
+ *  local state without a refetch. */
+export const renameConversation = (id: string, title: string) =>
+  jsonFetch<{ conversation: Conversation }>(
+    `/api/conversations/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    },
+  ).then((r) => r.conversation);
+
 /** Persisted message history for a conversation. Used on mount to rebuild the
  *  transcript (markdown + tool chips + forms) after a refresh / tab switch. */
 export const fetchMessages = (conversationId: string) =>
@@ -175,6 +188,37 @@ export const fetchFileContent = (projectPath: string, relPath: string) =>
   jsonFetch<{ kind?: 'text' | 'image' | 'binary'; content?: string; base64?: string }>(
     `/api/files/content?projectPath=${encodeURIComponent(projectPath)}&relPath=${encodeURIComponent(relPath)}`,
   );
+
+/** Read a File's bytes as a bare base64 string (no `data:` URL prefix), which
+ *  is what the daemon's ref store expects (it decodes with Buffer.from(_, 'base64')). */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error('failed to read file'));
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== 'string') return reject(new Error('unexpected reader result'));
+      // result is a data URL: "data:<mime>;base64,<payload>" — strip the prefix.
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Upload an image File to the project's reference-image store and return its
+ *  project-relative path (e.g. `.ogf/refs/<ts>_<name>.png`), suitable for
+ *  CreateRunRequest.refImagePaths. Reuses the existing POST /api/files/refs
+ *  route (the same one Dropzone's uploadRef uses). */
+export async function uploadRefImage(projectPath: string, file: File): Promise<string> {
+  const base64 = await fileToBase64(file);
+  const r = await jsonFetch<{ relPath: string; size: number }>('/api/files/refs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectPath, filename: file.name, base64 }),
+  });
+  return r.relPath;
+}
 
 // -------------------- Pending changes --------------------
 

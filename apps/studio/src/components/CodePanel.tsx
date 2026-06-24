@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Editor from '@monaco-editor/react';
 import {
   ChevronRight,
   File as FileIcon,
@@ -16,8 +17,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+// Self-host Monaco (no CDN) + wire up language workers. Imported for the
+// side effect; must run once before the first <Editor> mounts.
+import '@/lib/monaco-setup';
 import {
   fetchFileContent,
   fetchFileTree,
@@ -197,6 +200,46 @@ function Breadcrumbs({ relPath }: { relPath: string }) {
   );
 }
 
+// ─── Editor helpers ──────────────────────────────────────────────────────
+
+/** Map a file's extension to a Monaco language id. */
+function languageOf(relPath: string): string {
+  const ext = relPath.split('.').pop()?.toLowerCase() ?? '';
+  const map: Record<string, string> = {
+    js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
+    ts: 'typescript', tsx: 'typescript',
+    py: 'python', cs: 'csharp', go: 'go', rs: 'rust', rb: 'ruby', lua: 'lua',
+    json: 'json', md: 'markdown', html: 'html', css: 'css', scss: 'scss',
+    yaml: 'yaml', yml: 'yaml', toml: 'ini', ini: 'ini',
+    sh: 'shell', bash: 'shell', ps1: 'powershell',
+    xml: 'xml', svg: 'xml',
+    gd: 'python',
+    tscn: 'ini', tres: 'ini', godot: 'ini',
+    cfg: 'ini',
+  };
+  return map[ext] ?? 'plaintext';
+}
+
+/**
+ * Track the Monaco theme from the `dark` class on <html>. Returns
+ * `'vs-dark'` when dark mode is active, else `'vs'`. Observes class
+ * changes so toggling the app theme re-themes the editor live.
+ */
+function useMonacoTheme(): 'vs-dark' | 'vs' {
+  const read = () =>
+    document.documentElement.classList.contains('dark') ? 'vs-dark' : 'vs';
+  const [theme, setTheme] = useState<'vs-dark' | 'vs'>(read);
+  useEffect(() => {
+    const obs = new MutationObserver(() => setTheme(read()));
+    obs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+    return () => obs.disconnect();
+  }, []);
+  return theme;
+}
+
 // ─── Viewer / editor ───────────────────────────────────────────────────────
 
 function FileViewer({
@@ -207,6 +250,7 @@ function FileViewer({
   file: SelectedFile;
 }) {
   const t = useT();
+  const theme = useMonacoTheme();
   const [data, setData] = useState<ReadFileResponse | null>(null);
   const [content, setContent] = useState('');
   const [original, setOriginal] = useState('');
@@ -256,6 +300,18 @@ function FileViewer({
     }
   }, [dirty, saving, projectPath, file.relPath, content]);
 
+  // Cmd/Ctrl+S saves from anywhere in the editor area.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's' && dirty) {
+        e.preventDefault();
+        void save();
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [dirty, save]);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 bg-muted/30 px-4 py-2">
@@ -298,13 +354,22 @@ function FileViewer({
                 {t('code.truncated')}
               </div>
             ) : null}
-            {/* TODO: Monaco — Textarea is a stopgap editor. */}
-            <Textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              spellCheck={false}
-              className="h-full min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent font-mono text-xs leading-relaxed focus-visible:ring-0"
-            />
+            <div className="min-h-0 flex-1">
+              <Editor
+                height="100%"
+                theme={theme}
+                language={languageOf(file.relPath)}
+                value={content}
+                onChange={(v) => setContent(v ?? '')}
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 12,
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 2,
+                }}
+              />
+            </div>
           </div>
         ) : data?.kind === 'binary' ? (
           <div className="p-6 text-sm text-muted-foreground">

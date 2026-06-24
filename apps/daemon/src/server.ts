@@ -1243,6 +1243,22 @@ export function createServer() {
     res.json({ ok: true });
   });
 
+  // Rename a conversation. Unlike the legacy POST /:id/title (which returns
+  // { ok: true }), this validates the conversation exists and returns the
+  // updated Conversation so the client can reconcile its local state without
+  // a refetch. Mirrors the validation style of POST /api/conversations.
+  app.patch('/api/conversations/:id', (req, res) => {
+    const { title } = req.body as { title?: unknown };
+    if (typeof title !== 'string' || title.trim().length === 0) {
+      return res.status(400).json({ error: 'title (non-empty string) required' });
+    }
+    const existing = getConversation(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'conversation not found' });
+    setConversationTitle(req.params.id, title);
+    const updated = getConversation(req.params.id) ?? { ...existing, title };
+    res.json({ conversation: rowToConversation(updated) });
+  });
+
   app.get('/api/conversations/:id/messages', (req, res) => {
     const messages = listMessages(req.params.id).map(rowToMessage);
     res.json({ messages } satisfies MessagesResponse);

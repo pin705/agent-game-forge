@@ -467,6 +467,11 @@ const en = {
   'palette.empty': 'No results.',
   'palette.tabs': 'Go to tab',
   'palette.actions': 'Actions',
+  'palette.files': 'Files',
+  'conversations.rename': 'Rename chat',
+  'play.console': 'Console',
+  'play.clearConsole': 'Clear console',
+  'play.noLogs': 'No console output yet.',
 } as const;
 
 /** Key union derived from the English dictionary — the source of truth. */
@@ -904,6 +909,11 @@ const vi: Record<TKey, string> = {
   'palette.empty': 'Không có kết quả.',
   'palette.tabs': 'Tới tab',
   'palette.actions': 'Thao tác',
+  'palette.files': 'Tệp',
+  'conversations.rename': 'Đổi tên chat',
+  'play.console': 'Console',
+  'play.clearConsole': 'Xóa console',
+  'play.noLogs': 'Chưa có log nào.',
 };
 
 const dictionaries: Record<Locale, Record<TKey, string>> = { en, vi };
