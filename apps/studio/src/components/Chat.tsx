@@ -233,6 +233,7 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
   const scrollRef = useRef<HTMLDivElement>(null);
   const autoSentRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const promptRef = useRef<HTMLTextAreaElement>(null);
   // Depth counter so nested dragenter/dragleave (over children) don't flicker
   // the drag-over highlight off prematurely.
   const dragDepthRef = useRef(0);
@@ -338,6 +339,17 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
     const el = scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]');
     if (el) el.scrollTop = el.scrollHeight;
   }, [turns]);
+
+  // Keep the composer textarea's height in sync with its content. Keying off
+  // `prompt` (not just onChange) means a programmatic clear on send — or setting
+  // the initialPrompt — also resets the height, instead of the box staying tall
+  // and empty after sending.
+  useEffect(() => {
+    const el = promptRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  }, [prompt]);
 
   const appendEventToLastTurn = useCallback((ev: AgentEvent) => {
     setTurns((prev) => {
@@ -511,7 +523,7 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
       </div>
 
       <ScrollArea ref={scrollRef} className="min-h-0 flex-1">
-        <div className="space-y-4 p-4">
+        <div className="space-y-3 p-3">
           {turns.length === 0 ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Sparkles className="size-4 shrink-0" />
@@ -583,13 +595,9 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
           )}
 
           <Textarea
+            ref={promptRef}
             value={prompt}
-            onChange={(e) => {
-              setPrompt(e.target.value);
-              const t = e.target;
-              t.style.height = 'auto';
-              t.style.height = Math.min(t.scrollHeight, 160) + 'px';
-            }}
+            onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={onKey}
             rows={1}
             placeholder={t('chat.placeholder')}
@@ -751,7 +759,7 @@ function TurnView({
   const streaming = turn.status === 'streaming';
 
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-2">
       {/* User message — right-aligned, solid high-contrast bubble with tail */}
       <div className="flex justify-end">
         <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-[11px_11px_3px_11px] bg-foreground px-3 py-1.5 text-[13px] leading-snug text-background">
@@ -760,7 +768,7 @@ function TurnView({
       </div>
 
       {/* Assistant — flush prose, no avatar / rail (web style) */}
-      <div className="min-w-0 space-y-2 text-sm leading-relaxed">
+      <div className="min-w-0 space-y-1.5 text-sm leading-normal">
         {blocks.length === 0 && streaming ? (
           <div className="flex items-center gap-2 text-muted-foreground">
             <span className="size-1.5 animate-pulse rounded-full bg-foreground" />
