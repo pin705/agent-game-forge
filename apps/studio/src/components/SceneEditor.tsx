@@ -543,7 +543,7 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Toolbar */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 bg-muted/30 px-3 py-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="gap-2">
@@ -621,7 +621,7 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
 
         {loading ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center">
-            <div className="flex items-center gap-2 rounded-md border bg-card/90 px-3 py-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 rounded-md bg-card/90 px-3 py-2 text-sm text-muted-foreground shadow-md">
               <Loader2 className="size-4 animate-spin" /> {t('scene.loading')}
             </div>
           </div>
@@ -635,7 +635,7 @@ export function SceneEditor({ projectPath }: { projectPath: string }) {
         ) : null}
 
         {scene && scene.notes.length > 0 && !loading ? (
-          <div className="pointer-events-none absolute bottom-3 right-3 max-w-xs rounded-md border bg-card/90 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
+          <div className="pointer-events-none absolute bottom-3 right-3 max-w-xs rounded-md bg-card/90 px-3 py-2 text-[11px] leading-snug text-muted-foreground shadow-md">
             {scene.notes[0]}
           </div>
         ) : null}

@@ -371,7 +371,7 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
 
   return (
     <div className="flex min-h-0 flex-col">
-      <div className="flex items-center gap-2.5 border-b border-border/60 px-3 py-2">
+      <div className="flex items-center gap-2.5 bg-muted/20 px-3 py-2">
         <span className="text-xs text-muted-foreground">{t('chat.title')}</span>
         {running ? (
           <Badge variant="secondary" className="ml-auto gap-1">
@@ -409,7 +409,7 @@ export function Chat({ projectPath, initialPrompt, conversationId }: ChatProps) 
         </div>
       </ScrollArea>
 
-      <div className="border-t border-border/60 p-2.5">
+      <div className="bg-muted/20 p-2.5">
         <div className="flex items-end gap-1.5">
           <Textarea
             value={prompt}
@@ -566,7 +566,7 @@ function ToolCard({ family, items, streaming }: { family: ToolFamily; items: Too
         />
       </button>
       {open ? (
-        <div className="space-y-2 border-t bg-muted/20 p-2.5">
+        <div className="space-y-2 bg-muted/20 p-2.5">
           {editChanges.length > 0 ? (
             <ul className="space-y-1">
               {editChanges.map((c, i) => {

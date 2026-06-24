@@ -204,7 +204,7 @@ export function GodotPlayPane({ projectPath }: Props) {
     <TooltipProvider delayDuration={300}>
       <div className="flex h-full min-h-0 flex-col">
         {/* Toolbar */}
-        <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2">
+        <div className="flex shrink-0 items-center gap-2 px-4 py-2">
           <Gamepad2 className="size-4 text-muted-foreground" />
           <span className="text-sm font-medium">{t('play.play')}</span>
           <Badge variant="secondary" className="font-normal">

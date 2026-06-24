@@ -184,7 +184,7 @@ function FileViewer({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2">
+      <div className="flex shrink-0 items-center gap-2 bg-muted/30 px-4 py-2">
         <span className="truncate font-mono text-xs text-foreground" title={file.relPath}>
           {file.relPath}
         </span>
@@ -291,8 +291,8 @@ export function CodePanel({ projectPath }: CodePanelProps) {
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[260px_1fr]">
-      <div className="flex min-h-0 flex-col border-r">
-        <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
+      <div className="flex min-h-0 flex-col bg-muted/20">
+        <div className="flex h-9 shrink-0 items-center gap-2 px-3">
           <span className="text-xs font-medium text-foreground">{t('code.files')}</span>
           <div className="flex-1" />
           <Button

@@ -119,7 +119,7 @@ export function QuestionFormCard(props: Props) {
   return (
     <div
       className={cn(
-        'rounded-lg border bg-card text-card-foreground shadow-xs',
+        'rounded-lg bg-card text-card-foreground shadow-sm',
         props.locked && 'opacity-95',
       )}
       onClickCapture={cancelAutoSubmit}
@@ -128,7 +128,7 @@ export function QuestionFormCard(props: Props) {
       <div
         className={cn(
           'flex items-center gap-2 px-3 py-2.5',
-          !isCollapsed && 'border-b',
+          !isCollapsed && 'pb-1',
           props.locked && 'cursor-pointer select-none',
         )}
         onClick={() => {
@@ -260,7 +260,7 @@ function renderInput(
                 key={o.value}
                 htmlFor={id}
                 className={cn(
-                  'flex items-start gap-2.5 rounded-md border px-3 py-2 font-normal transition-colors',
+                  'flex items-start gap-2.5 rounded-md border border-transparent bg-muted/40 px-3 py-2 font-normal transition-colors',
                   locked ? 'cursor-default' : 'cursor-pointer hover:bg-accent/50',
                   active && 'border-primary/60 bg-accent/40',
                 )}
@@ -287,7 +287,7 @@ function renderInput(
                 key={o.value}
                 htmlFor={id}
                 className={cn(
-                  'flex items-start gap-2.5 rounded-md border px-3 py-2 font-normal transition-colors',
+                  'flex items-start gap-2.5 rounded-md border border-transparent bg-muted/40 px-3 py-2 font-normal transition-colors',
                   locked ? 'cursor-default' : 'cursor-pointer hover:bg-accent/50',
                   checked && 'border-primary/60 bg-accent/40',
                 )}
@@ -374,7 +374,7 @@ function SpecViewer({ projectPath }: { projectPath: string }) {
   const phaseCount = (content.match(/^- \[[ x]\] /gim) ?? []).length;
 
   return (
-    <div className="rounded-md border bg-muted/30">
+    <div className="rounded-md bg-muted/30">
       <button
         type="button"
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-accent/40"
@@ -387,7 +387,7 @@ function SpecViewer({ projectPath }: { projectPath: string }) {
         </span>
       </button>
       {open ? (
-        <div className="max-h-72 overflow-auto border-t px-3 py-2">
+        <div className="max-h-72 overflow-auto px-3 py-2">
           <Markdown text={content} />
         </div>
       ) : null}

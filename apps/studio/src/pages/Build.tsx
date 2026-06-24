@@ -91,7 +91,7 @@ export function Build() {
 
       <div className="grid min-h-0 flex-1 grid-cols-[210px_360px_1fr]">
         {/* Conversations */}
-        <div className="flex min-h-0 flex-col border-r">
+        <div className="flex min-h-0 flex-col bg-muted/20">
           {project ? (
             <ConversationList projectPath={project.path} conversationId={conversationId} onSelect={setConversationId} />
           ) : null}
@@ -114,7 +114,7 @@ export function Build() {
         {/* Preview / Scene / Assets / Data / Code */}
         <div className="flex min-h-0 flex-col">
           <Tabs defaultValue="play" className="flex min-h-0 flex-1 flex-col">
-            <div className="border-b px-4 py-2">
+            <div className="bg-muted/30 px-4 py-2">
               <TabsList>
                 <TabsTrigger value="play">
                   <Play />

@@ -11,7 +11,9 @@ export default defineConfig({
     alias: { '@': path.resolve(__dirname, './src') },
   },
   server: {
-    port: 7630,
+    // Default 7630 for normal `npm run dev`; the preview harness overrides
+    // via PORT so it can run a second instance on a free port.
+    port: Number(process.env.PORT) || 7630,
     proxy: {
       '/api': { target: 'http://localhost:7621', changeOrigin: true },
     },

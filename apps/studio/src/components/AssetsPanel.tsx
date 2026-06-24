@@ -53,7 +53,7 @@ function LicenseBadge({ license }: { license?: string | null }) {
 function Thumb({ projectPath, asset }: { projectPath: string; asset: AssetItem }) {
   const [broken, setBroken] = useState(false);
   const base =
-    'flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/30';
+    'flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted/30';
 
   if (asset.mediaKind === 'audio') {
     return (
@@ -121,7 +121,7 @@ export function AssetsPanel({ projectPath }: AssetsPanelProps) {
         ) : null}
       </div>
 
-      <div className="mt-3 min-h-0 flex-1 overflow-auto rounded-lg border">
+      <div className="mt-3 min-h-0 flex-1 overflow-auto rounded-lg bg-card shadow-sm">
         {error ? (
           <div className="p-6 text-sm text-destructive">{t('assets.loadFailed', { error })}</div>
         ) : assets === null ? (

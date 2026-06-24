@@ -50,7 +50,7 @@ export function DataTab({ projectPath }: { projectPath: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b px-4 py-2">
+      <div className="flex items-center gap-2 bg-muted/30 px-4 py-2">
         <span className="text-xs text-muted-foreground">{t('data.catalog')}</span>
         <Select value={sel ?? undefined} onValueChange={setSel}>
           <SelectTrigger className="h-8 w-[280px]">

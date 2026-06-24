@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,15 +7,16 @@
     <title>Agent Game Forge — game studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500&family=Press+Start+2P&display=swap" rel="stylesheet">
   </head>
   <body>
     <div id="root"></div>
     <script>
-      // Apply saved theme before paint to avoid a flash. Default: dark.
+      // Apply saved theme before paint to avoid a flash. Default: light (warm
+      // paper, matching the original web). Dark is opt-in via the toggle.
       try {
-        if (localStorage.getItem('ogf-theme') === 'light') {
-          document.documentElement.classList.remove('dark');
+        if (localStorage.getItem('ogf-theme') === 'dark') {
+          document.documentElement.classList.add('dark');
         }
       } catch (e) {}
     </script>

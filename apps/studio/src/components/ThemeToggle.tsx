@@ -21,7 +21,7 @@ function applyTheme(theme: Theme): void {
   }
 }
 
-/** Sun/Moon header button. Studio is dark-first; this flips the `.dark` class
+/** Sun/Moon header button. Studio is light-first; this flips the `.dark` class
  *  on <html> and persists the choice. Shows the icon for the theme you'd
  *  switch TO (Sun while dark, Moon while light). */
 export function ThemeToggle({ className }: { className?: string }) {

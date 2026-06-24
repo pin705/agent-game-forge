@@ -86,7 +86,7 @@ export function PlayPane({ projectPath }: Props) {
     <TooltipProvider delayDuration={300}>
       <div className="flex h-full min-h-0 flex-col">
         {/* Toolbar */}
-        <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2">
+        <div className="flex shrink-0 items-center gap-2 px-4 py-2">
           <Gamepad2 className="size-4 text-muted-foreground" />
           <span className="text-sm font-medium">{t('play.play')}</span>
           <div className="flex-1" />
@@ -158,7 +158,7 @@ export function PlayPane({ projectPath }: Props) {
               key={reloadTick}
               src={src}
               title={t('play.preview')}
-              className="aspect-video h-full w-full max-w-3xl rounded-xl border bg-background shadow-sm"
+              className="aspect-video h-full w-full max-w-3xl rounded-xl bg-background shadow-md"
               sandbox="allow-scripts allow-same-origin allow-modals"
             />
           ) : hasIndex ? (
