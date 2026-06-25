@@ -18,11 +18,22 @@ import { SettingsMenuItem } from "@/components/settings-menu-item";
  */
 export function TopNav({ email, credits }: { email: string; credits: number | null }) {
   return (
-    <header className="sticky top-0 z-30 flex h-12 items-center justify-between border-b bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <Link href="/dashboard" className="flex items-center gap-2">
-        <span className="text-sm font-semibold tracking-tight">Footage</span>
-        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          P0
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <Link
+        href="/dashboard"
+        className="flex items-center gap-2.5"
+        aria-label="Agent Game Footage"
+      >
+        <img
+          src="/ogf-logo-64.png"
+          alt=""
+          className="size-7 [image-rendering:pixelated]"
+          aria-hidden
+        />
+        <span className="brand-title">
+          <span className="brand-agent">Agent</span>
+          <span className="brand-game">Game</span>
+          <span className="brand-forge">Footage</span>
         </span>
       </Link>
 

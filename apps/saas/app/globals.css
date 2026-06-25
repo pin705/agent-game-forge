@@ -1,6 +1,56 @@
 @import "tailwindcss";
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================
+   OGF Brand — pixel-art logotype (ported VERBATIM from studio)
+   Three-word wordmark: Agent (cyan) · Game (white) · Footage (orange)
+   Uses Press Start 2P + stacked text-shadow outline technique.
+   ============================================================ */
+.brand-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: 'Press Start 2P', ui-monospace, monospace;
+  font-size: 14px;
+  line-height: 1.4;
+  letter-spacing: 0;
+  filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.55));
+  user-select: none;
+}
+.brand-title > span {
+  color: var(--brand-fill, #fff);
+  text-shadow:
+    -1px -1px 0 #000,
+     1px -1px 0 #000,
+    -1px  1px 0 #000,
+     1px  1px 0 #000,
+    -1px  0   0 #000,
+     1px  0   0 #000,
+     0   -1px 0 #000,
+     0    1px 0 #000;
+}
+.brand-agent { --brand-fill: #5fd6e8; }
+.brand-game  { --brand-fill: #ffffff; }
+.brand-forge { --brand-fill: #ffb433; }
+
+.brand-title-large {
+  font-size: 32px;
+  line-height: 1.4;
+  gap: 14px;
+  filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, 0.6));
+}
+.brand-title-large > span {
+  text-shadow:
+    -2px -2px 0 #000,
+     2px -2px 0 #000,
+    -2px  2px 0 #000,
+     2px  2px 0 #000,
+    -2px  0   0 #000,
+     2px  0   0 #000,
+     0   -2px 0 #000,
+     0    2px 0 #000;
+}
+
 /* =============================================================================
    Footage SaaS theme — ported VERBATIM from apps/studio/src/index.css
    (warm-paper / mono-ink). Tailwind v4 token system: :root + .dark + @theme

@@ -77,7 +77,7 @@ export default async function DashboardPage({
             </Button>
           </form>
           <p className="mt-2 text-xs text-muted-foreground">
-            P0 creates the project + cloud file prefix. The AI build loop arrives in P1.
+            Describe your game and we&apos;ll spin up a project — then build it with you in the editor.
           </p>
         </CardContent>
       </Card>

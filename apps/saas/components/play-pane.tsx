@@ -169,8 +169,8 @@ export function PlayPane({ projectId, hasGame }: Props) {
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex h-full min-h-0 flex-col">
-        {/* Toolbar */}
-        <div className="flex shrink-0 items-center gap-1.5 border-b px-3 py-2">
+        {/* Toolbar — soft tinted bar (studio chrome), no hard border. */}
+        <div className="flex h-10 shrink-0 items-center gap-1.5 bg-muted/30 px-3 shadow-[0_1px_0_0_var(--border)]">
           <Gamepad2 className="size-4 text-muted-foreground" />
           <span className="text-sm font-medium">{t("play.play")}</span>
           <div className="flex-1" />

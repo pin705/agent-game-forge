@@ -27,7 +27,7 @@ export function StatusBar({
   const modelLabel = modelId ? (modelOption(modelId)?.label ?? modelId) : null;
 
   return (
-    <div className="flex h-7 shrink-0 items-center gap-3 border-t bg-muted/30 px-4 text-xs text-muted-foreground">
+    <div className="flex h-7 shrink-0 items-center gap-3 bg-muted/30 px-4 text-xs text-muted-foreground">
       <span className="flex items-center gap-1.5 truncate" title={projectName}>
         <FolderGit2 className="size-3.5" />
         <span className="truncate">{projectName}</span>

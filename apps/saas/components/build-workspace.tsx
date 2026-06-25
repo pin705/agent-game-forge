@@ -295,8 +295,9 @@ export function BuildWorkspace({
       {/* Resize: chat | preview */}
       <Divider edge="chat" label={t("workspace.resizeChat")} onPointerDown={startDrag("chat")} />
 
-      {/* Preview (flexible center) */}
-      <section className="flex min-h-0 flex-col overflow-hidden border-x">
+      {/* Preview (flexible center) — separated by tone + the soft dividers,
+          not hard borders (studio's quiet-elevation language). */}
+      <section className="flex min-h-0 flex-col overflow-hidden">
         <PlayPane projectId={projectId} hasGame={hasGame} />
       </section>
 
@@ -342,8 +343,10 @@ function PaneHeader({
   title: string;
   action?: React.ReactNode;
 }) {
+  // Soft tinted bar (studio chrome language) — separation by tone + a faint
+  // bottom shadow, not a hard border. Matches the editor-panel tab strip.
   return (
-    <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3 text-sm font-medium">
+    <div className="flex h-10 shrink-0 items-center gap-2 bg-muted/30 px-3 text-sm font-medium shadow-[0_1px_0_0_var(--border)]">
       <span className="text-muted-foreground">{icon}</span>
       {title}
       {action}

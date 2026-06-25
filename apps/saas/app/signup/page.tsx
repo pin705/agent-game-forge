@@ -19,7 +19,17 @@ export default async function SignupPage() {
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center px-6 py-12">
+    <main className="flex min-h-svh flex-col items-center justify-center gap-7 px-6 py-12">
+      {/* Brand identity — same pixel wordmark as the studio / app header. */}
+      <Link href="/" className="flex items-center gap-2.5" aria-label="Agent Game Footage">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/ogf-logo-64.png" alt="" className="size-8 [image-rendering:pixelated]" aria-hidden />
+        <span className="brand-title">
+          <span className="brand-agent">Agent</span>
+          <span className="brand-game">Game</span>
+          <span className="brand-forge">Footage</span>
+        </span>
+      </Link>
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <CardTitle className="text-xl">Create your account</CardTitle>
