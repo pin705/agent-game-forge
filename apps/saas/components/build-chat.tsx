@@ -18,6 +18,7 @@ import {
   Loader2,
   Paperclip,
   Send,
+  ShieldCheck,
   Square,
   Sparkles,
   Terminal,
@@ -69,6 +70,7 @@ type RunEvent =
   | { type: "step"; index: number; inputTokens: number; outputTokens: number }
   | { type: "done"; inputTokens: number; outputTokens: number; steps: number; files: string[]; status?: "complete" | "awaiting_input" }
   | { type: "charge"; credits: number; balanceAfter: number | null }
+  | { type: "qa"; phase: "found" | "clean" | "remain" | "skipped"; errors: string[]; round?: number }
   | { type: "error"; message: string }
   // A non-streamed marker persisted on the user turn to record attached refs.
   | { type: "refs"; paths: string[] };
@@ -368,8 +370,11 @@ export function BuildChat({
           case "file_write":
           case "question":
           case "charge":
+          case "qa":
             appendEventToLastTurn(ev);
             if (ev.type === "file_write") onFilesChanged();
+            // A QA fix round rewrites files — refresh the preview/file list.
+            if (ev.type === "qa" && (ev.phase === "found" || ev.phase === "clean")) onFilesChanged();
             break;
           case "done":
             appendEventToLastTurn(ev);
@@ -935,6 +940,7 @@ function TurnView({
     | { kind: "form"; form: QuestionForm }
     | { kind: "done"; inputTokens: number; outputTokens: number; steps: number; awaiting: boolean; at?: number; dt?: number }
     | { kind: "charge"; credits: number; balanceAfter: number | null }
+    | { kind: "qa"; phase: "found" | "clean" | "remain" | "skipped"; errors: string[]; round?: number }
   > = [];
   let textBuf = "";
   const flush = () => {
@@ -980,6 +986,10 @@ function TurnView({
       case "charge":
         flush();
         blocks.push({ kind: "charge", credits: ev.credits, balanceAfter: ev.balanceAfter });
+        break;
+      case "qa":
+        flush();
+        blocks.push({ kind: "qa", phase: ev.phase, errors: ev.errors, round: ev.round });
         break;
       default:
         break;
@@ -1127,6 +1137,40 @@ function TurnView({
                       <span className="opacity-70"> · {t("chat.balance", { n: b.balanceAfter })}</span>
                     ) : null}
                   </span>
+                </div>
+              );
+            case "qa":
+              // "skipped" is a prod/CI signal (no browser) — render nothing.
+              if (b.phase === "skipped") return null;
+              if (b.phase === "found")
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 rounded-md bg-amber-50 px-2.5 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                  >
+                    <ShieldCheck className="size-3.5" />
+                    {t("chat.qaFound", { n: b.errors.length })}
+                    {b.round ? <span className="opacity-70"> · {b.round}</span> : null}
+                  </div>
+                );
+              if (b.phase === "clean")
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 rounded-md bg-emerald-50 px-2.5 py-2 text-xs text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                  >
+                    <ShieldCheck className="size-3.5" />
+                    {t("chat.qaClean")}
+                  </div>
+                );
+              // remain
+              return (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 rounded-md bg-destructive/10 px-2.5 py-2 text-xs text-destructive"
+                >
+                  <ShieldCheck className="size-3.5" />
+                  {t("chat.qaRemain", { n: b.errors.length })}
                 </div>
               );
           }

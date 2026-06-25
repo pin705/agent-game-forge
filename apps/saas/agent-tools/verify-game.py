@@ -197,6 +197,164 @@ def check_code_refs():
         ok(f"code refs: {len(refs)} data/asset reference(s) resolve")
 
 
+# ── No-undef static check (catches ReferenceError before the browser) ───────
+# A curated allowlist of JS / browser / DOM / timer / typed-array globals. We are
+# DELIBERATELY generous here — a false positive (flagging a real global) is worse
+# than a miss (the browser QA gate catches the rest). If a called name isn't here
+# and isn't declared/imported ANYWHERE in the project, it's a ReferenceError.
+JS_GLOBALS = {
+    # core language
+    "window", "document", "console", "globalThis", "self", "Math", "JSON",
+    "Object", "Array", "Number", "String", "Boolean", "Symbol", "BigInt",
+    "Function", "Promise", "Proxy", "Reflect", "Set", "WeakSet", "Map",
+    "WeakMap", "Date", "RegExp", "Error", "TypeError", "RangeError",
+    "SyntaxError", "ReferenceError", "EvalError", "URIError", "WeakRef",
+    "parseInt", "parseFloat", "isNaN", "isFinite", "encodeURIComponent",
+    "decodeURIComponent", "encodeURI", "decodeURI", "structuredClone", "eval",
+    "queueMicrotask", "btoa", "atob", "escape", "unescape",
+    # typed arrays + buffers
+    "ArrayBuffer", "SharedArrayBuffer", "DataView", "Int8Array", "Uint8Array",
+    "Uint8ClampedArray", "Int16Array", "Uint16Array", "Int32Array",
+    "Uint32Array", "Float32Array", "Float64Array", "BigInt64Array",
+    "BigUint64Array",
+    # timers / animation
+    "requestAnimationFrame", "cancelAnimationFrame", "requestIdleCallback",
+    "cancelIdleCallback", "setTimeout", "setInterval", "clearTimeout",
+    "clearInterval", "setImmediate",
+    # network / data
+    "fetch", "XMLHttpRequest", "Headers", "Request", "Response", "FormData",
+    "URL", "URLSearchParams", "Blob", "File", "FileReader", "WebSocket",
+    "EventSource", "AbortController", "AbortSignal", "TextEncoder",
+    "TextDecoder", "ReadableStream", "WritableStream", "TransformStream",
+    # media / canvas / audio / images
+    "Image", "Audio", "AudioContext", "webkitAudioContext", "OfflineAudioContext",
+    "ImageData", "ImageBitmap", "createImageBitmap", "Path2D", "OffscreenCanvas",
+    "HTMLCanvasElement", "HTMLImageElement", "HTMLAudioElement",
+    "HTMLElement", "HTMLVideoElement", "CanvasRenderingContext2D",
+    "WebGLRenderingContext", "WebGL2RenderingContext",
+    # DOM / events / observers
+    "Element", "Node", "Event", "CustomEvent", "MouseEvent", "KeyboardEvent",
+    "TouchEvent", "PointerEvent", "WheelEvent", "EventTarget", "DOMParser",
+    "MutationObserver", "ResizeObserver", "IntersectionObserver",
+    "getComputedStyle", "matchMedia", "DOMRect", "DOMMatrix",
+    "DocumentFragment", "Text", "Range",
+    # platform globals
+    "navigator", "location", "history", "screen", "performance", "crypto",
+    "localStorage", "sessionStorage", "indexedDB", "caches", "alert", "confirm",
+    "prompt", "open", "close", "focus", "blur", "scrollTo", "scrollBy",
+    "postMessage", "addEventListener", "removeEventListener", "dispatchEvent",
+    "gamepad", "getGamepads", "speechSynthesis",
+    # workers / modules
+    "Worker", "SharedWorker", "importScripts", "import", "require", "module",
+    "exports", "process",
+    # JS keywords that the call-regex can pick up (defensive — also filtered below)
+    "if", "for", "while", "switch", "catch", "function", "return", "typeof",
+    "await", "new", "delete", "void", "in", "of", "do", "else", "case",
+    "instanceof", "yield", "throw", "with", "super", "this",
+}
+
+# Statement keywords that precede a `(` but are NOT function calls.
+CALL_KEYWORDS = {
+    "if", "for", "while", "switch", "catch", "function", "return", "typeof",
+    "await", "new", "delete", "void", "in", "of", "do", "else", "case",
+    "instanceof", "yield", "throw", "with", "super", "constructor", "get",
+    "set", "async", "static",
+}
+
+# A bare identifier call: not preceded by `.` (skip method calls) or `function`.
+CALL_RE = re.compile(r'(?:^|[^.\w$])([A-Za-z_$][\w$]*)\s*\(')
+# Declarations / bindings that introduce a name into the project's "known" set.
+DECL_RES = [
+    re.compile(r'\bfunction\s*\*?\s*([A-Za-z_$][\w$]*)'),          # function foo / function* foo
+    re.compile(r'\bclass\s+([A-Za-z_$][\w$]*)'),                    # class Foo
+    re.compile(r'\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)'),        # const/let/var foo
+    re.compile(r'\bexport\s+(?:default\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)'),
+    re.compile(r'\bexport\s+(?:default\s+)?class\s+([A-Za-z_$][\w$]*)'),
+]
+# import { a, b as c } from '...'  /  import Foo from '...'  /  import * as NS
+IMPORT_NAMED_RE = re.compile(r'\bimport\s*(?:[\w$]+\s*,\s*)?\{([^}]*)\}')
+IMPORT_DEFAULT_RE = re.compile(r'\bimport\s+([A-Za-z_$][\w$]*)\s*(?:,|from)')
+IMPORT_STAR_RE = re.compile(r'\bimport\s*\*\s*as\s+([A-Za-z_$][\w$]*)')
+
+
+def _strip_js(txt: str) -> str:
+    """Remove comments + string/template literals so we don't pick up calls or
+    names that only appear inside text. Conservative: leaves code intact."""
+    # block comments
+    txt = re.sub(r'/\*.*?\*/', ' ', txt, flags=re.DOTALL)
+    # line comments
+    txt = re.sub(r'//[^\n]*', ' ', txt)
+    # string + template literals (no nesting handling needed for our coarse use)
+    txt = re.sub(r'"(?:[^"\\]|\\.)*"', '""', txt)
+    txt = re.sub(r"'(?:[^'\\]|\\.)*'", "''", txt)
+    txt = re.sub(r'`(?:[^`\\]|\\.)*`', '``', txt)
+    return txt
+
+
+def _project_js_files():
+    for f in ROOT.glob("**/*.js"):
+        if any(part in ("node_modules", "agent-tools", ".agents", ".ogf") for part in f.parts):
+            continue
+        yield f
+
+
+def check_undefined_refs():
+    """HIGH-CONFIDENCE ReferenceError catch: a bare function identifier that is
+    CALLED somewhere in the project's JS but DECLARED / EXPORTED / IMPORTED
+    NOWHERE in the project AND is not a known JS/browser global → it throws
+    `ReferenceError: <name> is not defined` the instant that code path runs, so
+    the game shows "Boot failed".
+
+    Conservative by design (low false-positive): we only flag a name defined
+    NOWHERE in the project. A name that IS defined in some file but not imported
+    into the calling file (a weaker, ESM-only signal) is NOT flagged here — the
+    real-browser QA gate catches those. We also strip comments + string/template
+    literals before scanning so text never produces a phantom call."""
+    files = list(_project_js_files())
+    if not files:
+        return
+    known = set()
+    sources = []
+    for f in files:
+        try:
+            raw = f.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        code = _strip_js(raw)
+        sources.append((f, code))
+        for rx in DECL_RES:
+            for m in rx.findall(code):
+                known.add(m)
+        for grp in IMPORT_NAMED_RE.findall(code):
+            for piece in grp.split(","):
+                piece = piece.strip()
+                if not piece:
+                    continue
+                # `orig as alias` → the alias is the in-scope name
+                name = piece.split(" as ")[-1].strip()
+                if re.fullmatch(r'[A-Za-z_$][\w$]*', name):
+                    known.add(name)
+        for m in IMPORT_DEFAULT_RE.findall(code):
+            known.add(m)
+        for m in IMPORT_STAR_RE.findall(code):
+            known.add(m)
+    allowed = known | JS_GLOBALS
+    flagged = {}  # name → first file it's called in
+    for f, code in sources:
+        for m in CALL_RE.finditer(code):
+            name = m.group(1)
+            if name in CALL_KEYWORDS or name in allowed:
+                continue
+            flagged.setdefault(name, f)
+    for name in sorted(flagged):
+        err(
+            f"function '{name}' is called but defined nowhere "
+            f"(ReferenceError at runtime — define it or import it) in {rel(flagged[name])}"
+        )
+    if not flagged and sources:
+        ok(f"no-undef: {len(sources)} JS file(s), no undefined function calls")
+
+
 # ── Debug protocol (OpenGame's Protocol P, browser-free) ────────────────────
 # Seed knowledge base: error signature → root cause → verified fix. Static
 # entries are matched against this run's errors and printed as "known fixes".
@@ -217,6 +375,9 @@ SEED_PROTOCOL = [
     {"id": "missing_id", "kind": "static", "match": "missing 'id'",
      "cause": "Scene editor addresses every array entry by id; without it, drag-edit save fails.",
      "fix": "Give every array entry a unique \"id\" string (e.g. coin_1, plat_2)."},
+    {"id": "defined_nowhere", "kind": "static", "match": "is called but defined nowhere",
+     "cause": "A function identifier is CALLED in the project's JS but is declared/exported/imported NOWHERE (e.g. buildEnemyInstance(...) with no `function buildEnemyInstance` or import) -> ReferenceError the instant that path runs -> 'Boot failed'.",
+     "fix": "Define the function (write `function <name>(...)` or a const arrow), OR import it from the module that exports it, OR fix the typo to match the real name. Every bare call must resolve to a project declaration, an import, or a JS/browser global."},
     {"id": "code_ref_missing", "kind": "static", "match": "code references a file missing",
      "cause": "JS loads a data/*.json or assets/* path that was never created (e.g. catalogs.js loads data/enemies.json that doesn't exist) -> 404 -> boot fails.",
      "fix": "Create the missing file (write the data/*.json with real content, or fetch/gen the asset), OR remove the reference. Every loadJSON()/fetch() path the code uses MUST exist on disk."},
@@ -357,6 +518,7 @@ def verify() -> None:
     check_json_and_assets()
     check_index()
     check_code_refs()
+    check_undefined_refs()
     check_start_scene()
     check_juice()
     check_art()

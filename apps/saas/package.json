@@ -21,6 +21,7 @@
     "ui-test": "tsx scripts/ui-test.mjs",
     "prod-safety-test": "tsx scripts/prod-safety-test.mjs",
     "corpus-test": "tsx scripts/corpus-test.mjs",
+    "qa-test": "tsx scripts/qa-test.mjs",
     "resume-test": "tsx scripts/resume-test.mjs",
     "e2e": "node e2e/full.e2e.mjs",
     "db:generate": "drizzle-kit generate",

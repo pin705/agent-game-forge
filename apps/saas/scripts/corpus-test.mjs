@@ -58,6 +58,38 @@ try {
     "isSeededPath false for real game output",
   );
 
+  // ── verify-game.py no-undef check (Part B) ────────────────────────────────
+  // Prove the static no-undef gate FAILS on a function called-but-defined-
+  // nowhere (ReferenceError class) and PASSES once that function is defined.
+  // Runs the SAME seeded agent-tools/verify-game.py the agent invokes.
+  const writeJs = async (body) => {
+    await sandbox.writeFiles([{ path: "src/x.js", bytes: new TextEncoder().encode(body) }]);
+  };
+  const runVerify = async () => {
+    const r = await sandbox.exec("python3 agent-tools/verify-game.py verify", { timeout: 30000 });
+    return { code: r.code, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  };
+  // (1) buildEnemyInstance called but never defined → FAIL with the no-undef msg.
+  await writeJs(
+    'function init(){ const e = buildEnemyInstance({hp:10}); console.log(JSON.stringify(e)); }\ninit();\n',
+  );
+  const bad = await runVerify();
+  ok(
+    bad.code === 1 && /buildEnemyInstance.*defined nowhere/.test(bad.out),
+    `no-undef FAILS on undefined buildEnemyInstance (exit ${bad.code})`,
+  );
+  // (2) define it → no-undef passes (that error class is gone).
+  await writeJs(
+    'function buildEnemyInstance(c){ return {...c}; }\nfunction init(){ const e = buildEnemyInstance({hp:10}); console.log(JSON.stringify(e)); }\ninit();\n',
+  );
+  const good = await runVerify();
+  ok(
+    !/defined nowhere/.test(good.out) && /no-undef:/.test(good.out),
+    `no-undef PASSES once buildEnemyInstance is defined`,
+  );
+  // Clean up the synthetic file so it never leaks into other checks.
+  await sandbox.exec("rm -rf src", { timeout: 5000 });
+
   console.log(fail === 0 ? "\n=== ALL CORPUS CHECKS PASSED ===" : `\n=== ${fail} CHECK(S) FAILED ===`);
   process.exitCode = fail ? 1 : 0;
 } finally {

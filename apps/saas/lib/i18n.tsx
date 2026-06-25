@@ -194,6 +194,9 @@ const en = {
   "chat.credit": "credit",
   "chat.credits": "credits",
   "chat.balance": "balance {n}",
+  "chat.qaFound": "QA: found {n} runtime error(s) — fixing…",
+  "chat.qaClean": "QA: game boots + plays clean",
+  "chat.qaRemain": "QA: {n} runtime error(s) remain after fixes",
 
   // ── Conversation history (Batch 2) ──
   "conversations.title": "History",
@@ -510,6 +513,9 @@ const vi: Record<TKey, string> = {
   "chat.awaitingInput": "Đang chờ câu trả lời của bạn bên dưới…",
   "chat.credit": "tín dụng",
   "chat.credits": "tín dụng",
+  "chat.qaFound": "QA: phát hiện {n} lỗi runtime — đang sửa…",
+  "chat.qaClean": "QA: trò chơi khởi động + chạy sạch lỗi",
+  "chat.qaRemain": "QA: còn {n} lỗi runtime sau khi sửa",
   "chat.balance": "số dư {n}",
 
   // ── Conversation history (Batch 2) ──

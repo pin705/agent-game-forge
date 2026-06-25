@@ -28,6 +28,12 @@ export type RunEvent =
       status?: "complete" | "awaiting_input";
     }
   | { type: "charge"; credits: number; balanceAfter: number | null }
+  // Real-browser QA gate progress (qa-gate.ts). `phase`:
+  //   "found"  — N runtime errors detected; an auto-fix round is starting.
+  //   "clean"  — the game boots + plays with no runtime errors.
+  //   "remain" — errors remain after the fix-round cap (best-effort; build still ships).
+  //   "skipped"— no browser available (prod/CI); QA was skipped, static verify is the floor.
+  | { type: "qa"; phase: "found" | "clean" | "remain" | "skipped"; errors: string[]; round?: number }
   | { type: "error"; message: string };
 
 /* -------------------------------------------------------------------------- */

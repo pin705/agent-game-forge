@@ -4,8 +4,12 @@ import type { RunEvent } from "./events";
 import { runLoop, modelDriverName } from "./loop";
 import { resolveModelId } from "./model";
 import { seedSandbox, isSeededPath } from "./seed-sandbox";
+import { qaSmokeTest } from "./qa-gate";
 import { chargeRun } from "@/lib/billing/credits";
 import * as conversations from "@/lib/conversations/store";
+
+/** Hard cap on auto-fix rounds (bounds cost: each round is a full model loop). */
+const MAX_QA_FIX_ROUNDS = 2;
 
 export type RunResult = {
   runId: string;
@@ -154,6 +158,66 @@ export async function* runAgent(args: {
       next = await loop.next();
     }
     const totals = next.value;
+    // Accumulate token totals across the build loop AND any QA fix rounds.
+    let inputTokens = totals.inputTokens;
+    let outputTokens = totals.outputTokens;
+    let steps = totals.steps;
+
+    // ── (b2) QA GATE: real-browser smoke test + bounded auto-fix loop ─────────
+    // Static verify (verify-game.py) is the floor; this catches RUNTIME errors
+    // (uncaught exceptions, failed module fetches, undefined access on first
+    // frame) that only surface when the game actually boots + plays. We load
+    // the built game in headless Chrome, drive start + movement, and if it
+    // throws we run a focused fix round (≤2). The MockModel can't fix anything,
+    // so we run QA for SIGNAL only (no fix loop) when the driver is the mock —
+    // its scripted game is QA-clean, so the e2e stays green with 0 fix rounds.
+    // The gate gracefully SKIPS (no browser → ran:false) in prod/CI so a build
+    // never blocks on infra; static verify still gates those.
+    {
+      const readCurrent = async () =>
+        (await sandbox.readFiles(["**/*"])).filter((f) => !isSeededPath(f.path));
+
+      let qa = await qaSmokeTest(await readCurrent());
+
+      if (!qa.ran) {
+        yield { type: "qa", phase: "skipped", errors: [] };
+      } else if (qa.errors.length === 0) {
+        yield { type: "qa", phase: "clean", errors: [] };
+      } else if (driver === "mock") {
+        // Signal only — the mock can't perform a fix. (In practice the mock's
+        // game is clean so this branch shouldn't trigger; we surface it anyway.)
+        yield { type: "qa", phase: "remain", errors: qa.errors };
+      } else {
+        // Auto-fix loop: feed the runtime errors back to the SAME sandbox so the
+        // model edits the SAME files, re-verify, repeat up to the cap.
+        for (let round = 1; round <= MAX_QA_FIX_ROUNDS && qa.ran && qa.errors.length; round++) {
+          yield { type: "qa", phase: "found", errors: qa.errors, round };
+
+          const fixPrompt = qaFixPrompt(qa.errors);
+          const fixLoop = runLoop({ sandbox, prompt: fixPrompt, modelId });
+          let fixNext = await fixLoop.next();
+          while (!fixNext.done) {
+            if (fixNext.value.type === "tool_call" && fixNext.value.name === "image_gen") images += 1;
+            collected.push(fixNext.value);
+            yield fixNext.value;
+            fixNext = await fixLoop.next();
+          }
+          inputTokens += fixNext.value.inputTokens;
+          outputTokens += fixNext.value.outputTokens;
+          steps += fixNext.value.steps;
+
+          qa = await qaSmokeTest(await readCurrent());
+        }
+
+        if (!qa.ran) {
+          yield { type: "qa", phase: "skipped", errors: [] };
+        } else if (qa.errors.length === 0) {
+          yield { type: "qa", phase: "clean", errors: [] };
+        } else {
+          yield { type: "qa", phase: "remain", errors: qa.errors };
+        }
+      }
+    }
 
     // (c) push changed files back (exclude everything WE seeded — the Python
     //     agent-tools + the build corpus + its scratch state — so storage holds
@@ -164,9 +228,9 @@ export async function* runAgent(args: {
 
     result = {
       runId,
-      inputTokens: totals.inputTokens,
-      outputTokens: totals.outputTokens,
-      steps: totals.steps,
+      inputTokens,
+      outputTokens,
+      steps,
       files: projectFiles.map((f) => f.path).sort(),
       images,
       sandboxMs: Date.now() - sandboxStart,
@@ -228,6 +292,32 @@ export async function* runAgent(args: {
   }
 
   return result;
+}
+
+/* -------------------------------------------------------------------------- */
+/* QA auto-fix prompt                                                         */
+/* -------------------------------------------------------------------------- */
+
+/** The focused fix prompt handed to a QA fix round. Lists the runtime errors
+ *  verbatim and tells the agent to fix the specific cause — NOT rewrite working
+ *  code — then re-run the static verifier. */
+function qaFixPrompt(errors: string[]): string {
+  const list = errors.map((e) => `- ${e}`).join("\n");
+  return [
+    "The built game FAILS when loaded in a real browser. These are the runtime",
+    "errors captured while loading and playing it (uncaught exceptions, failed",
+    "resource loads, console errors):",
+    "",
+    list,
+    "",
+    "Read the relevant files and FIX them so the game boots and plays with NO",
+    "console/runtime errors. Do NOT rewrite working code — fix the SPECIFIC cause:",
+    "a missing or typo'd function/global (define it or import it), a bad asset/data",
+    "path (a 404), wrong <script> load order, or an undefined property access.",
+    "A 'ReferenceError: X is not defined' means X is called but never defined or",
+    "imported — define it or correct the name. When done, re-run the verifier:",
+    "`python agent-tools/verify-game.py` and confirm it is clean.",
+  ].join("\n");
 }
 
 /* -------------------------------------------------------------------------- */
