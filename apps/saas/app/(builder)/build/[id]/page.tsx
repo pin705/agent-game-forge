@@ -1,13 +1,11 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { Sparkles } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getPublishState, resolveSiteOrigin } from "@/lib/publish/core";
-import { Separator } from "@/components/ui/separator";
+import { getSessionUser, isLocalDev } from "@/lib/auth/current-user";
+import { DEV_CREDITS } from "@/lib/billing/credits";
 import { BuildWorkspace } from "@/components/build-workspace";
-import { PublishButton } from "@/components/publish-button";
-import { RemixButton } from "@/components/remix-button";
-import { DashboardBackButton } from "@/components/dashboard-back-button";
+import { BuilderHeader } from "@/components/builder-header";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +27,12 @@ export default async function BuildPage({ params }: { params: Promise<{ id: stri
   const { id } = await params;
 
   let project: { name: string; slug: string } = { name: "Local project", slug: id };
+  // Credits + account email for the single compact header (folds in the old
+  // TopNav chrome). local-dev surfaces the standing dev balance.
+  let credits: number | null = isLocalDev() ? DEV_CREDITS : null;
+
+  const user = await getSessionUser();
+  const email = user?.email ?? "account";
 
   if (supabaseConfigured()) {
     const supabase = await createClient();
@@ -40,6 +44,15 @@ export default async function BuildPage({ params }: { params: Promise<{ id: stri
       .maybeSingle();
     if (!data) notFound();
     project = { name: data.name, slug: data.slug };
+
+    if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("credits_balance")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (profile) credits = profile.credits_balance as number;
+    }
   } else {
     // Local-dev: read the project name/slug from the on-disk registry so the
     // builder header shows the real project. Unregistered ids (e.g. a remix)
@@ -54,32 +67,18 @@ export default async function BuildPage({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="flex h-[calc(100svh-3rem)] flex-col">
-      {/* Builder sub-header */}
-      <div className="flex items-center gap-3 border-b px-4 py-2">
-        <DashboardBackButton />
-        <Separator orientation="vertical" className="h-5" />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{project.name}</p>
-          <p className="truncate text-xs text-muted-foreground">/{project.slug}</p>
-        </div>
-
-        {/* Share controls (P4) */}
-        <div className="ml-auto flex items-center gap-2">
-          <span className="hidden items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground sm:inline-flex">
-            <Sparkles className="size-3.5" />
-            DeepSeek
-          </span>
-          <RemixButton srcRef={id} variant="ghost" />
-          <PublishButton
-            projectId={id}
-            initial={{
-              isPublished: publishState.isPublished,
-              url: publishState.url,
-              playCount: publishState.playCount,
-            }}
-          />
-        </div>
-      </div>
+      <BuilderHeader
+        projectId={id}
+        projectName={project.name}
+        projectSlug={project.slug}
+        email={email}
+        credits={credits}
+        publishInitial={{
+          isPublished: publishState.isPublished,
+          url: publishState.url,
+          playCount: publishState.playCount,
+        }}
+      />
 
       <BuildWorkspace projectId={id} projectName={project.name} />
     </div>
