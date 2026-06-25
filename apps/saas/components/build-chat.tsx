@@ -216,8 +216,16 @@ export function BuildChat({
   useEffect(() => {
     runningRef.current = running;
   }, [running]);
-  // Aborts the in-flight run's fetch when the user hits Stop.
+  // Aborts ONLY the local SSE-tail fetch (closing the reader) — NOT the run.
+  // The run keeps going on the server; Stop is a separate POST to /stop.
   const abortRef = useRef<AbortController | null>(null);
+  // The runId currently being tailed — Stop POSTs to /api/runs/<id>/stop.
+  const currentRunIdRef = useRef<string | null>(null);
+  // Guards against double-attaching the same run (resume-on-mount idempotency).
+  const attachedRunIdRef = useRef<string | null>(null);
+  // Mirror of runStartedAt for tailStream (which must not re-reset the timer on
+  // resume when one is already ticking).
+  const runStartedAtRef = useRef<number | null>(null);
 
   // ⌘K "Focus chat" command → focus the composer textarea.
   useEffect(() => {
@@ -322,66 +330,65 @@ export function BuildChat({
     [addFiles],
   );
 
-  // ── Run a turn (stream SSE) ─────────────────────────────────────────────────
-  const send = useCallback(
-    async (overridePrompt?: string, attachedRefs?: string[]) => {
-      const text = (overridePrompt ?? prompt).trim();
-      if (!text || running) return;
-      if (uploading) {
-        toast.error(t("dropzone.uploading"));
-        return;
+  // ── Tail a background run's SSE stream ───────────────────────────────────────
+  //
+  // Start and resume are the SAME path: open GET /api/runs/<id>/stream?since=N
+  // and feed each event into handleEvent. The run lives on the server (the
+  // executor owns it), so closing this reader NEVER stops the run — it just
+  // detaches this client. This is what makes F5 / leaving the page safe.
+  const tailStream = useCallback(
+    async (runId: string, opts: { since?: number; isNew?: boolean } = {}) => {
+      const { since = 0, isNew = false } = opts;
+      currentRunIdRef.current = runId;
+      attachedRunIdRef.current = runId;
+      setRunning(true);
+      if (runStartedAtRef.current == null) {
+        const now = Date.now();
+        runStartedAtRef.current = now;
+        setRunStartedAt(now);
       }
 
-      const refImagePaths = attachedRefs ?? (refPaths.length > 0 ? refPaths : undefined);
-
-      setPrompt("");
-      setRefPaths([]);
-      setError(null);
-      setRunning(true);
-      setRunStartedAt(Date.now());
-      setTurns((s) => [
-        ...s,
-        {
-          id: cryptoRandomId(),
-          userText: text,
-          refPaths: refImagePaths ?? [],
-          events: [],
-          status: "streaming",
-          startedAt: Date.now(),
-          eventTimes: [],
-        },
-      ]);
-
-      const hadConversation = conversationIdRef.current !== null;
       const ac = new AbortController();
       abortRef.current = ac;
 
+      function handleEvent(ev: RunEvent) {
+        switch (ev.type) {
+          case "run_start":
+            setMeta(ev.driver);
+            onDriverChange?.(ev.driver);
+            if (ev.conversationId) {
+              const isNewConv = conversationIdRef.current === null;
+              conversationIdRef.current = ev.conversationId;
+              if (isNewConv && isNew) onConversationCreated?.(ev.conversationId);
+            }
+            break;
+          case "text_delta":
+          case "tool_result":
+          case "shell":
+          case "file_write":
+          case "question":
+          case "charge":
+            appendEventToLastTurn(ev);
+            if (ev.type === "file_write") onFilesChanged();
+            break;
+          case "done":
+            appendEventToLastTurn(ev);
+            onFilesChanged();
+            break;
+          case "error":
+            setError(ev.message);
+            break;
+        }
+      }
+
       try {
-        const res = await fetch("/api/runs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId,
-            prompt: text,
-            model,
-            conversationId: conversationIdRef.current ?? undefined,
-            refImagePaths,
-          }),
-          signal: ac.signal,
-        });
+        const res = await fetch(`/api/runs/${runId}/stream?since=${since}`, { signal: ac.signal });
         if (!res.ok || !res.body) {
-          const err = await res.json().catch(() => ({ error: res.statusText }));
-          const msg =
-            res.status === 402
-              ? err.message ?? "Out of credits — top up to continue."
-              : err.message ?? err.error ?? "run failed";
-          setError(msg);
-          finalizeLastTurn("failed");
-          setRunning(false);
-          setRunStartedAt(null);
+          // 404 = the run was evicted/unknown (e.g. completed long ago). The
+          // history reload already shows a finished run, so just clean up.
+          finalizeLastTurn("done");
           return;
         }
-
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buf = "";
@@ -406,7 +413,8 @@ export function BuildChat({
         finalizeLastTurn("done");
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
-          // User hit Stop — keep whatever streamed so far, no error banner.
+          // Local stream detached (Stop pressed, or unmount) — keep what
+          // streamed; no error banner.
           finalizeLastTurn("done");
         } else {
           setError(err instanceof Error ? err.message : String(err));
@@ -414,50 +422,109 @@ export function BuildChat({
         }
       } finally {
         abortRef.current = null;
+        currentRunIdRef.current = null;
         setRunning(false);
         setRunStartedAt(null);
+        runStartedAtRef.current = null;
         onFilesChanged();
       }
-
-      function handleEvent(ev: RunEvent) {
-        switch (ev.type) {
-          case "run_start":
-            setMeta(ev.driver);
-            onDriverChange?.(ev.driver);
-            if (ev.conversationId) {
-              const isNew = conversationIdRef.current === null;
-              conversationIdRef.current = ev.conversationId;
-              if (isNew && !hadConversation) onConversationCreated?.(ev.conversationId);
-            }
-            break;
-          case "text_delta":
-          case "tool_result":
-          case "shell":
-          case "file_write":
-          case "question":
-          case "charge":
-            appendEventToLastTurn(ev);
-            if (ev.type === "file_write") onFilesChanged();
-            break;
-          case "done":
-            appendEventToLastTurn(ev);
-            onFilesChanged();
-            break;
-          case "error":
-            setError(ev.message);
-            break;
-        }
-      }
     },
-    [prompt, running, uploading, refPaths, projectId, model, appendEventToLastTurn, finalizeLastTurn, onFilesChanged, onConversationCreated, onDriverChange, t],
+    [appendEventToLastTurn, finalizeLastTurn, onFilesChanged, onConversationCreated, onDriverChange],
+  );
+
+  // ── Run a turn: POST to start a background run, then tail it ──────────────────
+  const send = useCallback(
+    async (overridePrompt?: string, attachedRefs?: string[]) => {
+      const text = (overridePrompt ?? prompt).trim();
+      if (!text || running) return;
+      if (uploading) {
+        toast.error(t("dropzone.uploading"));
+        return;
+      }
+
+      const refImagePaths = attachedRefs ?? (refPaths.length > 0 ? refPaths : undefined);
+
+      setPrompt("");
+      setRefPaths([]);
+      setError(null);
+      setRunning(true);
+      const startedAt = Date.now();
+      runStartedAtRef.current = startedAt;
+      setRunStartedAt(startedAt);
+      setTurns((s) => [
+        ...s,
+        {
+          id: cryptoRandomId(),
+          userText: text,
+          refPaths: refImagePaths ?? [],
+          events: [],
+          status: "streaming",
+          startedAt,
+          eventTimes: [],
+        },
+      ]);
+
+      const hadConversation = conversationIdRef.current !== null;
+
+      let runId: string;
+      try {
+        const res = await fetch("/api/runs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            prompt: text,
+            model,
+            conversationId: conversationIdRef.current ?? undefined,
+            refImagePaths,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }));
+          const msg =
+            res.status === 402
+              ? err.message ?? "Out of credits — top up to continue."
+              : err.message ?? err.error ?? "run failed";
+          setError(msg);
+          finalizeLastTurn("failed");
+          setRunning(false);
+          setRunStartedAt(null);
+          runStartedAtRef.current = null;
+          return;
+        }
+        const data = (await res.json()) as { runId: string; conversationId: string | null };
+        runId = data.runId;
+        // Adopt a pre-known conversationId (follow-up run on an existing conv).
+        if (data.conversationId && conversationIdRef.current === null) {
+          conversationIdRef.current = data.conversationId;
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        finalizeLastTurn("failed");
+        setRunning(false);
+        setRunStartedAt(null);
+        runStartedAtRef.current = null;
+        return;
+      }
+
+      // Tail from index 0 — we just created this run, so the full event list is
+      // ours. `isNew` only fires onConversationCreated for a brand-new conv.
+      await tailStream(runId, { since: 0, isNew: !hadConversation });
+    },
+    [prompt, running, uploading, refPaths, projectId, model, tailStream, finalizeLastTurn, t],
   );
 
   // Keep a stable handle to the latest `send` so the mount effect (which must
   // NOT depend on `send` — its deps include `prompt`, so re-running it on every
   // keystroke would wipe the in-progress transcript) can fire the onboarding
   // auto-send without re-subscribing.
-  /** Stop the in-flight run (aborts the SSE fetch; the turn keeps what streamed). */
+  /** Stop the in-flight run: POST /stop (cancels it server-side → sandbox
+   *  teardown), then detach the local tail. The turn keeps what streamed. */
   const stop = useCallback(() => {
+    const runId = currentRunIdRef.current;
+    if (runId) {
+      void fetch(`/api/runs/${runId}/stop`, { method: "POST" }).catch(() => {});
+    }
     abortRef.current?.abort();
   }, []);
 
@@ -465,6 +532,12 @@ export function BuildChat({
   useEffect(() => {
     sendRef.current = send;
   }, [send]);
+  // Stable handle to tailStream for the mount/resume effect (which must not
+  // depend on it directly, to avoid re-running the history load).
+  const tailStreamRef = useRef(tailStream);
+  useEffect(() => {
+    tailStreamRef.current = tailStream;
+  }, [tailStream]);
 
   const onSubmitForm = useCallback(
     (formId: string, answers: FormAnswers) => {
@@ -517,6 +590,61 @@ export function BuildChat({
           const { messages } = await fetchMessages(targetId).catch(() => ({ messages: [] as MessageDTO[] }));
           if (messages.length) hadHistory = true;
           if (!cancelled && messages.length) setTurns(rebuildTurns(messages));
+
+          // ── Resume an in-flight run (F5 / returned to the page) ────────────
+          // If this conversation has an active background run we're not already
+          // tailing, add an in-progress assistant turn and open its stream from
+          // since=0 so it replays what streamed so far + tails to completion.
+          // A run that COMPLETED while away needs no special handling — the
+          // history reload above already shows its persisted assistant turn.
+          if (!cancelled) {
+            try {
+              const r = await fetch(
+                `/api/runs/active?conversationId=${encodeURIComponent(targetId)}`,
+              );
+              const { runId } = (await r.json().catch(() => ({ runId: null }))) as {
+                runId: string | null;
+              };
+              if (
+                runId &&
+                !cancelled &&
+                attachedRunIdRef.current !== runId &&
+                currentRunIdRef.current !== runId &&
+                !runningRef.current
+              ) {
+                attachedRunIdRef.current = runId;
+                // The user prompt was persisted by runAgent at run START, so the
+                // history reload above already shows it as a (so-far empty) turn.
+                // Attach the live assistant stream to THAT trailing turn rather
+                // than adding a duplicate empty one; otherwise (no such turn)
+                // append a fresh in-progress assistant turn.
+                setTurns((s) => {
+                  const last = s[s.length - 1];
+                  const startedAt = Date.now();
+                  if (last && last.events.length === 0) {
+                    const next = [...s];
+                    next[next.length - 1] = { ...last, status: "streaming", startedAt, eventTimes: [] };
+                    return next;
+                  }
+                  return [
+                    ...s,
+                    {
+                      id: cryptoRandomId(),
+                      userText: "",
+                      refPaths: [],
+                      events: [],
+                      status: "streaming",
+                      startedAt,
+                      eventTimes: [],
+                    },
+                  ];
+                });
+                void tailStreamRef.current(runId, { since: 0, isNew: false });
+              }
+            } catch {
+              /* no active run / endpoint unreachable — nothing to resume */
+            }
+          }
         }
       } catch {
         // No conversations yet — the first send() creates one. Never auto-fire.

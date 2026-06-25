@@ -314,6 +314,21 @@ async function runBrowserFlows() {
       return "index.html + game.js chips + charge line present";
     });
 
+    // ── Resume: reload the build page → the completed run is still shown ──
+    // (Persisted assistant turn re-hydrates from history; if a run were still
+    // in-flight, /api/runs/active would re-attach the live stream instead.)
+    await step("resume: reload build page → completed build still present", async () => {
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.waitForSelector("textarea", { timeout: 15000 });
+      await page.waitForFunction(
+        () => /Build complete/i.test(document.body.innerText),
+        null,
+        { timeout: 30000 },
+      );
+      await shot("05b-resume-reload");
+      return "Build complete survived a full page reload";
+    });
+
     // ── Preview iframe loads the served game ──
     await step("preview iframe serves the game DOM", async () => {
       // Wait for the workspace to refresh the file list (hasGame → iframe mounts).
@@ -677,19 +692,17 @@ async function runBrowserFlows() {
 }
 
 // ── HTTP-LEVEL FALLBACK ───────────────────────────────────────────────────────
-async function readSSE(p, bodyObj, timeoutMs = 90000) {
+// GET-tail a background run's SSE stream until it closes, collecting events.
+function tailSSE(streamPath, timeoutMs = 90000) {
   return new Promise((resolve, reject) => {
-    const u = new URL(BASE + p);
-    const body = Buffer.from(JSON.stringify(bodyObj));
+    const u = new URL(BASE + streamPath);
     const req = http.request(
-      {
-        method: "POST",
-        hostname: u.hostname,
-        port: u.port,
-        path: u.pathname,
-        headers: { "content-type": "application/json", "content-length": body.length },
-      },
+      { method: "GET", hostname: u.hostname, port: u.port, path: u.pathname + u.search },
       (res) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          return reject(new Error("stream status " + res.statusCode));
+        }
         const events = [];
         let buf = "";
         res.setEncoding("utf8");
@@ -710,9 +723,19 @@ async function readSSE(p, bodyObj, timeoutMs = 90000) {
     );
     req.on("error", reject);
     req.setTimeout(timeoutMs, () => req.destroy(new Error("SSE timeout")));
-    req.write(body);
     req.end();
   });
+}
+
+// Start a background run (POST /api/runs → { runId, conversationId }), then tail
+// its stream to completion. Returns { runId, conversationId, events }.
+async function startAndTail(bodyObj, timeoutMs = 90000) {
+  const started = await postJson("/api/runs", bodyObj);
+  if (started.status !== 200 || !started.json?.runId)
+    throw new Error("start run failed " + started.status + " " + JSON.stringify(started.json));
+  const runId = started.json.runId;
+  const events = await tailSSE(`/api/runs/${runId}/stream?since=0`, timeoutMs);
+  return { runId, conversationId: started.json.conversationId ?? null, events };
 }
 
 async function runHttpFlows() {
@@ -745,8 +768,8 @@ async function runHttpFlows() {
   });
 
   let convId = null;
-  await step("HTTP: POST /api/runs streams SSE to completion (+files+charge)", async () => {
-    const events = await readSSE("/api/runs", {
+  await step("HTTP: POST /api/runs → background run → tail stream to completion (+files+charge)", async () => {
+    const { events } = await startAndTail({
       projectId,
       prompt: "Build a tiny canvas platformer, data-driven.",
     });
@@ -761,6 +784,23 @@ async function runHttpFlows() {
     return `${events.length} events; files=${done.files.length}; charge ok`;
   });
 
+  // Resumability proof: start a run, tail it ONCE to completion, then RE-TAIL the
+  // SAME run from since=0 — a returning client must replay the full transcript
+  // (incl. done) because the executor keeps the finished run in its grace window.
+  await step("HTTP: re-tail a finished run replays full transcript (F5/return resume)", async () => {
+    const { runId, events: first } = await startAndTail({
+      projectId,
+      prompt: "Build another tiny game.",
+      conversationId: convId ?? undefined,
+    });
+    if (!first.some((e) => e.type === "done")) throw new Error("first tail saw no done");
+    // Re-attach as a returning client would after F5.
+    const replay = await tailSSE(`/api/runs/${runId}/stream?since=0`, 30000);
+    if (!replay.some((e) => e.type === "run_start")) throw new Error("replay missing run_start");
+    if (!replay.some((e) => e.type === "done")) throw new Error("replay missing done");
+    return `re-tail replayed ${replay.length} events incl. done`;
+  });
+
   await step("HTTP: GET file + PUT edit round-trips", async () => {
     const g = await getText(`/api/projects/${projectId}/file?path=index.html`);
     if (g.status !== 200) throw new Error("GET file " + g.status);
@@ -773,7 +813,7 @@ async function runHttpFlows() {
   });
 
   await step("HTTP: question-form clarify path (emit_question_form)", async () => {
-    const events = await readSSE("/api/runs", {
+    const { events } = await startAndTail({
       projectId,
       prompt: "Please ask me a clarifying question first.",
       conversationId: convId ?? undefined,

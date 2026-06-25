@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
-import { runAgent } from "@/lib/agent/run";
-import type { RunEvent } from "@/lib/agent/events";
+import { startRun } from "@/lib/agent/run-executor";
 import { ENABLED_MODEL_IDS, isEnabledModel } from "@/lib/agent/catalog";
 import { creditFloor, readBalance } from "@/lib/billing/credits";
 
@@ -15,16 +14,17 @@ function supabaseConfigured(): boolean {
   return Boolean(url && !url.includes("placeholder"));
 }
 
-function sse(event: RunEvent): string {
-  return `data: ${JSON.stringify(event)}\n\n`;
-}
-
 /**
- * POST /api/runs  { projectId, prompt }  → text/event-stream of RunEvents.
+ * POST /api/runs  { projectId, prompt }  → { runId, conversationId }.
  *
- * Auth guard:
- *  - When Supabase is configured (prod), an authed user is required (401 else).
- *    Credit checks land in P2.
+ * The run no longer streams from this request. We start a BACKGROUND run (owned
+ * by lib/agent/run-executor) and return its runId immediately; the client then
+ * TAILS it via GET /api/runs/[id]/stream. This decouples the run from the
+ * client connection so it survives F5 / leaving the page.
+ *
+ * Auth guard (unchanged from the streaming version):
+ *  - When Supabase is configured (prod), an authed user is required (401 else)
+ *    + the project must belong to them (404) + the credit gate (402).
  *  - In local-dev mode (no/placeholder Supabase), unauthenticated runs are
  *    allowed so the loop can be smoke-tested with zero accounts.
  */
@@ -97,40 +97,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        const gen = runAgent({
-          projectId,
-          prompt,
-          userId,
-          model: requestedModel,
-          conversationId,
-          refImagePaths,
-        });
-        let next = await gen.next();
-        while (!next.done) {
-          controller.enqueue(encoder.encode(sse(next.value)));
-          next = await gen.next();
-        }
-      } catch (err) {
-        controller.enqueue(
-          encoder.encode(
-            sse({ type: "error", message: err instanceof Error ? err.message : String(err) }),
-          ),
-        );
-      } finally {
-        controller.close();
-      }
-    },
+  // Start the run in the background; the pump owns the generator, so a client
+  // disconnect can NEVER abandon it. Return the handle for the client to tail.
+  const { runId, conversationId: convId } = startRun({
+    projectId,
+    prompt,
+    userId,
+    model: requestedModel,
+    conversationId,
+    refImagePaths,
   });
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    },
-  });
+  return Response.json({ runId, conversationId: convId });
 }
