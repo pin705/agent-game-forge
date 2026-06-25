@@ -198,6 +198,12 @@ export function BuildChat({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dragDepthRef = useRef(0);
+  // Mirror of `running` for the history-load effect to read without depending on
+  // it (so a run starting/stopping never re-triggers a transcript reload/wipe).
+  const runningRef = useRef(false);
+  useEffect(() => {
+    runningRef.current = running;
+  }, [running]);
 
   // ⌘K "Focus chat" command → focus the composer textarea.
   useEffect(() => {
@@ -448,10 +454,19 @@ export function BuildChat({
     if (conversationId != null && conversationId === conversationIdRef.current) {
       return;
     }
+    // Never reload/wipe while a run is streaming (or its result is on screen but
+    // not yet persisted) — e.g. if the DB isn't migrated, persistence fails and a
+    // reload would clear the just-streamed turn (incl. a question form).
+    if (runningRef.current) return;
     let cancelled = false;
+    const prevConv = conversationIdRef.current;
     conversationIdRef.current = conversationId ?? null;
-    setTurns([]);
     setError(null);
+    // Only blank the transcript when genuinely switching to a DIFFERENT
+    // conversation. On a same-binding re-render — or a reload that comes back
+    // empty/failed (unmigrated DB, network blip) — keep the visible turns.
+    const switchingConversation = conversationId != null && conversationId !== prevConv;
+    if (switchingConversation) setTurns([]);
     (async () => {
       let hadHistory = false;
       try {

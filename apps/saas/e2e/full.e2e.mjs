@@ -609,27 +609,48 @@ async function runBrowserFlows() {
       await page.waitForSelector('[role="dialog"]', { state: "detached", timeout: 5000 });
       return n + " commands listed";
     });
-    await step("theme toggle flips .dark on <html>", async () => {
+    // Theme + language toggles were moved OUT of the header into Settings
+    // (compact header). Verify they're gone from the header AND still work in
+    // the Settings dialog (opened from the avatar account menu).
+    await step("theme + language toggles removed from header", async () => {
+      const themeInHeader = await page
+        .locator("header button:has(svg.lucide-sun), header button:has(svg.lucide-moon)")
+        .count();
+      const langInHeader = await page.locator("header").getByRole("button", { name: /^VI$/ }).count();
+      if (themeInHeader > 0) throw new Error("theme toggle still in header");
+      if (langInHeader > 0) throw new Error("language toggle still in header");
+      return "header has neither toggle (moved to Settings)";
+    });
+    async function openSettings() {
+      await page.locator('[aria-label="Account"]').click({ timeout: 8000 });
+      await page.getByRole("menuitem", { name: /settings|cài đặt/i }).click({ timeout: 6000 });
+      await page.waitForSelector('[role="dialog"] #settings-language', { timeout: 8000 });
+    }
+    await step("Settings: theme control flips .dark on <html>", async () => {
       const before = await page.evaluate(() => document.documentElement.classList.contains("dark"));
-      // The theme toggle is the Sun/Moon icon button in the top-nav.
+      await openSettings();
+      // Appearance is a 3-button segmented control (Light / Dark / System).
       await page
-        .locator('button:has(svg.lucide-sun), button:has(svg.lucide-moon)')
-        .first()
-        .click({ timeout: 8000 });
-      await page.getByRole("menuitem", { name: before ? /light/i : /dark/i }).click({ timeout: 6000 });
+        .locator('[role="dialog"]')
+        .getByRole("button", { name: before ? /light|sáng/i : /dark|tối/i })
+        .click({ timeout: 6000 });
       await page.waitForFunction(
         (b) => document.documentElement.classList.contains("dark") !== b,
         before,
         { timeout: 6000 },
       );
       const after = await page.evaluate(() => document.documentElement.classList.contains("dark"));
+      await page.keyboard.press("Escape");
+      await page.waitForSelector('[role="dialog"]', { state: "detached", timeout: 5000 });
       if (after === before) throw new Error("dark class unchanged");
       return `dark: ${before} → ${after}`;
     });
-    await step("language toggle switches EN↔VI (known string changes)", async () => {
-      // The composer placeholder is "Message the agent…" (EN) / "Nhắn cho trợ lý…" (VI).
+    await step("Settings: language switches EN↔VI", async () => {
       const enPlaceholder = await page.locator("textarea").first().getAttribute("placeholder");
-      await page.getByRole("button", { name: /^VI$/ }).click({ timeout: 6000 });
+      await openSettings();
+      // Radix Select: open it, then pick the VI option (second item).
+      await page.locator("#settings-language").click({ timeout: 6000 });
+      await page.locator('[role="option"]').nth(1).click({ timeout: 6000 });
       await page.waitForFunction(
         (en) => {
           const ta = document.querySelector("textarea");
@@ -639,6 +660,7 @@ async function runBrowserFlows() {
         { timeout: 8000 },
       );
       const viPlaceholder = await page.locator("textarea").first().getAttribute("placeholder");
+      await page.keyboard.press("Escape");
       await shot("18-lang-vi");
       if (viPlaceholder === enPlaceholder) throw new Error("placeholder unchanged");
       return `placeholder: "${enPlaceholder}" → "${viPlaceholder}"`;

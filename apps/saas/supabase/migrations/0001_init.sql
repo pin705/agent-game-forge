@@ -1,4 +1,10 @@
 -- =============================================================================
+-- LEGACY / REFERENCE ONLY. Drizzle now owns schema + migrations
+-- (`lib/db/schema.ts` + `drizzle/`, applied with `npm run db:migrate`). This
+-- file is preserved as the authored source-of-truth that Drizzle was ported
+-- from; do not apply it by hand for new setups. See apps/saas/README.md §b.
+-- =============================================================================
+-- =============================================================================
 -- Footage SaaS — initial schema (P0)
 -- Implements SAAS_ARCHITECTURE.md §4 (data model) + §5/§6 (credits, auth).
 --

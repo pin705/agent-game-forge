@@ -1,4 +1,10 @@
 -- ============================================================
+-- LEGACY / REFERENCE ONLY. Drizzle is now CANONICAL for schema + migrations:
+-- `lib/db/schema.ts` + `drizzle/` applied via `npm run db:migrate`. This file is
+-- kept as documentation and as an OPTIONAL no-connection-string fallback (paste
+-- into the Supabase SQL editor) — it produces the identical schema/RLS/functions
+-- /trigger. Prefer `db:migrate`. See README §b.
+-- ============================================================
 -- Footage SaaS — FULL schema setup (run once in Supabase SQL editor)
 -- Concatenation of migrations 0001→0004, in order.
 -- After running, PostgREST reloads its schema cache automatically.
