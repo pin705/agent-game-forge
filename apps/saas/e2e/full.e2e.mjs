@@ -254,17 +254,26 @@ async function runBrowserFlows() {
     let projectId = null;
     await step("dashboard loads (local-dev auth bypass)", async () => {
       await page.goto(BASE + "/dashboard", { waitUntil: "domcontentloaded", timeout: 20000 });
-      await page.waitForSelector('input[name="name"]', { timeout: 15000 });
+      // Studio-style prompt hero: the idea textarea + the genre chips.
+      await page.waitForSelector('textarea[name="idea"]', { timeout: 15000 });
+      await page.waitForFunction(
+        () => /platformer/i.test(document.body.innerText),
+        null,
+        { timeout: 8000 },
+      );
       // The top-nav credits chip should show the dev balance.
       await page.waitForFunction(() => /\d+\s*credits/i.test(document.body.innerText), null, { timeout: 8000 });
       await shot("03-dashboard");
-      return "dashboard + credits chip present (no login redirect)";
+      return "dashboard hero (textarea + genre chips) + credits chip present";
     });
-    await step("create new project → /build/<id>", async () => {
-      await page.fill('input[name="name"]', "E2E Adventure");
+    await step("create new project → /build/<id> (idea hero)", async () => {
+      // Submit the hero with an EMPTY idea so no `?idea=` auto-send fires — the
+      // explicit chat step below drives the first run. (The idea→auto-send path
+      // is covered by its own step further down.)
+      await page.fill('textarea[name="idea"]', "");
       await Promise.all([
         page.waitForURL(/\/build\/[^/]+/, { timeout: 20000 }),
-        page.getByRole("button", { name: /new game/i }).click(),
+        page.getByRole("button", { name: /^Create$/ }).click(),
       ]);
       projectId = page.url().match(/\/build\/([^/?#]+)/)?.[1] ?? null;
       await page.waitForSelector("textarea", { timeout: 15000 });
@@ -307,6 +316,59 @@ async function runBrowserFlows() {
       await frame.locator("#game").waitFor({ timeout: 20000 });
       await shot("06-preview");
       return "iframe canvas#game present";
+    });
+
+    // ── Dashboard: the just-built project now shows as a studio-style card ──
+    await step("dashboard shows a game card (cover + Play/Edit) after build", async () => {
+      await page.goto(BASE + "/dashboard", { waitUntil: "domcontentloaded", timeout: 20000 });
+      await page.waitForSelector('textarea[name="idea"]', { timeout: 15000 });
+      // A card links to /build/<id>; Play + Edit buttons + a live-preview iframe
+      // cover should be present for the project we just built.
+      await page.waitForSelector(`a[href="/build/${projectId}"]`, { timeout: 15000 });
+      await page.waitForFunction(
+        () => /\bPlay\b/.test(document.body.innerText) && /\bEdit\b/.test(document.body.innerText),
+        null,
+        { timeout: 8000 },
+      );
+      // The cover mounts a sandboxed iframe of the draft preview once it detects
+      // an HTML index — give it a beat, then screenshot the populated grid.
+      await page.waitForTimeout(1200);
+      await shot("03b-dashboard-cards");
+      return "game card with cover + Play/Edit present";
+    });
+
+    // ── Idea → ?idea= → chat auto-send (onboarding), once-only ──
+    await step("idea hero auto-sends the first prompt on a new project", async () => {
+      await page.goto(BASE + "/dashboard", { waitUntil: "domcontentloaded", timeout: 20000 });
+      await page.fill('textarea[name="idea"]', "A tiny survivor game with one enemy.");
+      await Promise.all([
+        page.waitForURL(/\/build\/[^/?#]+/, { timeout: 20000 }),
+        page.getByRole("button", { name: /^Create$/ }).click(),
+      ]);
+      // The build chat should render the idea as the first user turn WITHOUT any
+      // typing, and the URL's ?idea= param should be stripped (once-only guard).
+      await page.waitForFunction(
+        () => /tiny survivor game/i.test(document.body.innerText),
+        null,
+        { timeout: 20000 },
+      );
+      const urlHasIdea = /[?&]idea=/.test(page.url());
+      if (urlHasIdea) throw new Error("?idea= was not stripped from the URL");
+      // The run should kick off automatically (Working… / completes).
+      await page.waitForFunction(
+        () => /Working|Build complete/i.test(document.body.innerText),
+        null,
+        { timeout: 30000 },
+      );
+      return "auto-sent idea as first turn; ?idea= stripped";
+    });
+
+    // Re-bind subsequent steps to the original project so the editor flow below
+    // operates on the project we seeded data/assets into.
+    await step("return to the seeded build project", async () => {
+      await page.goto(BASE + `/build/${projectId}`, { waitUntil: "domcontentloaded", timeout: 20000 });
+      await page.waitForSelector('[role="tab"]', { timeout: 10000 });
+      return "back on " + projectId;
     });
 
     // ── Code tab: tree lists files; open index.html in Monaco; edit + Save ──

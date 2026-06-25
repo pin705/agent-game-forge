@@ -109,6 +109,35 @@ export async function createProject(args: {
   });
 }
 
+/** Rename a project owned by `userId`. Returns the updated record (or null if
+ *  the id is missing / not owned). Bumps `updatedAt`. */
+export async function renameProject(args: {
+  userId: string;
+  id: string;
+  name: string;
+}): Promise<LocalProject | null> {
+  return mutate((data) => {
+    const rec = data.projects[args.id];
+    if (!rec || rec.userId !== args.userId) return null;
+    rec.name = args.name;
+    rec.updatedAt = Date.now();
+    return rec;
+  });
+}
+
+/** Delete a project owned by `userId`. Returns true when a row was removed. */
+export async function deleteProject(args: {
+  userId: string;
+  id: string;
+}): Promise<boolean> {
+  return mutate((data) => {
+    const rec = data.projects[args.id];
+    if (!rec || rec.userId !== args.userId) return false;
+    delete data.projects[args.id];
+    return true;
+  });
+}
+
 /** Look up a project by id (no mutation). */
 export async function getProject(id: string): Promise<LocalProject | null> {
   const data = await readFileSafe();

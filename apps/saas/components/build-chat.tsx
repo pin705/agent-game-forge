@@ -191,6 +191,9 @@ export function BuildChat({
   );
 
   const conversationIdRef = useRef<string | null>(conversationId ?? null);
+  // Guards the one-shot onboarding auto-send (?idea=…): set the moment we fire
+  // (or decide not to) so a re-render / refresh can never double-send.
+  const autoSentRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -421,12 +424,19 @@ export function BuildChat({
   );
 
   // ── Mount / conversation switch: load history (no auto-run) ──────────────────
+  //
+  // Onboarding auto-send: the dashboard "create" flow redirects here with a
+  // `?idea=<text>` query param. On mount we send that idea as the FIRST user
+  // turn — but ONLY for a brand-new project (no existing conversation/messages)
+  // and exactly once (autoSentRef + history.replaceState clears the param so a
+  // refresh never re-fires). A project that already has history NEVER auto-sends.
   useEffect(() => {
     let cancelled = false;
     conversationIdRef.current = conversationId ?? null;
     setTurns([]);
     setError(null);
     (async () => {
+      let hadHistory = false;
       try {
         let targetId = conversationId ?? null;
         if (!targetId) {
@@ -436,16 +446,35 @@ export function BuildChat({
         if (targetId && !cancelled) {
           conversationIdRef.current = targetId;
           const { messages } = await fetchMessages(targetId).catch(() => ({ messages: [] as MessageDTO[] }));
+          if (messages.length) hadHistory = true;
           if (!cancelled && messages.length) setTurns(rebuildTurns(messages));
         }
       } catch {
         // No conversations yet — the first send() creates one. Never auto-fire.
       }
+      if (cancelled || autoSentRef.current) return;
+      // Only the latest-conversation binding (no explicit conversationId) is a
+      // fresh-project onboarding context. Read + immediately strip ?idea=.
+      if (conversationId == null && !hadHistory) {
+        const params = new URLSearchParams(window.location.search);
+        const idea = params.get("idea")?.trim();
+        if (idea) {
+          autoSentRef.current = true;
+          params.delete("idea");
+          const qs = params.toString();
+          window.history.replaceState(
+            null,
+            "",
+            window.location.pathname + (qs ? `?${qs}` : "") + window.location.hash,
+          );
+          void send(idea, []);
+        }
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [projectId, conversationId]);
+  }, [projectId, conversationId, send]);
 
   const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
