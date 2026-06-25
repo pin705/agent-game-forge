@@ -414,6 +414,15 @@ export function BuildChat({
     [prompt, running, uploading, refPaths, projectId, model, appendEventToLastTurn, finalizeLastTurn, onFilesChanged, onConversationCreated, onDriverChange, t],
   );
 
+  // Keep a stable handle to the latest `send` so the mount effect (which must
+  // NOT depend on `send` — its deps include `prompt`, so re-running it on every
+  // keystroke would wipe the in-progress transcript) can fire the onboarding
+  // auto-send without re-subscribing.
+  const sendRef = useRef(send);
+  useEffect(() => {
+    sendRef.current = send;
+  }, [send]);
+
   const onSubmitForm = useCallback(
     (formId: string, answers: FormAnswers) => {
       setSubmittedForms((prev) => new Set(prev).add(formId));
@@ -431,6 +440,14 @@ export function BuildChat({
   // and exactly once (autoSentRef + history.replaceState clears the param so a
   // refresh never re-fires). A project that already has history NEVER auto-sends.
   useEffect(() => {
+    // The parent flips `conversationId` null→<newId> the moment a run creates a
+    // conversation (onConversationCreated). That's the SAME conversation this
+    // component is already streaming into — re-running the reset+reload here
+    // would wipe the in-flight turn (and its assistant transcript) mid-stream.
+    // Skip when the incoming id already matches what the stream adopted.
+    if (conversationId != null && conversationId === conversationIdRef.current) {
+      return;
+    }
     let cancelled = false;
     conversationIdRef.current = conversationId ?? null;
     setTurns([]);
@@ -467,14 +484,14 @@ export function BuildChat({
             "",
             window.location.pathname + (qs ? `?${qs}` : "") + window.location.hash,
           );
-          void send(idea, []);
+          void sendRef.current(idea, []);
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [projectId, conversationId, send]);
+  }, [projectId, conversationId]);
 
   const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {

@@ -303,8 +303,14 @@ async function runBrowserFlows() {
       const body = await page.evaluate(() => document.body.innerText);
       if (!/index\.html/.test(body)) throw new Error("no index.html file chip");
       if (!/game\.js/.test(body)) throw new Error("no game.js file chip");
-      // The charge line renders "−N credit(s)".
-      if (!/[-−]\s*\d+\s*credit/i.test(body)) throw new Error("no credit charge line");
+      // The charge line renders "−N credit(s)". It's the LAST stream event
+      // (yielded after `done`), so it can land a tick after "Build complete"
+      // appears — wait for it rather than reading a single snapshot.
+      await page.waitForFunction(
+        () => /[-−]\s*\d+\s*credit/i.test(document.body.innerText),
+        null,
+        { timeout: 10000 },
+      );
       return "index.html + game.js chips + charge line present";
     });
 
@@ -354,13 +360,18 @@ async function runBrowserFlows() {
       );
       const urlHasIdea = /[?&]idea=/.test(page.url());
       if (urlHasIdea) throw new Error("?idea= was not stripped from the URL");
-      // The run should kick off automatically (Working… / completes).
+      // The auto-sent turn drives a real run with NO typing → it streams to
+      // completion AND the build lands (files + live preview). The assistant
+      // transcript must survive the conversation-id flip mid-run.
       await page.waitForFunction(
-        () => /Working|Build complete/i.test(document.body.innerText),
+        () => /Build complete/i.test(document.body.innerText),
         null,
-        { timeout: 30000 },
+        { timeout: 60000 },
       );
-      return "auto-sent idea as first turn; ?idea= stripped";
+      const frame = page.frameLocator("iframe").first();
+      await frame.locator("#game").waitFor({ timeout: 20000 });
+      await shot("04b-autosend");
+      return "auto-sent idea (no typing) → run streamed + build landed; ?idea= stripped";
     });
 
     // Re-bind subsequent steps to the original project so the editor flow below

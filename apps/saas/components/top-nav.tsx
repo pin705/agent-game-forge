@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { ChevronDown, Coins, Compass, LogOut, Plus } from "lucide-react";
+import { Coins, Compass, LogOut, Plus } from "lucide-react";
 import { signOut } from "@/app/auth/actions";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +18,7 @@ import { SettingsMenuItem } from "@/components/settings-menu-item";
  * `email` and `credits` come from the protected layout (server-fetched).
  */
 export function TopNav({ email, credits }: { email: string; credits: number | null }) {
+  const initial = (email?.trim()?.[0] ?? "?").toUpperCase();
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <Link
@@ -63,9 +65,15 @@ export function TopNav({ email, credits }: { email: string; credits: number | nu
         </Link>
         <TopNavActions />
         <DropdownMenu>
-          <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-accent">
-            <span className="max-w-[180px] truncate">{email}</span>
-            <ChevronDown className="size-3.5 text-muted-foreground" />
+          <DropdownMenuTrigger
+            className="rounded-full outline-none ring-offset-0 focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="Account"
+          >
+            <Avatar className="size-8 transition-opacity hover:opacity-90">
+              <AvatarFallback className="bg-primary text-xs font-medium text-primary-foreground">
+                {initial}
+              </AvatarFallback>
+            </Avatar>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel className="truncate font-normal text-muted-foreground">

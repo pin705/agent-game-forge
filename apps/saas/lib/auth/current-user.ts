@@ -25,6 +25,8 @@
  *  Covered by a unit assertion in scripts/prod-safety-test.mjs.
  */
 
+import { createClient } from "@/lib/supabase/server";
+
 /** The fixed dev identity used ONLY in local-dev (no Supabase). */
 export const DEV_USER = { id: "dev-user", email: "dev@local" } as const;
 
@@ -66,7 +68,11 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   }
 
   // PROD: the real Supabase user. No bypass past this point.
-  const { createClient } = await import("@/lib/supabase/server");
+  // Static import (NOT dynamic): Next 15's server-action compiler mishandles a
+  // dynamic import("@/lib/supabase/server") inside an action's graph (emits a
+  // missing `_action-browser_*` chunk). A static import is fine — `next/headers`
+  // is only *called* at request time, never at module eval. (auth/actions.ts
+  // imports the same module statically and works.)
   const supabase = await createClient();
   const {
     data: { user },

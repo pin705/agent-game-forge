@@ -4,6 +4,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getSessionUser, isLocalDev } from "@/lib/auth/current-user";
 import * as projects from "@/lib/projects/registry";
+// Static (not dynamic) import — a dynamic import("@/lib/supabase/server") inside
+// a "use server" action makes Next 15 emit a missing `_action-browser_*` chunk
+// (MODULE_NOT_FOUND). Static is safe: cookies() only runs at request time.
+import { createClient } from "@/lib/supabase/server";
 
 /** Lowercase, hyphenated, ascii slug with a short random suffix for uniqueness. */
 function slugify(name: string): string {
@@ -56,7 +60,6 @@ export async function createProject(formData: FormData) {
     redirect(`/build/${rec.id}${ideaQuery}`);
   }
 
-  const { createClient } = await import("@/lib/supabase/server");
   const supabase = await createClient();
   const slug = slugify(name);
 
@@ -106,7 +109,6 @@ export async function renameProject(id: string, rawName: string) {
     return;
   }
 
-  const { createClient } = await import("@/lib/supabase/server");
   const supabase = await createClient();
   await supabase.from("projects").update({ name }).eq("id", id).eq("user_id", user.id);
   revalidatePath("/dashboard");
@@ -127,7 +129,6 @@ export async function deleteProject(id: string) {
     return;
   }
 
-  const { createClient } = await import("@/lib/supabase/server");
   const supabase = await createClient();
   await supabase.from("projects").delete().eq("id", id).eq("user_id", user.id);
   revalidatePath("/dashboard");

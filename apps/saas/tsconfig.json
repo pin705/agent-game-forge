@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -11,13 +15,18 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "incremental": true,
-    "plugins": [{ "name": "next" }],
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"],
-
+      "@/*": [
+        "./*"
+      ],
       // --- Monorepo React-types pin (see scripts/fix-react-dedupe.mjs) ---
       // The React-18 sibling apps cause npm to sometimes hoist @types/react@18
       // to the repo root, next to hoisted deps like @radix-ui/react-slot. When
@@ -28,12 +37,28 @@
       // type-check deterministic regardless of how npm hoists. (No-op when npm
       // already hoists React 19 to the root.) These map TYPES only; runtime
       // `react` is resolved by Node/webpack as usual.
-      "react": ["./node_modules/@types/react"],
-      "react-dom": ["./node_modules/@types/react-dom"],
-      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"],
-      "react/jsx-dev-runtime": ["./node_modules/@types/react/jsx-dev-runtime"]
+      "react": [
+        "./node_modules/@types/react"
+      ],
+      "react-dom": [
+        "./node_modules/@types/react-dom"
+      ],
+      "react/jsx-runtime": [
+        "./node_modules/@types/react/jsx-runtime"
+      ],
+      "react/jsx-dev-runtime": [
+        "./node_modules/@types/react/jsx-dev-runtime"
+      ]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }
