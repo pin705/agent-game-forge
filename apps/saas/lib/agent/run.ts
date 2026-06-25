@@ -3,7 +3,7 @@ import { getStorage, storageDriverName } from "@/lib/storage";
 import type { RunEvent } from "./events";
 import { runLoop, modelDriverName } from "./loop";
 import { resolveModelId } from "./model";
-import { seedSandbox } from "./seed-sandbox";
+import { seedSandbox, isSeededPath } from "./seed-sandbox";
 import { chargeRun } from "@/lib/billing/credits";
 import * as conversations from "@/lib/conversations/store";
 

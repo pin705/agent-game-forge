@@ -172,6 +172,26 @@ export async function copyCorpus(sandbox: Sandbox): Promise<string[]> {
 }
 
 /**
+ * Path prefixes that `seedSandbox` injects (the Python tools, the build corpus
+ * at its daemon-equivalent roots, and the skills). The Python tools also write
+ * their scratch state UNDER `.ogf/` (`pipeline.py` → `.ogf/pipeline/state.json`,
+ * `verify-game.py` → `.ogf/debug-protocol.json`), so excluding the whole `.ogf/`
+ * prefix covers both the seeded guidance AND the tool scratch.
+ */
+const SEEDED_PREFIXES = ["agent-tools/", ".ogf/", ".agents/"];
+
+/**
+ * True if `p` is something WE seeded (or a tool's scratch under `.ogf/`), not
+ * the agent's actual project output. Used by run.ts to exclude these from the
+ * files pushed back to project storage — so storage holds only the real game,
+ * never the injected corpus/tools. (The game never writes under these roots.)
+ */
+export function isSeededPath(p: string): boolean {
+  const norm = p.replace(/^\.?\//, "");
+  return SEEDED_PREFIXES.some((pre) => norm === pre.slice(0, -1) || norm.startsWith(pre));
+}
+
+/**
  * Seed a fresh sandbox with EVERYTHING a hosted build needs beyond the user's
  * project files: the Python agent-tools + the build corpus. Single entry point
  * called by `runAgent` (run.ts) right after the project files are hydrated.
