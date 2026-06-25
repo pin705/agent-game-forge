@@ -4,7 +4,7 @@ import { TOOL_SCHEMAS, executeTool } from "./tools";
 import { type ChatMessage, type Model, getModel, modelDriverName } from "./model";
 import { buildSystemPrompt } from "./system-prompt";
 
-const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS || 24);
+const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS || 48);
 
 export type LoopResult = {
   inputTokens: number;

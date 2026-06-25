@@ -266,6 +266,23 @@ async function runBrowserFlows() {
       await shot("03-dashboard");
       return "dashboard hero (textarea + genre chips) + credits chip present";
     });
+    await step("genre chip PREFILLS the prompt (does NOT auto-submit)", async () => {
+      // Regression: clicking a genre chip used to instantly create + build with
+      // no chance to add detail. It must now only prefill the textarea + stay on
+      // /dashboard so the user can elaborate before submitting.
+      await page.getByRole("button", { name: /platformer/i }).first().click({ timeout: 6000 });
+      await page.waitForFunction(
+        () => /a platformer game/i.test(document.querySelector('textarea[name="idea"]')?.value || ""),
+        null,
+        { timeout: 6000 },
+      );
+      await new Promise((r) => setTimeout(r, 700)); // a submit would have navigated by now
+      const url = page.url();
+      if (!/\/dashboard/.test(url)) throw new Error("chip navigated away (auto-submitted): " + url);
+      // reset so the next step starts clean
+      await page.fill('textarea[name="idea"]', "");
+      return "chip prefilled textarea + stayed on /dashboard (no auto-submit)";
+    });
     await step("create new project → /build/<id> (idea hero)", async () => {
       // Submit the hero with an EMPTY idea so no `?idea=` auto-send fires — the
       // explicit chat step below drives the first run. (The idea→auto-send path

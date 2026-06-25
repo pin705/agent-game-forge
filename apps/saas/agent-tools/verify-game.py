@@ -101,6 +101,11 @@ ID_ARRAYS = ("props", "platforms", "pickups", "colliders", "zones", "paths",
              # grid-logic / tower-defense / ui-heavy catalogs:
              "entities", "towers", "waves", "buildSpots", "cards", "nodes")
 ASSET_RE = re.compile(r'(assets/[^"\s\\]+\.(?:png|jpg|jpeg|gif|ogg|wav|mp3|json))')
+# Code → file refs: JS string literals like loadJSON("data/enemies.json") or
+# "assets/x.png" that must exist on disk (else a runtime 404 breaks boot).
+CODE_REF_RE = re.compile(
+    r'''["'](data/[^"'\\\s]+\.json|assets/[^"'\\\s]+\.(?:png|jpg|jpeg|gif|ogg|wav|mp3|json))["']'''
+)
 
 
 def collect_strings(obj, out):
@@ -169,6 +174,29 @@ def check_index():
         ok(f"index.html: {len(refs)} local ref(s) resolve")
 
 
+def check_code_refs():
+    """Every data/*.json + assets/* path referenced from JS code must exist on
+    disk — a missing one 404s at runtime and breaks boot (the #1 'built but won't
+    play' bug, e.g. catalogs.js loads data/enemies.json that was never written).
+    Catches refs the data→asset + index→script checks don't see."""
+    refs = set()
+    for f in ROOT.glob("**/*.js"):
+        if any(part in ("node_modules", "agent-tools", ".agents") for part in f.parts):
+            continue
+        try:
+            txt = f.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        for m in CODE_REF_RE.findall(txt):
+            refs.add(m)
+    missing = sorted(p for p in refs if not (ROOT / p).is_file())
+    if missing:
+        for p in missing:
+            err(f"code references a file missing on disk: {p} (404 at runtime -> boot fails)")
+    elif refs:
+        ok(f"code refs: {len(refs)} data/asset reference(s) resolve")
+
+
 # ── Debug protocol (OpenGame's Protocol P, browser-free) ────────────────────
 # Seed knowledge base: error signature → root cause → verified fix. Static
 # entries are matched against this run's errors and printed as "known fixes".
@@ -189,6 +217,9 @@ SEED_PROTOCOL = [
     {"id": "missing_id", "kind": "static", "match": "missing 'id'",
      "cause": "Scene editor addresses every array entry by id; without it, drag-edit save fails.",
      "fix": "Give every array entry a unique \"id\" string (e.g. coin_1, plat_2)."},
+    {"id": "code_ref_missing", "kind": "static", "match": "code references a file missing",
+     "cause": "JS loads a data/*.json or assets/* path that was never created (e.g. catalogs.js loads data/enemies.json that doesn't exist) -> 404 -> boot fails.",
+     "fix": "Create the missing file (write the data/*.json with real content, or fetch/gen the asset), OR remove the reference. Every loadJSON()/fetch() path the code uses MUST exist on disk."},
     {"id": "index_ref", "kind": "static", "match": "index.html references missing",
      "cause": "A <script src>/<link href> points at a file that doesn't exist.",
      "fix": "Create the file or fix the path. Script-tag mode load order: constants → state → subsystems → game.js last."},
@@ -325,6 +356,7 @@ def verify() -> None:
     check_js()
     check_json_and_assets()
     check_index()
+    check_code_refs()
     check_start_scene()
     check_juice()
     check_art()

@@ -51,13 +51,23 @@ function CreateButton() {
 export function DashboardCreate() {
   const t = useT();
   const formRef = useRef<HTMLFormElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [idea, setIdea] = useState("");
 
-  // A genre chip sets the idea then submits the same form (server action).
-  function createFromGenre(seed: string) {
-    setIdea(`A ${seed.toLowerCase()} game`);
-    // Defer so React commits the controlled value before the form serialises.
-    requestAnimationFrame(() => formRef.current?.requestSubmit());
+  // A genre chip PREFILLS the prompt (and focuses it) so the user can add their
+  // own details before creating — it does NOT auto-submit. Submit is explicit
+  // (the Create button or Enter). This was the "clicking an option submits
+  // instantly without letting me type more" bug.
+  function fillGenre(seed: string) {
+    const v = `A ${seed.toLowerCase()} game`;
+    setIdea(v);
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (ta) {
+        ta.focus();
+        ta.setSelectionRange(v.length, v.length); // cursor at end, ready to elaborate
+      }
+    });
   }
 
   return (
@@ -65,6 +75,7 @@ export function DashboardCreate() {
       <form ref={formRef} action={createProject}>
         <div className="rounded-xl border bg-card p-3 text-left shadow-sm transition focus-within:ring-2 focus-within:ring-ring">
           <Textarea
+            ref={textareaRef}
             name="idea"
             value={idea}
             onChange={(e) => setIdea(e.target.value)}
@@ -95,11 +106,11 @@ export function DashboardCreate() {
             className="cursor-pointer px-3 py-1 hover:bg-accent"
             role="button"
             tabIndex={0}
-            onClick={() => createFromGenre(g.seed)}
+            onClick={() => fillGenre(g.seed)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                createFromGenre(g.seed);
+                fillGenre(g.seed);
               }
             }}
           >
