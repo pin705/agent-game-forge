@@ -1,0 +1,38 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: #05060f;
+}
+
+body {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  min-height: 100dvh; /* mobile: exclude browser chrome from the viewport height */
+  overflow: hidden;
+  font-family: system-ui, sans-serif;
+}
+
+main {
+  width: min(100vw, 1280px);
+  max-height: 100dvh;
+  aspect-ratio: 16 / 9;
+  background: #05060f;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #05060f;
+  image-rendering: pixelated;
+  touch-action: none;            /* no scroll/zoom/double-tap while playing */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}

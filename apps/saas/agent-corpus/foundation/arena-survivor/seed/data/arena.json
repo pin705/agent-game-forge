@@ -1,0 +1,7 @@
+{
+  "id": "arena",
+  "name": "Endless Field",
+  "arena": { "width": 3200, "height": 3200 },
+  "background": "#1a2030",
+  "playerSpawn": { "x": 1600, "y": 1600 }
+}

@@ -1,0 +1,56 @@
+{
+  "mapSize": {
+    "width": 1672,
+    "height": 941
+  },
+  "camera": {
+    "width": 960,
+    "height": 540
+  },
+  "saveKeys": {
+    "current": "seiran-mitama-save-v4",
+    "previous": "seiran-mitama-save-v3",
+    "old": "seiran-mitama-save-v2"
+  },
+  "collision": {
+    "footRadius": 12
+  },
+  "progression": {
+    "maxLevel": 30,
+    "evolutionLevels": [
+      1,
+      10,
+      22
+    ],
+    "skillLevels": [
+      1,
+      8,
+      18
+    ]
+  },
+  "spawnFallback": {
+    "x": 836,
+    "y": 782
+  },
+  "defeatReturn": {
+    "sceneSpawnScenes": [
+      "temple",
+      "mistDojo"
+    ],
+    "sceneSpawnFallback": {
+      "x": 836,
+      "y": 760
+    },
+    "default": {
+      "x": 836,
+      "y": 650
+    }
+  },
+  "anim": {
+    "npc": { "tickMs": 220, "frames": 4 },
+    "boss": { "tickMs": 180, "frames": 4 },
+    "trainer": { "tickMs": 220, "frames": 4 },
+    "playerWalk": { "tickMs": 130, "frames": 4 },
+    "starterIdle": { "tickMs": 165, "frames": 4 }
+  }
+}

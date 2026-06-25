@@ -3,7 +3,7 @@ import { getStorage, storageDriverName } from "@/lib/storage";
 import type { RunEvent } from "./events";
 import { runLoop, modelDriverName } from "./loop";
 import { resolveModelId } from "./model";
-import { copyAgentTools } from "./agent-tools";
+import { seedSandbox } from "./seed-sandbox";
 import { chargeRun } from "@/lib/billing/credits";
 import * as conversations from "@/lib/conversations/store";
 
@@ -135,10 +135,13 @@ export async function* runAgent(args: {
   let images = 0;
 
   try {
-    // (a) hydrate: project files + the agent-tools (so run_shell can invoke them).
+    // (a) hydrate: project files + the agent-tools (so run_shell can invoke
+    //     them) + the build corpus (conventions / pipeline manifest / recipes /
+    //     foundation seeds / skills) at the daemon-equivalent paths, so the
+    //     prompt's reads and the Python tools' lookups resolve like a local build.
     const existing = await storage.getProjectFiles(args.projectId);
     if (existing.length) await sandbox.writeFiles(existing);
-    await copyAgentTools(sandbox);
+    await seedSandbox(sandbox);
 
     // (b) drive the loop, forwarding every event (and collecting them for the
     //     persisted assistant turn).
@@ -152,9 +155,11 @@ export async function* runAgent(args: {
     }
     const totals = next.value;
 
-    // (c) push changed files back (exclude the agent-tools we injected).
+    // (c) push changed files back (exclude everything WE seeded — the Python
+    //     agent-tools + the build corpus + its scratch state — so storage holds
+    //     only the agent's actual project output, never the injected guidance).
     const after = await sandbox.readFiles(["**/*"]);
-    const projectFiles = after.filter((f) => !f.path.startsWith("agent-tools/"));
+    const projectFiles = after.filter((f) => !isSeededPath(f.path));
     if (projectFiles.length) await storage.putProjectFiles(args.projectId, projectFiles);
 
     result = {

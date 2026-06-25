@@ -1,0 +1,26 @@
+{
+  "player": { "hp": 30, "maxHp": 30, "startingEnergy": 3, "handSize": 5 },
+  "startingDeck": [
+    "strike", "strike", "strike", "strike",
+    "defend", "defend", "defend", "defend",
+    "first_aid"
+  ],
+  "enemies": [
+    {
+      "id": "slime", "name": "Slime", "hp": 20, "maxHp": 20, "color": "#40c840",
+      "moves": [
+        { "action": "attack", "value": 5 },
+        { "action": "attack", "value": 5 },
+        { "action": "block", "value": 6 }
+      ]
+    },
+    {
+      "id": "golem", "name": "Golem", "hp": 35, "maxHp": 35, "color": "#808040",
+      "moves": [
+        { "action": "attack", "value": 8 },
+        { "action": "block", "value": 8 },
+        { "action": "attack", "value": 10 }
+      ]
+    }
+  ]
+}

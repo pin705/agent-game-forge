@@ -1,0 +1,30 @@
+{
+  "player": {
+    "speed": 420,
+    "size": 40,
+    "hitboxR": 7,
+    "fireCooldown": 0.14,
+    "iframes": 1.6,
+    "lives": 3,
+    "bounds": { "x": 40, "y": 80, "w": 1200, "h": 600 }
+  },
+  "stage": {
+    "scrollSpeed": 90
+  },
+  "hud": {
+    "particles": { "sparkSpeed": 90, "sparkLife": 0.35 }
+  },
+  "bulletPatterns": {
+    "player_main":   { "type": "stream", "speed": 760, "interval": 0.14, "dmg": 1, "radius": 5, "life": 2 },
+    "scout_shoot":   { "type": "stream", "speed": 300, "interval": 1.6, "dmg": 1, "radius": 6, "life": 5 },
+    "gunner_spread": { "type": "spread", "speed": 250, "interval": 1.9, "count": 5, "arc": 46, "dmg": 1, "radius": 6, "life": 5 },
+    "aimed_shot":    { "type": "stream", "speed": 320, "interval": 1.4, "dmg": 1, "radius": 6, "life": 5, "aimPlayer": true },
+    "ring_burst":    { "type": "ring",   "speed": 200, "interval": 2.2, "count": 14, "dmg": 1, "radius": 6, "life": 5 }
+  },
+  "enemies": {
+    "scout":  { "hp": 2, "size": 42, "score": 100, "color": "#ff5d73", "shootScript": "scout_shoot" },
+    "gunner": { "hp": 4, "size": 50, "score": 250, "color": "#c77dff", "shootScript": "gunner_spread" },
+    "diver":  { "hp": 2, "size": 40, "score": 150, "color": "#ff9d57", "shootScript": "aimed_shot" },
+    "turret": { "hp": 6, "size": 56, "score": 400, "color": "#ffd45a", "shootScript": "ring_burst" }
+  }
+}

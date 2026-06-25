@@ -1,0 +1,43 @@
+{
+  "_doc": "UI string table. Default locale follows the player's browser language (vi → Vietnamese, else English). This is a STARTER template: copy is plain and self-explanatory (says what the game is + how to play) — replace with your game's own theme/story when you build a real project. Keep ids stable; translate values. t('id',{vars}) interpolates {placeholders}.",
+  "en": {
+    "loading": "Loading…",
+    "title": "PLATFORM QUEST",
+    "tagline": "Run, jump and fight your way to the goal.",
+    "start": "Press Enter or tap to play",
+    "hudRonin": "HERO",
+    "hudLives": "Lives {n}",
+    "hudScore": "Score {n}",
+    "paused": "PAUSED",
+    "pausedHint": "Press P or Esc to resume",
+    "gameOver": "GAME OVER",
+    "gameOverHint": "Press Enter to try again",
+    "win": "LEVEL CLEAR",
+    "winHint": "Press Enter to play again",
+    "storyIntro": "Reach the goal at the end of the level. Defeat the enemies in your way.",
+    "storyCheckpoint": "Checkpoint reached.",
+    "storyGateLocked": "Defeat the boss to open the gate.",
+    "endingWin": "You reached the goal. Level complete!",
+    "bossTaunt": "Boss: None shall pass!"
+  },
+  "vi": {
+    "loading": "Đang tải…",
+    "title": "CUỘC PHIÊU LƯU",
+    "tagline": "Chạy, nhảy và chiến đấu để tới đích.",
+    "start": "Nhấn Enter hoặc chạm để chơi",
+    "hudRonin": "NHÂN VẬT",
+    "hudLives": "Mạng {n}",
+    "hudScore": "Điểm {n}",
+    "paused": "TẠM DỪNG",
+    "pausedHint": "Nhấn P hoặc Esc để tiếp tục",
+    "gameOver": "THUA RỒI",
+    "gameOverHint": "Nhấn Enter để thử lại",
+    "win": "QUA MÀN",
+    "winHint": "Nhấn Enter để chơi lại",
+    "storyIntro": "Tới đích ở cuối màn. Hạ gục kẻ địch trên đường đi.",
+    "storyCheckpoint": "Đã tới điểm lưu.",
+    "storyGateLocked": "Hạ trùm để mở cổng.",
+    "endingWin": "Bạn đã tới đích. Hoàn thành màn chơi!",
+    "bossTaunt": "Trùm: Không ai qua được!"
+  }
+}

@@ -1,0 +1,5 @@
+[
+  { "id": "slime",  "name": "Slime",  "hp": 20, "maxHp": 20, "damage": 5, "color": "#40c840" },
+  { "id": "golem",  "name": "Golem",  "hp": 35, "maxHp": 35, "damage": 8, "color": "#808040" },
+  { "id": "dragon", "name": "Dragon", "hp": 50, "maxHp": 50, "damage": 12,"color": "#c04020" }
+]

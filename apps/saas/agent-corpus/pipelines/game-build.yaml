@@ -1,0 +1,106 @@
+# OGF game-build pipeline — declarative blueprint for building a 2D web game.
+#
+# Adopted from OpenMontage's pipeline pattern: the manifest is the executable
+# outline; each stage points at a director skill (HOW to think) and produces an
+# artifact; a checkpoint state machine (pipeline.py) tracks progress + approval.
+#
+# Philosophy fit: the agent (the user's own CLI) IS the orchestrator. It reads
+# this manifest at Phase 0, then walks the stages, reading the stage director +
+# the referenced conventions, checkpointing after each. Free-asset-first, so the
+# default build budget is $0.
+#
+# NOTE: keep this file's `stages:` shape simple (2-space indent, `- name:` items,
+# inline [lists]) — pipeline.py ships a minimal reader for exactly this shape.
+
+name: game-build
+version: "1.0"
+description: Build a playable 2D web game in OGF, free-asset-first, vanilla-Canvas + data/*.json.
+default_checkpoint_policy: guided        # guided | manual_all | auto_noncreative
+orchestration:
+  mode: solo-agent                       # the user's own Claude/Codex CLI orchestrates
+  budget_default_usd: 0                  # free-first; gen-image is a paid fallback only
+  state_file: .ogf/pipeline/state.json
+
+# guided policy: human approves at creative gates (discovery/spec/art/publish),
+# auto-advances mechanical stages (assets/scaffold/systems/verify) but still
+# checkpoints them so a failed run resumes from the last good stage.
+stages:
+  - name: discovery
+    title: Discovery
+    skill: pipelines/stages/discovery-director.md
+    produces: discovery_answers
+    requires: []
+    tools: []
+    checkpoint_required: true
+    human_approval_default: true
+    success: [genre chosen, animation_richness chosen, module_style chosen]
+
+  - name: spec
+    title: Spec
+    skill: pipelines/stages/spec-director.md
+    produces: spec.md
+    requires: [discovery]
+    tools: []
+    checkpoint_required: true
+    human_approval_default: true
+    success: [spec section1 identity, spec section7 phase-plan with VERIFY gates]
+
+  - name: art_direction
+    title: Art direction
+    skill: pipelines/stages/art-direction-director.md
+    produces: style_anchor
+    requires: [spec]
+    tools: [fetch-asset, gen-image]
+    checkpoint_required: true
+    human_approval_default: true
+    success: [style anchor approved, asset plan free-first]
+
+  - name: assets
+    title: Assets
+    skill: pipelines/stages/assets-director.md
+    produces: asset_manifest
+    requires: [art_direction]
+    tools: [fetch-asset, gen-image]
+    checkpoint_required: true
+    human_approval_default: false
+    success: [every named asset on disk, attribution recorded for CC-BY]
+
+  - name: scaffold
+    title: Scaffold
+    skill: pipelines/stages/scaffold-director.md
+    produces: project_skeleton
+    requires: [spec]
+    tools: [verify-game]
+    checkpoint_required: true
+    human_approval_default: false
+    success: [foundation seed installed or built, verify-game passes empty skeleton]
+
+  - name: systems
+    title: Systems
+    skill: pipelines/stages/systems-director.md
+    produces: playable_game
+    requires: [scaffold, assets]
+    tools: [verify-game, fetch-asset, gen-image]
+    checkpoint_required: true
+    human_approval_default: false
+    success: [each spec phase wired + verified, game is playable]
+
+  - name: verify
+    title: Verify
+    skill: pipelines/stages/verify-director.md
+    produces: verify_report
+    requires: [systems]
+    tools: [verify-game]
+    checkpoint_required: true
+    human_approval_default: false
+    success: [verify-game exit 0, all asset paths resolve]
+
+  - name: publish
+    title: Publish
+    skill: pipelines/stages/publish-director.md
+    produces: publish_log
+    requires: [verify]
+    tools: []
+    checkpoint_required: false
+    human_approval_default: true
+    success: [credits include CC-BY attributions, build runs from index.html]

@@ -1,0 +1,114 @@
+{
+  "transitions": {
+    "start": 0.58,
+    "reveal": 0.34,
+    "end": 0.45
+  },
+  "finishDelays": {
+    "lose": 900,
+    "default": 760
+  },
+  "typeAdvantage": {
+    "fire": "earth",
+    "water": "fire",
+    "earth": "shadow",
+    "shadow": "water"
+  },
+  "typeBonus": {
+    "strong": 1.22,
+    "weak": 0.88,
+    "neutral": 1
+  },
+  "damage": {
+    "minimum": 4,
+    "defaultVariance": 5,
+    "atkScale": 0.62,
+    "artScale": 0.28,
+    "levelScale": 0.95,
+    "guardScale": 0.52
+  },
+  "actions": {
+    "attack": {
+      "power": 8,
+      "enemyDelay": 680
+    },
+    "skill": {
+      "basePower": 13,
+      "levelPower": 2,
+      "variance": 7,
+      "levelBoostBase": 1,
+      "levelBoostPerLevel": 0.025,
+      "enemyDelay": 760,
+      "waterHealBase": 7,
+      "waterHealPerLevel": 3,
+      "earthGuard": 1
+    },
+    "bind": {
+      "lowHpThreshold": 0.42,
+      "lowHpBase": 0.38,
+      "lowHpMissingScale": 0.48,
+      "base": 0.12,
+      "missingScale": 0.22,
+      "successDelay": 820,
+      "enemyDelay": 760
+    },
+    "enemyTurn": {
+      "heavyChance": 0.34,
+      "heavyPower": 11,
+      "normalPower": 7,
+      "variance": 6
+    },
+    "switch": {
+      "enemyDelay": 620
+    }
+  },
+  "effects": {
+    "attack": {
+      "kind": "shadow",
+      "x": 1136,
+      "y": 390,
+      "size": 160,
+      "duration": 0.32
+    },
+    "skill": {
+      "x": 1136,
+      "y": 392,
+      "size": 245,
+      "duration": 0.48
+    },
+    "bind": {
+      "kind": "earth",
+      "x": 1136,
+      "y": 394,
+      "size": 180,
+      "duration": 0.4
+    },
+    "enemyTurn": {
+      "x": 548,
+      "y": 626,
+      "heavySize": 240,
+      "normalSize": 188,
+      "duration": 0.44
+    }
+  },
+  "xpRewards": {
+    "mistMaster": { "base": 118, "levelScale": 1 },
+    "marshBoss": { "base": 106, "levelScale": 1 },
+    "mistGuard": { "base": 74, "levelScale": 1 },
+    "mistScout": { "base": 62, "levelScale": 1 },
+    "mistHidden": { "base": 42, "levelScale": 1.5 },
+    "mistGrass": { "base": 22, "levelScale": 1.45 },
+    "templeMaster": { "base": 78, "levelScale": 1 },
+    "boss": { "base": 96, "levelScale": 1 },
+    "templeApprentice": { "base": 42, "levelScale": 1 },
+    "gate": { "base": 34, "levelScale": 1 },
+    "default": { "base": 11, "levelScale": 1.4 }
+  },
+  "itemRewards": {
+    "templeApprentice": [{ "item": "sealCharm", "amount": 1 }],
+    "templeMaster": [{ "item": "healingPellet", "amount": 1 }],
+    "mistScout": [{ "item": "sealCharm", "amount": 2 }],
+    "mistGuard": [{ "item": "sealCharm", "amount": 1 }],
+    "mistMaster": [{ "item": "healingPellet", "amount": 2 }]
+  }
+}

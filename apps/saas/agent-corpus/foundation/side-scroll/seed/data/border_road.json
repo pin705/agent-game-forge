@@ -1,0 +1,27 @@
+{
+  "_doc": "Starter scene so the game BOOTS + plays + LOOKS like a level immediately after scaffold (live preview works before the agent authors art). Asset-free on purpose: `platforms` are drawn as solid blocks (no tile sprite needed), `colliders` are the physics (linked to platforms by id), `background` is a flat sky color. The agent replaces/extends this per spec — keep at least one level whose id matches GAME.startScene.",
+  "name": "Border Road",
+  "mapSize": { "width": 2400, "height": 720 },
+  "background": "#243049",
+  "layers": [],
+  "props": [],
+  "spawn_points": [{ "id": "start", "x": 140, "y": 520 }],
+  "platforms": [
+    { "id": "ground", "x": 0, "y": 640, "w": 2400, "h": 80 },
+    { "id": "ledge_1", "x": 520, "y": 500, "w": 220, "h": 24 },
+    { "id": "ledge_2", "x": 900, "y": 400, "w": 220, "h": 24 }
+  ],
+  "colliders": [
+    { "id": "c_ground", "type": "platform", "links": "ground", "x": 0, "y": 640, "w": 2400, "h": 80 },
+    { "id": "c_ledge_1", "type": "platform", "links": "ledge_1", "x": 520, "y": 500, "w": 220, "h": 24 },
+    { "id": "c_ledge_2", "type": "platform", "links": "ledge_2", "x": 900, "y": 400, "w": 220, "h": 24 },
+    { "id": "c_wall_end", "type": "wall", "x": 2360, "y": 0, "w": 40, "h": 720 }
+  ],
+  "camera": { "x": 0, "y": 0 },
+  "enemies": [],
+  "pickups": [],
+  "hazards": [],
+  "checkpoints": [],
+  "storyTriggers": [],
+  "exits": []
+}

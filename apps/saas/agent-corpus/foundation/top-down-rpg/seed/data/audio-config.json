@@ -1,0 +1,58 @@
+{
+  "gains": {
+    "master": 0.86,
+    "music": 0.68,
+    "sfx": 1.12
+  },
+  "sfx": {
+    "confirm": [
+      { "kind": "tone", "freq": 660, "duration": 0.06, "options": { "volume": 0.05, "type": "triangle" } }
+    ],
+    "scene": [
+      { "kind": "tone", "freq": 392, "duration": 0.08, "options": { "volume": 0.06, "type": "triangle" } },
+      { "kind": "tone", "freq": 587.33, "duration": 0.14, "options": { "volume": 0.055, "type": "triangle", "delay": 0.08 } }
+    ],
+    "attack": [
+      { "kind": "noise", "duration": 0.12, "options": { "freq": 1350, "q": 1.2, "volume": 0.12 } },
+      { "kind": "tone", "freq": 180, "duration": 0.08, "options": { "volume": 0.08, "endFreq": 90, "type": "sawtooth" } }
+    ],
+    "skill": [
+      { "kind": "tone", "freq": 523.25, "duration": 0.12, "options": { "volume": 0.08, "type": "triangle" } },
+      { "kind": "tone", "freq": 783.99, "duration": 0.2, "options": { "volume": 0.07, "type": "sine", "delay": 0.06 } }
+    ],
+    "hit": [
+      { "kind": "noise", "duration": 0.18, "options": { "freq": 360, "q": 0.7, "volume": 0.13 } }
+    ],
+    "capture": [
+      { "kind": "tone", "freq": 440, "duration": 0.09, "options": { "volume": 0.07, "type": "triangle" } },
+      { "kind": "tone", "freq": 660, "duration": 0.11, "options": { "volume": 0.07, "type": "triangle", "delay": 0.1 } },
+      { "kind": "tone", "freq": 880, "duration": 0.2, "options": { "volume": 0.06, "type": "triangle", "delay": 0.22 } }
+    ],
+    "fail": [
+      { "kind": "tone", "freq": 220, "duration": 0.18, "options": { "volume": 0.08, "endFreq": 130, "type": "sawtooth" } }
+    ],
+    "heal": [
+      { "kind": "tone", "freq": 523.25, "duration": 0.12, "options": { "volume": 0.055, "type": "sine" } },
+      { "kind": "tone", "freq": 659.25, "duration": 0.14, "options": { "volume": 0.05, "type": "sine", "delay": 0.08 } },
+      { "kind": "tone", "freq": 783.99, "duration": 0.18, "options": { "volume": 0.045, "type": "sine", "delay": 0.16 } }
+    ],
+    "level": [
+      { "kind": "tone", "freq": 392, "duration": 0.08, "options": { "volume": 0.06, "type": "triangle" } },
+      { "kind": "tone", "freq": 523.25, "duration": 0.09, "options": { "volume": 0.06, "type": "triangle", "delay": 0.08 } },
+      { "kind": "tone", "freq": 659.25, "duration": 0.18, "options": { "volume": 0.055, "type": "triangle", "delay": 0.17 } }
+    ],
+    "evolve": [
+      { "kind": "tone", "freq": 329.63, "duration": 0.18, "options": { "volume": 0.07, "type": "triangle" } },
+      { "kind": "tone", "freq": 493.88, "duration": 0.18, "options": { "volume": 0.065, "type": "triangle", "delay": 0.16 } },
+      { "kind": "tone", "freq": 739.99, "duration": 0.34, "options": { "volume": 0.06, "type": "sine", "delay": 0.34 } }
+    ],
+    "victory": [
+      { "kind": "tone", "freq": 523.25, "duration": 0.1, "options": { "volume": 0.07, "type": "triangle" } },
+      { "kind": "tone", "freq": 659.25, "duration": 0.1, "options": { "volume": 0.07, "type": "triangle", "delay": 0.1 } },
+      { "kind": "tone", "freq": 783.99, "duration": 0.25, "options": { "volume": 0.065, "type": "triangle", "delay": 0.2 } }
+    ],
+    "lose": [
+      { "kind": "tone", "freq": 164.81, "duration": 0.34, "options": { "volume": 0.08, "endFreq": 98, "type": "sine" } }
+    ]
+  }
+}
