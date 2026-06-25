@@ -185,6 +185,7 @@ const en = {
   "chat.working": "Working…",
   "chat.thinking": "Thinking…",
   "chat.send": "Send",
+  "chat.stop": "Stop",
   "chat.empty.title": "Describe your game",
   "chat.empty.body":
     "e.g. “a tiny platformer with a player on two platforms”. The agent builds it in a cloud sandbox and streams every step here.",
@@ -501,6 +502,7 @@ const vi: Record<TKey, string> = {
   "chat.working": "Đang xử lý…",
   "chat.thinking": "Đang suy nghĩ…",
   "chat.send": "Gửi",
+  "chat.stop": "Dừng",
   "chat.empty.title": "Mô tả trò chơi của bạn",
   "chat.empty.body":
     "ví dụ “một game đi cảnh nhỏ với người chơi trên hai bệ”. Trợ lý sẽ dựng nó trong sandbox đám mây và truyền từng bước ở đây.",

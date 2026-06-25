@@ -18,6 +18,7 @@ import {
   Loader2,
   Paperclip,
   Send,
+  Square,
   Sparkles,
   Terminal,
   Wrench,
@@ -81,12 +82,23 @@ type UiTurn = {
   /** Reference-image paths attached to this user message (for the thumbnail row). */
   refPaths: string[];
   events: RunEvent[];
+  /** Client arrival time (ms) of each event, parallel to `events` — for per-step timing. */
+  eventTimes?: number[];
+  /** When this turn's run started (ms) — the base for the first step's duration. */
+  startedAt?: number;
   status: TurnStatus;
 };
 
 function cryptoRandomId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return Math.random().toString(36).slice(2);
+}
+
+/** Compact duration label for per-step timing, e.g. "820ms" / "3.4s" / "12s". */
+function fmtDt(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const s = ms / 1000;
+  return `${s.toFixed(s < 10 ? 1 : 0)}s`;
 }
 
 function isImageFile(f: File): boolean {
@@ -204,6 +216,8 @@ export function BuildChat({
   useEffect(() => {
     runningRef.current = running;
   }, [running]);
+  // Aborts the in-flight run's fetch when the user hits Stop.
+  const abortRef = useRef<AbortController | null>(null);
 
   // ⌘K "Focus chat" command → focus the composer textarea.
   useEffect(() => {
@@ -226,6 +240,7 @@ export function BuildChat({
       const next = [...prev];
       const last = { ...next[next.length - 1] };
       last.events = [...last.events, ev];
+      last.eventTimes = [...(last.eventTimes ?? []), Date.now()];
       next[next.length - 1] = last;
       return next;
     });
@@ -326,10 +341,20 @@ export function BuildChat({
       setRunStartedAt(Date.now());
       setTurns((s) => [
         ...s,
-        { id: cryptoRandomId(), userText: text, refPaths: refImagePaths ?? [], events: [], status: "streaming" },
+        {
+          id: cryptoRandomId(),
+          userText: text,
+          refPaths: refImagePaths ?? [],
+          events: [],
+          status: "streaming",
+          startedAt: Date.now(),
+          eventTimes: [],
+        },
       ]);
 
       const hadConversation = conversationIdRef.current !== null;
+      const ac = new AbortController();
+      abortRef.current = ac;
 
       try {
         const res = await fetch("/api/runs", {
@@ -342,6 +367,7 @@ export function BuildChat({
             conversationId: conversationIdRef.current ?? undefined,
             refImagePaths,
           }),
+          signal: ac.signal,
         });
         if (!res.ok || !res.body) {
           const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -379,9 +405,15 @@ export function BuildChat({
         }
         finalizeLastTurn("done");
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-        finalizeLastTurn("failed");
+        if (err instanceof DOMException && err.name === "AbortError") {
+          // User hit Stop — keep whatever streamed so far, no error banner.
+          finalizeLastTurn("done");
+        } else {
+          setError(err instanceof Error ? err.message : String(err));
+          finalizeLastTurn("failed");
+        }
       } finally {
+        abortRef.current = null;
         setRunning(false);
         setRunStartedAt(null);
         onFilesChanged();
@@ -424,6 +456,11 @@ export function BuildChat({
   // NOT depend on `send` — its deps include `prompt`, so re-running it on every
   // keystroke would wipe the in-progress transcript) can fire the onboarding
   // auto-send without re-subscribing.
+  /** Stop the in-flight run (aborts the SSE fetch; the turn keeps what streamed). */
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
   const sendRef = useRef(send);
   useEffect(() => {
     sendRef.current = send;
@@ -632,15 +669,31 @@ export function BuildChat({
             {uploading ? (
               <span className="mr-1 shrink-0 text-[11px] text-muted-foreground">{t("dropzone.uploading")}</span>
             ) : null}
-            <Button
-              size="icon"
-              className="size-7 shrink-0"
-              onClick={() => void send()}
-              disabled={running || !prompt.trim() || uploading}
-              title={t("chat.send")}
-            >
-              {running ? <Loader2 className="animate-spin" /> : <Send className="size-3.5" />}
-            </Button>
+            {running ? (
+              <Button
+                size="icon"
+                variant="destructive"
+                className="size-7 shrink-0"
+                onClick={stop}
+                title={t("chat.stop")}
+                aria-label={t("chat.stop")}
+              >
+                <span className="relative flex size-3.5 items-center justify-center">
+                  <Loader2 className="absolute size-3.5 animate-spin opacity-90" />
+                  <Square className="size-2 fill-current" />
+                </span>
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                className="size-7 shrink-0"
+                onClick={() => void send()}
+                disabled={!prompt.trim() || uploading}
+                title={t("chat.send")}
+              >
+                <Send className="size-3.5" />
+              </Button>
+            )}
           </div>
 
           {dragOver && (
@@ -748,11 +801,11 @@ function TurnView({
   // merged into one markdown block; tools/files/shell/forms render inline.
   const blocks: Array<
     | { kind: "text"; text: string }
-    | { kind: "tool"; name: string; ok: boolean; summary: string }
-    | { kind: "shell"; cmd: string; code: number }
-    | { kind: "file"; path: string }
+    | { kind: "tool"; name: string; ok: boolean; summary: string; at?: number; dt?: number }
+    | { kind: "shell"; cmd: string; code: number; at?: number; dt?: number }
+    | { kind: "file"; path: string; at?: number; dt?: number }
     | { kind: "form"; form: QuestionForm }
-    | { kind: "done"; inputTokens: number; outputTokens: number; steps: number; awaiting: boolean }
+    | { kind: "done"; inputTokens: number; outputTokens: number; steps: number; awaiting: boolean; at?: number; dt?: number }
     | { kind: "charge"; credits: number; balanceAfter: number | null }
   > = [];
   let textBuf = "";
@@ -762,22 +815,24 @@ function TurnView({
       textBuf = "";
     }
   };
-  for (const ev of turn.events) {
+  for (let evIdx = 0; evIdx < turn.events.length; evIdx++) {
+    const ev = turn.events[evIdx];
+    const at = turn.eventTimes?.[evIdx];
     switch (ev.type) {
       case "text_delta":
         textBuf += ev.text;
         break;
       case "tool_result":
         flush();
-        blocks.push({ kind: "tool", name: ev.name, ok: ev.ok, summary: ev.summary });
+        blocks.push({ kind: "tool", name: ev.name, ok: ev.ok, summary: ev.summary, at });
         break;
       case "shell":
         flush();
-        blocks.push({ kind: "shell", cmd: ev.cmd, code: ev.code });
+        blocks.push({ kind: "shell", cmd: ev.cmd, code: ev.code, at });
         break;
       case "file_write":
         flush();
-        blocks.push({ kind: "file", path: ev.path });
+        blocks.push({ kind: "file", path: ev.path, at });
         break;
       case "question":
         flush();
@@ -791,6 +846,7 @@ function TurnView({
           outputTokens: ev.outputTokens,
           steps: ev.steps,
           awaiting: ev.status === "awaiting_input",
+          at,
         });
         break;
       case "charge":
@@ -802,6 +858,17 @@ function TurnView({
     }
   }
   flush();
+
+  // Per-step timing: the gap before each tool/shell/file/done block ≈ how long
+  // that action took. dt is measured from the previous timestamped block (the
+  // first one from the turn's start). Lets the user see "how long each step ran".
+  let prevAt = turn.startedAt;
+  for (const b of blocks) {
+    if ((b.kind === "tool" || b.kind === "shell" || b.kind === "file" || b.kind === "done") && b.at != null) {
+      if (prevAt != null) b.dt = b.at - prevAt;
+      prevAt = b.at;
+    }
+  }
 
   // Once this turn's question form has been answered, its "awaiting input" line
   // is stale (submitting the form immediately fires a follow-up run), so hide it
@@ -866,6 +933,9 @@ function TurnView({
                   )}
                   <span>
                     <span className="font-medium text-foreground/80">{b.name}</span> — {b.summary}
+                    {b.dt != null && b.dt >= 300 ? (
+                      <span className="ml-1 opacity-50 tabular-nums">· {fmtDt(b.dt)}</span>
+                    ) : null}
                   </span>
                 </div>
               );
@@ -878,6 +948,9 @@ function TurnView({
                     <span className={b.code === 0 ? "text-emerald-600" : "text-destructive"}>
                       (exit {b.code})
                     </span>
+                    {b.dt != null && b.dt >= 300 ? (
+                      <span className="ml-1 opacity-50 tabular-nums">· {fmtDt(b.dt)}</span>
+                    ) : null}
                   </span>
                 </div>
               );
@@ -886,6 +959,9 @@ function TurnView({
                 <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
                   <FileText className="size-3.5" />
                   <span className="font-mono">{b.path}</span>
+                  {b.dt != null && b.dt >= 300 ? (
+                    <span className="opacity-50 tabular-nums">· {fmtDt(b.dt)}</span>
+                  ) : null}
                 </div>
               );
             case "done":
@@ -908,6 +984,9 @@ function TurnView({
                 >
                   <CheckCircle2 className="size-3.5" />
                   {t("chat.done", { steps: b.steps, tokens: b.inputTokens + b.outputTokens })}
+                  {b.at != null && turn.startedAt != null ? (
+                    <span className="opacity-70"> · {fmtDt(b.at - turn.startedAt)}</span>
+                  ) : null}
                 </div>
               );
             case "charge":
