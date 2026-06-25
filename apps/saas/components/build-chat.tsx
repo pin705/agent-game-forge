@@ -526,13 +526,14 @@ export function BuildChat({
             </div>
           ) : null}
 
-          {turns.map((turn) => (
+          {turns.map((turn, idx) => (
             <TurnView
               key={turn.id}
               turn={turn}
               projectId={projectId}
               submittedForms={submittedForms}
               onSubmitForm={onSubmitForm}
+              isLast={idx === turns.length - 1}
               t={t}
             />
           ))}
@@ -731,12 +732,14 @@ function TurnView({
   projectId,
   submittedForms,
   onSubmitForm,
+  isLast,
   t,
 }: {
   turn: UiTurn;
   projectId: string;
   submittedForms: Set<string>;
   onSubmitForm: (formId: string, answers: FormAnswers) => void;
+  isLast: boolean;
   t: TFn;
 }) {
   const streaming = turn.status === "streaming";
@@ -799,6 +802,15 @@ function TurnView({
     }
   }
   flush();
+
+  // Once this turn's question form has been answered, its "awaiting input" line
+  // is stale (submitting the form immediately fires a follow-up run), so hide it
+  // — otherwise the user keeps seeing "waiting for your answer" with no idea
+  // whether it's running or stopped.
+  const formId = blocks.find(
+    (b): b is { kind: "form"; form: QuestionForm } => b.kind === "form",
+  )?.form.id;
+  const formAnswered = formId != null && submittedForms.has(formId);
 
   return (
     <div className="space-y-2">
@@ -877,6 +889,10 @@ function TurnView({
                 </div>
               );
             case "done":
+              // Stale "awaiting input" → drop it once the form is answered OR a
+              // newer turn exists (user replied via the form's submit OR by just
+              // typing). Only the LAST, still-unanswered turn shows "waiting".
+              if (b.awaiting && (formAnswered || !isLast)) return null;
               return b.awaiting ? (
                 <div
                   key={i}
