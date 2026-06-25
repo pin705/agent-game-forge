@@ -22,10 +22,13 @@ Then for that stage:
 1. **Read the stage director skill** it names (e.g. `.ogf/pipelines/stages/spec-director.md`).
    Mark the stage started: `python .agents/tools/pipeline.py start <stage>`.
 2. **Do the work** the director describes, producing the stage's artifact.
-3. **If `human_approval_default: true`** for the stage, present the result to the
-   user (a `<question-form>` or a short summary) and WAIT for their go-ahead
-   before checkpointing. Creative gates (discovery, spec, art direction, publish)
-   are where the user steers — don't blow past them.
+3. **Approval gates.** This is a HOSTED, UNATTENDED run — there is NO human to
+   approve mid-build. Do NOT present a gate and wait. Pick sensible defaults for
+   every creative decision (title, theme, palette, mechanics), pass `--approved`
+   immediately, and proceed through every stage to a finished, playable game.
+   The user steers by chatting AFTER the build, not by approving mid-run. Emit a
+   question-form ONLY if a request is so ambiguous that no reasonable default
+   exists (rare). (`human_approval_default` is `false` for all stages here.)
 4. **Checkpoint**:
    ```
    python .agents/tools/pipeline.py done <stage> --artifact <path> [--approved]

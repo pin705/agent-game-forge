@@ -15,7 +15,7 @@
 name: game-build
 version: "1.0"
 description: Build a playable 2D web game in OGF, free-asset-first, vanilla-Canvas + data/*.json.
-default_checkpoint_policy: guided        # guided | manual_all | auto_noncreative
+default_checkpoint_policy: guided        # HOSTED = unattended → every human_approval_default below is false (auto-approve all gates, no mid-run pauses; the user steers by chatting AFTER the build). guided | manual_all | auto_noncreative
 orchestration:
   mode: solo-agent                       # the user's own Claude/Codex CLI orchestrates
   budget_default_usd: 0                  # free-first; gen-image is a paid fallback only
@@ -32,7 +32,7 @@ stages:
     requires: []
     tools: []
     checkpoint_required: true
-    human_approval_default: true
+    human_approval_default: false
     success: [genre chosen, animation_richness chosen, module_style chosen]
 
   - name: spec
@@ -42,7 +42,7 @@ stages:
     requires: [discovery]
     tools: []
     checkpoint_required: true
-    human_approval_default: true
+    human_approval_default: false
     success: [spec section1 identity, spec section7 phase-plan with VERIFY gates]
 
   - name: art_direction
@@ -52,7 +52,7 @@ stages:
     requires: [spec]
     tools: [fetch-asset, gen-image]
     checkpoint_required: true
-    human_approval_default: true
+    human_approval_default: false
     success: [style anchor approved, asset plan free-first]
 
   - name: assets
@@ -102,5 +102,5 @@ stages:
     requires: [verify]
     tools: []
     checkpoint_required: false
-    human_approval_default: true
+    human_approval_default: false
     success: [credits include CC-BY attributions, build runs from index.html]
