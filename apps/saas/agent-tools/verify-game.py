@@ -366,6 +366,9 @@ SEED_PROTOCOL = [
     {"id": "asset_missing", "kind": "static", "match": "asset referenced but missing",
      "cause": "data/*.json points at an assets/ path not on disk (typo, or never fetched/generated).",
      "fix": "Fetch it free: python .agents/tools/fetch-asset.py fetch \"<desc>\" <that exact path> --kind <kind>; or gen-image.py. The data path must match the file byte-for-byte."},
+    {"id": "art_unwired", "kind": "static", "match": "empty/unwired animations but sprite art",
+     "cause": "Art was fetched into assets/ but the entity's animations have no sprite wired, so it renders a fallback rectangle — the game looks unfinished ('phèn') despite having art.",
+     "fix": "For EACH character/enemy/player animation add a real sprite + frame slicing, e.g. \"idle\": {\"sprite\": \"assets/sprites/<x>/sheet.png\", \"frames\": N, \"fw\": W, \"fh\": H, \"fps\": 8}. Slice the sheet (generate2dsprite skill / .ogf-slice.json sidecar). Never leave animations empty when sprite art exists."},
     {"id": "no_renderable", "kind": "static", "match": "no renderable field",
      "cause": "A level JSON has mapSize but nothing to draw — Play/Scene editor is empty.",
      "fix": "Add one of background | layers[] | props[] | platforms[]. Scrolling camera → layers[]."},
@@ -513,6 +516,73 @@ def check_art() -> None:
         ok(f"art present ({len(imgs)} image asset(s) in assets/)")
 
 
+SPRITE_FIELDS = ("sprite", "sheet", "image", "img", "frames", "src", "texture")
+
+
+def _walk_objs(obj):
+    """Yield every dict node in a parsed-JSON tree."""
+    if isinstance(obj, dict):
+        yield obj
+        for v in obj.values():
+            yield from _walk_objs(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _walk_objs(v)
+
+
+def _animations_wired(anims) -> bool:
+    """True if ≥1 animation entry points at a real sprite/sheet/frames."""
+    if not isinstance(anims, dict) or not anims:
+        return False  # empty `animations: {}` → fallback shape, not wired
+    for v in anims.values():
+        if isinstance(v, str) and v.strip():
+            return True  # action -> "assets/..." direct
+        if isinstance(v, dict) and any(v.get(k) for k in SPRITE_FIELDS):
+            return True
+    return False
+
+
+def check_art_wired() -> None:
+    """Fetched art must be WIRED into entity rendering, not left sitting in
+    assets/ while characters draw as fallback shapes. If sprite art EXISTS and an
+    entity declares `animations` but none reference a sprite (and it has no
+    top-level sprite either), the game renders placeholder rectangles despite the
+    art — the fetch-but-don't-wire failure ("Generating ≠ done"; the "looks phèn"
+    bug). Skipped when no art was fetched (check_art covers the no-art case)."""
+    exts = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+    has_art = any(
+        p.suffix.lower() in exts and p.is_file() for p in (ROOT / "assets").rglob("*")
+    )
+    if not has_art:
+        return
+    unwired = []
+    for f in sorted(ROOT.glob("data/**/*.json")):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue  # check_json_and_assets already reported bad JSON
+        for obj in _walk_objs(data):
+            if (
+                "animations" in obj
+                and not _animations_wired(obj.get("animations"))
+                and not any(obj.get(k) for k in SPRITE_FIELDS)
+            ):
+                unwired.append((rel(f), str(obj.get("id") or obj.get("name") or "?")))
+    if unwired:
+        for fr, ident in unwired[:8]:
+            err(
+                f"{fr}: '{ident}' has empty/unwired animations but sprite art EXISTS in assets/ — "
+                "the game renders a FALLBACK SHAPE for it (looks unfinished). Wire a real sprite into "
+                'EACH animation (e.g. "idle": {"sprite": "assets/sprites/<x>/sheet.png", "frames": N, '
+                '"fw": W, "fh": H, "fps": 8}) + slice the sheet, so the game USES the fetched art. '
+                "Shipping placeholder rectangles while art exists is NOT done."
+            )
+        if len(unwired) > 8:
+            warn(f"...+{len(unwired) - 8} more entities with unwired animations")
+    else:
+        ok("art wiring: entity animations reference sprites")
+
+
 def verify() -> None:
     check_js()
     check_json_and_assets()
@@ -522,6 +592,7 @@ def verify() -> None:
     check_start_scene()
     check_juice()
     check_art()
+    check_art_wired()
     for m in OKS:
         print(f"  ✓ {m}")
     for m in WARNINGS:

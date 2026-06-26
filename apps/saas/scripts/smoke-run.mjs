@@ -119,7 +119,7 @@ check(
   charge?.credits === expectedCredits,
 );
 // Sanity: pricing is genuinely model-sensitive — the selected flash tier costs
-// less (raw USD) than the default chat tier for the SAME usage, proving the
+// less (raw USD) than the default pro tier for the SAME usage, proving the
 // chosen id (not a hardcoded default) drives the rate lookup.
 {
   const { rawCostUSD } = await import("../lib/billing/pricing.ts");
@@ -130,8 +130,8 @@ check(
     sandboxMs: result.sandboxMs,
   };
   const flashCost = rawCostUSD({ ...usage, model: SELECTED_MODEL });
-  const chatCost = rawCostUSD({ ...usage, model: "deepseek-chat" });
-  check(`flash raw cost < chat raw cost (${flashCost.toFixed(6)} < ${chatCost.toFixed(6)})`, flashCost < chatCost);
+  const proCost = rawCostUSD({ ...usage, model: "deepseek-v4-pro" });
+  check(`flash raw cost < pro raw cost (${flashCost.toFixed(6)} < ${proCost.toFixed(6)})`, flashCost < proCost);
 }
 
 await rm(dataDir, { recursive: true, force: true });

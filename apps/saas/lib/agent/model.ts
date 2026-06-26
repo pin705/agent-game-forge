@@ -45,9 +45,9 @@ export function modelDriverName(): "deepseek" | "mock" {
 }
 
 /** Default model id when a run doesn't request one (the configured DeepSeek
- *  model, else `deepseek-chat`). */
+ *  model, else `deepseek-v4-pro`). */
 export function defaultModelId(): string {
-  return process.env.DEEPSEEK_MODEL || "deepseek-chat";
+  return process.env.DEEPSEEK_MODEL || "deepseek-v4-pro";
 }
 
 /**

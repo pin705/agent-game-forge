@@ -60,7 +60,7 @@ ok("filterCommands: label + keywords, trim, case-insensitive");
 
 // ── Default-model persistence validation ───────────────────────────────────
 const fallback = fallbackModelId();
-assert.equal(resolveDefaultModel("deepseek-chat"), "deepseek-chat", "valid enabled id kept");
+assert.equal(resolveDefaultModel("deepseek-v4-pro"), "deepseek-v4-pro", "valid enabled id kept");
 assert.equal(resolveDefaultModel("premium-claude"), fallback, "disabled id rejected → fallback");
 assert.equal(resolveDefaultModel("nonsense"), fallback, "unknown id → fallback");
 assert.equal(resolveDefaultModel(null), fallback, "null → fallback");

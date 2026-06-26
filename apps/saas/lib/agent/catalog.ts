@@ -37,17 +37,17 @@ export type ModelOption = {
 /** The ordered list the composer renders. */
 export const MODEL_OPTIONS: ModelOption[] = [
   {
-    id: "deepseek-chat",
-    label: "DeepSeek Chat",
-    hint: "Balanced default",
+    id: "deepseek-v4-pro",
+    label: "DeepSeek V4 Pro",
+    hint: "Best quality · default",
     tier: "deepseek",
     enabled: true,
     creditWeight: 4,
   },
   {
     id: "deepseek-v4-flash",
-    label: "DeepSeek Flash",
-    hint: "Cheapest · fastest",
+    label: "DeepSeek V4 Flash",
+    hint: "Faster · cheaper",
     tier: "deepseek",
     enabled: true,
     creditWeight: 1,

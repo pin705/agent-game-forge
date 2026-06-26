@@ -14,7 +14,7 @@ export const DEFAULT_MODEL_LS_KEY = "ogf_saas_default_model";
 
 /** The first enabled catalog model — the system default before any user pref. */
 export function fallbackModelId(): string {
-  return MODEL_OPTIONS.find((m) => m.enabled)?.id ?? "deepseek-chat";
+  return MODEL_OPTIONS.find((m) => m.enabled)?.id ?? "deepseek-v4-pro";
 }
 
 /**

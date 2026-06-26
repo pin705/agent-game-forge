@@ -35,7 +35,7 @@ export type PricingConfig = {
   markup: number;
   /**
    * Per-model token rates, keyed by model id. The default model id comes from
-   * DEEPSEEK_MODEL (e.g. "deepseek-chat" or "deepseek-v4-flash"). Unknown ids
+   * DEEPSEEK_MODEL (e.g. "deepseek-v4-pro" or "deepseek-v4-flash"). Unknown ids
    * fall back to `defaultModel` so a new/renamed model never crashes a charge.
    * Premium tiers (Claude/GPT) are placeholders until those routes ship (§1/§5).
    */
@@ -61,9 +61,9 @@ export const PRICING: PricingConfig = {
   markup: 2.0, // price builds at 2× COGS
 
   models: {
-    // DeepSeek default tier.
-    "deepseek-chat": { inputPerMTok: 0.27, outputPerMTok: 1.1 },
-    // Cheaper/faster DeepSeek tier (the configured DEEPSEEK_MODEL default).
+    // DeepSeek V4 Pro — the strong/default tier.
+    "deepseek-v4-pro": { inputPerMTok: 0.27, outputPerMTok: 1.1 },
+    // Cheaper/faster DeepSeek tier.
     "deepseek-v4-flash": { inputPerMTok: 0.14, outputPerMTok: 0.28 },
     // The MockModel reports its name as "mock-deepseek" (local dev / smoke).
     // Price it like the default tier so local credit math is representative.
@@ -72,7 +72,7 @@ export const PRICING: PricingConfig = {
     "premium-claude": { inputPerMTok: 3.0, outputPerMTok: 15.0 },
     "premium-gpt": { inputPerMTok: 2.5, outputPerMTok: 10.0 },
   },
-  defaultModel: "deepseek-chat",
+  defaultModel: "deepseek-v4-pro",
 
   imageUsd: 0.04, // ~$0.04 / image (placeholder; free-asset-first keeps this ~0)
   sandboxUsdPerSec: 0.0001, // ~$0.36 / hour of sandbox wall time (placeholder)

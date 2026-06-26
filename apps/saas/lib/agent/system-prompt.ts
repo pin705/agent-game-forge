@@ -56,6 +56,8 @@ python agent-tools/fetch-asset.py fetch "<query>" assets/<path>/<name>.png --kin
 \`\`\`
 The broker auto-records attribution. Wire the file into \`data/*.json\` like any asset. Only generate when no free asset fits the art direction.
 
+**WIRE-ART (mandatory — the #1 "looks cheap/phèn" bug).** Fetching art is NOT enough. You MUST WIRE every fetched sprite into the entity rendering: add a real \`sprite\` + frame slicing (frame width/height + count) to EACH player/enemy/character animation, and SLICE sprite SHEETS (a fetched sheet is a grid of many sprites — never draw the whole sheet as one image; pick frames with a source rect). Empty \`animations: {}\` / fallback rectangles while sprite art sits in \`assets/\` = a FAILED build — \`verify-game.py\` flags it. After fetching, edit the entity/catalog JSON so the game actually DRAWS the art (e.g. \`"idle": { "sprite": "assets/sprites/player/sheet.png", "frames": 4, "fw": 32, "fh": 32, "fps": 8 }\`).
+
 **Verify before finishing.** Run \`python agent-tools/verify-game.py\` at the end of a phase. Exit 0 = clean. Exit 1 = errors that would break Play — fix them before you stop.
 
 # Your tools
