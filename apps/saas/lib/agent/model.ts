@@ -1,13 +1,28 @@
 /**
  * Model abstraction for the tool-use loop. Two implementations:
- *   - DeepSeekModel : OpenAI-compatible chat client (prod). Used when
- *                     DEEPSEEK_API_KEY is present.
+ *   - DeepSeekModel : OpenAI-compatible chat client (prod). Works against
+ *                     DeepSeek OR any OpenAI-compatible custom endpoint
+ *                     (AI_BASE_URL/AI_MODEL/AI_API_KEY — see envConfig()
+ *                     below). Used when an API key is present.
  *   - MockModel     : deterministic scripted "model" (dev default). Drives the
  *                     loop through a realistic mini-build with zero accounts.
  *
  * Both speak the same minimal message protocol so the loop is driver-agnostic.
  */
-import { isEnabledModel } from "./catalog";
+import { isEnabledModel, ENABLED_MODEL_IDS } from "./catalog";
+
+/**
+ * Env resolution for the model backend. `AI_*` is the generic name (works with
+ * DeepSeek or any OpenAI-compatible provider — custom base URL + model id);
+ * `DEEPSEEK_*` is kept as a fallback so existing setups don't break.
+ */
+function envConfig() {
+  return {
+    apiKey: process.env.AI_API_KEY || process.env.DEEPSEEK_API_KEY,
+    baseUrl: process.env.AI_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com",
+    modelId: (process.env.AI_MODEL || process.env.DEEPSEEK_MODEL || "").trim() || undefined,
+  };
+}
 
 export type ToolCall = {
   id: string;
@@ -35,28 +50,42 @@ export interface Model {
   complete(messages: ChatMessage[]): Promise<ModelResponse>;
 }
 
-/** True when a real DeepSeek key is present. */
+/** True when a real API key is present (DeepSeek or a custom provider). */
 export function deepseekConfigured(): boolean {
-  return Boolean(process.env.DEEPSEEK_API_KEY);
+  return Boolean(envConfig().apiKey);
 }
 
 export function modelDriverName(): "deepseek" | "mock" {
   return deepseekConfigured() ? "deepseek" : "mock";
 }
 
-/** Default model id when a run doesn't request one (the configured DeepSeek
- *  model, else `deepseek-v4-pro`). */
+/** Default model id when a run doesn't request one (the configured model,
+ *  else `deepseek-v4-pro`). */
 export function defaultModelId(): string {
-  return process.env.DEEPSEEK_MODEL || "deepseek-v4-pro";
+  return envConfig().modelId || "deepseek-v4-pro";
 }
 
 /**
  * Resolve the model id a run will actually use from an OPTIONAL requested id.
- * Validates against the enabled catalog (never a faked/premium id); falls back
- * to the default when absent or not allowed. This is the id recorded on the run
- * and priced by the rate table (pricing.ts keys by these ids).
+ *
+ * When the configured model id is a genuinely CUSTOM one (not one of the
+ * built-in catalog tiers — e.g. an operator pointed AI_MODEL/AI_BASE_URL at a
+ * third-party OpenAI-compatible endpoint), that configured model always wins,
+ * regardless of which catalog tier the UI requested. A single custom backend
+ * has no "pro"/"flash" distinction, so the tier picker is purely cosmetic in
+ * that case — without this, the literal catalog id (e.g. "deepseek-v4-pro")
+ * would be sent as the wire `model` param to the custom endpoint instead of
+ * the real model it actually serves, and every call would fail there.
+ *
+ * Otherwise (no custom model configured, or it happens to match a real
+ * DeepSeek catalog id) the requested id is validated against the enabled
+ * catalog as before, falling back to the default when absent/disallowed. This
+ * is the id recorded on the run and priced by the rate table (pricing.ts keys
+ * by these ids).
  */
 export function resolveModelId(requestedId?: string | null): string {
+  const configured = envConfig().modelId;
+  if (configured && !ENABLED_MODEL_IDS.includes(configured)) return configured;
   return isEnabledModel(requestedId) ? requestedId : defaultModelId();
 }
 
@@ -82,10 +111,8 @@ export class DeepSeekModel implements Model {
     if (!this.clientPromise) {
       this.clientPromise = (async () => {
         const { default: OpenAI } = await import("openai");
-        return new OpenAI({
-          apiKey: process.env.DEEPSEEK_API_KEY,
-          baseURL: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com",
-        });
+        const { apiKey, baseUrl } = envConfig();
+        return new OpenAI({ apiKey, baseURL: baseUrl });
       })();
     }
     return this.clientPromise;

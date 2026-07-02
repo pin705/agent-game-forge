@@ -24,6 +24,7 @@ import path from "node:path";
 // reads env at import time.
 delete process.env.E2B_API_KEY;
 delete process.env.DEEPSEEK_API_KEY;
+delete process.env.AI_API_KEY;
 delete process.env.R2_ACCOUNT_ID;
 delete process.env.R2_ACCESS_KEY_ID;
 delete process.env.R2_SECRET_ACCESS_KEY;

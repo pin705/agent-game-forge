@@ -21,6 +21,7 @@ import path from "node:path";
 // Force LOCAL drivers (belt-and-suspenders: no prod env should be set in a smoke run).
 delete process.env.E2B_API_KEY;
 delete process.env.DEEPSEEK_API_KEY;
+delete process.env.AI_API_KEY;
 delete process.env.R2_ACCOUNT_ID;
 process.env.NEXT_PUBLIC_SUPABASE_URL = "https://placeholder.supabase.co";
 

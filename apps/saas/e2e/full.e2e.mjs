@@ -66,6 +66,7 @@ const childEnv = {
   SUPABASE_SERVICE_ROLE_KEY: "placeholder-service-key",
   // Force the deterministic MockModel + local sandbox/storage drivers.
   DEEPSEEK_API_KEY: "",
+  AI_API_KEY: "",
   E2B_API_KEY: "",
   R2_ACCOUNT_ID: "",
   // Webhook key so the HTTP-fallback webhook→ack path is exercisable.
